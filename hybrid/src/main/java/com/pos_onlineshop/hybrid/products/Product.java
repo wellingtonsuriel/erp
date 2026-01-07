@@ -15,8 +15,6 @@ import java.util.Set;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@EqualsAndHashCode(exclude = {"productPrices"})
-@ToString(exclude = {"productPrices"})
 public class Product {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
