@@ -47,14 +47,13 @@ public class SellingPriceController {
                 return ResponseEntity.notFound().build();
             }
 
+            // Note: SellingPrice entity does not have costPrice and markupPercentage fields
             SellingPrice sellingPrice = SellingPrice.builder()
                     .product(product.get())
                     .shop(shop.get())
                     .currency(currency.get())
                     .priceType(request.getPriceType())
                     .sellingPrice(request.getSellingPrice())
-                    .costPrice(request.getCostPrice())
-                    .markupPercentage(request.getMarkupPercentage())
                     .discountPercentage(request.getDiscountPercentage())
                     .minSellingPrice(request.getMinSellingPrice())
                     .maxSellingPrice(request.getMaxSellingPrice())

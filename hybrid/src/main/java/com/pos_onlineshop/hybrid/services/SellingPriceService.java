@@ -30,15 +30,10 @@ public class SellingPriceService {
 
     /**
      * Create or update a selling price
+     * Note: SellingPrice entity does not have costPrice and markupPercentage fields.
      */
     public SellingPrice createOrUpdatePrice(SellingPrice sellingPrice) {
         validateSellingPrice(sellingPrice);
-
-        // Auto-calculate markup if cost price is provided
-        if (sellingPrice.getCostPrice() != null && sellingPrice.getSellingPrice() != null) {
-            sellingPrice.setMarkupPercentage(calculateMarkupPercentage(
-                    sellingPrice.getCostPrice(), sellingPrice.getSellingPrice()));
-        }
 
         // Set default effective date if not provided
         if (sellingPrice.getEffectiveFrom() == null) {
@@ -149,6 +144,8 @@ public class SellingPriceService {
 
     /**
      * Calculate selling price from cost price and markup percentage
+     * Note: SellingPrice entity does not have costPrice/markupPercentage fields.
+     * This is a utility method for external use.
      */
     public BigDecimal calculateSellingPriceFromMarkup(BigDecimal costPrice, BigDecimal markupPercentage) {
         if (costPrice == null || markupPercentage == null) {
@@ -163,6 +160,8 @@ public class SellingPriceService {
 
     /**
      * Calculate markup percentage from cost and selling price
+     * Note: SellingPrice entity does not have costPrice/markupPercentage fields.
+     * This is a utility method for external use.
      */
     public BigDecimal calculateMarkupPercentage(BigDecimal costPrice, BigDecimal sellingPrice) {
         if (costPrice == null || sellingPrice == null || costPrice.compareTo(BigDecimal.ZERO) == 0) {
@@ -176,13 +175,13 @@ public class SellingPriceService {
 
     /**
      * Update price with cost-based calculation
+     * Note: SellingPrice entity does not have costPrice/markupPercentage fields.
+     * This method only updates the selling price.
      */
     public SellingPrice updatePriceWithCost(Long priceId, BigDecimal costPrice, BigDecimal markupPercentage) {
         SellingPrice price = sellingPriceRepository.findById(priceId)
                 .orElseThrow(() -> new RuntimeException("Selling price not found: " + priceId));
 
-        price.setCostPrice(costPrice);
-        price.setMarkupPercentage(markupPercentage);
         price.setSellingPrice(calculateSellingPriceFromMarkup(costPrice, markupPercentage));
 
         return sellingPriceRepository.save(price);
@@ -259,12 +258,6 @@ public class SellingPriceService {
 
                 price.setSellingPrice(price.getSellingPrice().add(increase));
                 price.setUpdatedBy(updatedBy);
-
-                // Recalculate markup if cost price exists
-                if (price.getCostPrice() != null) {
-                    price.setMarkupPercentage(calculateMarkupPercentage(
-                            price.getCostPrice(), price.getSellingPrice()));
-                }
             }
         }
 
@@ -290,8 +283,6 @@ public class SellingPriceService {
                         .currency(sourcePrice.getCurrency())
                         .priceType(sourcePrice.getPriceType())
                         .sellingPrice(sourcePrice.getSellingPrice())
-                        .costPrice(sourcePrice.getCostPrice())
-                        .markupPercentage(sourcePrice.getMarkupPercentage())
                         .discountPercentage(sourcePrice.getDiscountPercentage())
                         .minSellingPrice(sourcePrice.getMinSellingPrice())
                         .maxSellingPrice(sourcePrice.getMaxSellingPrice())

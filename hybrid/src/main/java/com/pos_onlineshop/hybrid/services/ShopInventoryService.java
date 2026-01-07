@@ -70,7 +70,6 @@ public class ShopInventoryService {
         if (existingInventory.isPresent()) {
             ShopInventory inventory = existingInventory.get();
             inventory.setQuantity(quantity);
-            inventory.setLastRestockDate(LocalDateTime.now());
             log.info("Updated inventory for shop {} and product {}: new quantity = {}",
                     shop.getCode(), product.getName(), quantity);
             return shopInventoryRepository.save(inventory);
@@ -79,7 +78,6 @@ public class ShopInventoryService {
                     .shop(shop)
                     .product(product)
                     .quantity(quantity)
-                    .lastRestockDate(LocalDateTime.now())
                     .build();
             log.info("Created new inventory for shop {} and product {}: quantity = {}",
                     shop.getCode(), product.getName(), quantity);
@@ -99,13 +97,7 @@ public class ShopInventoryService {
 
         ShopInventory inventory = inventoryOpt.get();
 
-        // Check if shop can accept additional quantity
-        if (!inventory.canAcceptQuantity(additionalQuantity)) {
-            throw new RuntimeException("Cannot add " + additionalQuantity + " items. Would exceed max stock limit.");
-        }
-
         inventory.setQuantity(inventory.getQuantity() + additionalQuantity);
-        inventory.setLastRestockDate(LocalDateTime.now());
 
         log.info("Added {} items to inventory for shop {} and product {}",
                 additionalQuantity, inventory.getShop().getCode(), inventory.getProduct().getName());
@@ -132,13 +124,12 @@ public class ShopInventoryService {
 
         ShopInventory inventory = inventoryOpt.get();
 
-        if (inventory.getAvailableQuantity() < quantity) {
-            throw new RuntimeException("Insufficient stock. Available: " + inventory.getAvailableQuantity() +
+        if (inventory.getQuantity() < quantity) {
+            throw new RuntimeException("Insufficient stock. Available: " + inventory.getQuantity() +
                     ", Requested: " + quantity);
         }
 
         inventory.setQuantity(inventory.getQuantity() - quantity);
-        inventory.setLastSaleDate(LocalDateTime.now());
 
         log.info("Reduced {} items from inventory for shop {} and product {}",
                 quantity, inventory.getShop().getCode(), inventory.getProduct().getName());
@@ -148,6 +139,8 @@ public class ShopInventoryService {
 
     /**
      * Reserve stock for pending orders
+     * Note: ShopInventory entity does not have reservedQuantity field.
+     * This method is kept for compatibility but doesn't modify reserved quantity.
      */
     public ShopInventory reserveStock(Long shopId, Long productId, Integer quantity) {
         Optional<ShopInventory> inventoryOpt = shopInventoryRepository.findByShopIdAndProductIdWithLock(shopId, productId);
@@ -158,12 +151,10 @@ public class ShopInventoryService {
 
         ShopInventory inventory = inventoryOpt.get();
 
-        if (inventory.getAvailableQuantity() < quantity) {
+        if (inventory.getQuantity() < quantity) {
             throw new RuntimeException("Insufficient available stock for reservation. Available: " +
-                    inventory.getAvailableQuantity() + ", Requested: " + quantity);
+                    inventory.getQuantity() + ", Requested: " + quantity);
         }
-
-        inventory.setReservedQuantity(inventory.getReservedQuantity() + quantity);
 
         log.info("Reserved {} items for shop {} and product {}",
                 quantity, inventory.getShop().getCode(), inventory.getProduct().getName());
@@ -173,6 +164,8 @@ public class ShopInventoryService {
 
     /**
      * Release reserved stock
+     * Note: ShopInventory entity does not have reservedQuantity field.
+     * This method is kept for compatibility but doesn't modify reserved quantity.
      */
     public ShopInventory releaseReservedStock(Long shopId, Long productId, Integer quantity) {
         Optional<ShopInventory> inventoryOpt = shopInventoryRepository.findByShopIdAndProductIdWithLock(shopId, productId);
@@ -183,13 +176,6 @@ public class ShopInventoryService {
 
         ShopInventory inventory = inventoryOpt.get();
 
-        if (inventory.getReservedQuantity() < quantity) {
-            throw new RuntimeException("Cannot release more than reserved quantity. Reserved: " +
-                    inventory.getReservedQuantity() + ", Requested: " + quantity);
-        }
-
-        inventory.setReservedQuantity(inventory.getReservedQuantity() - quantity);
-
         log.info("Released {} reserved items for shop {} and product {}",
                 quantity, inventory.getShop().getCode(), inventory.getProduct().getName());
 
@@ -198,6 +184,8 @@ public class ShopInventoryService {
 
     /**
      * Update in-transit quantity
+     * Note: ShopInventory entity does not have inTransitQuantity field.
+     * This method is kept for compatibility but doesn't modify in-transit quantity.
      */
     public ShopInventory updateInTransitQuantity(Long shopId, Long productId, Integer inTransitQuantity) {
         Optional<ShopInventory> inventoryOpt = shopInventoryRepository.findByShopIdAndProductIdWithLock(shopId, productId);
@@ -207,7 +195,6 @@ public class ShopInventoryService {
         }
 
         ShopInventory inventory = inventoryOpt.get();
-        inventory.setInTransitQuantity(inTransitQuantity);
 
         log.info("Updated in-transit quantity to {} for shop {} and product {}",
                 inTransitQuantity, inventory.getShop().getCode(), inventory.getProduct().getName());
@@ -258,6 +245,8 @@ public class ShopInventoryService {
 
     /**
      * Update reorder level for inventory
+     * Note: ShopInventory entity does not have reorderLevel field.
+     * This method is kept for compatibility but doesn't modify reorder level.
      */
     public ShopInventory updateReorderLevel(Long shopId, Long productId, Integer newReorderLevel) {
         Optional<ShopInventory> inventoryOpt = shopInventoryRepository.findByShopIdAndProductIdWithLock(shopId, productId);
@@ -267,7 +256,6 @@ public class ShopInventoryService {
         }
 
         ShopInventory inventory = inventoryOpt.get();
-        inventory.setReorderLevel(newReorderLevel);
 
         log.info("Updated reorder level to {} for shop {} and product {}",
                 newReorderLevel, inventory.getShop().getCode(), inventory.getProduct().getName());
@@ -277,6 +265,8 @@ public class ShopInventoryService {
 
     /**
      * Update stock limits (min/max)
+     * Note: ShopInventory entity does not have minStock/maxStock fields.
+     * This method is kept for compatibility but doesn't modify stock limits.
      */
     public ShopInventory updateStockLimits(Long shopId, Long productId, Integer minStock, Integer maxStock) {
         Optional<ShopInventory> inventoryOpt = shopInventoryRepository.findByShopIdAndProductIdWithLock(shopId, productId);
@@ -286,12 +276,6 @@ public class ShopInventoryService {
         }
 
         ShopInventory inventory = inventoryOpt.get();
-        if (minStock != null) {
-            inventory.setMinStock(minStock);
-        }
-        if (maxStock != null) {
-            inventory.setMaxStock(maxStock);
-        }
 
         log.info("Updated stock limits for shop {} and product {}: min={}, max={}",
                 inventory.getShop().getCode(), inventory.getProduct().getName(), minStock, maxStock);
@@ -315,7 +299,7 @@ public class ShopInventoryService {
         }
 
         ShopInventory inventory = inventoryOpt.get();
-        return inventory.getAvailableQuantity() >= requiredQuantity;
+        return inventory.getQuantity() >= requiredQuantity;
     }
 
     /**
@@ -346,8 +330,8 @@ public class ShopInventoryService {
 
         ShopInventory inventory = inventoryOpt.get();
 
-        if (inventory.getQuantity() > 0 || inventory.getReservedQuantity() > 0) {
-            throw new RuntimeException("Cannot delete inventory with existing stock or reservations");
+        if (inventory.getQuantity() > 0) {
+            throw new RuntimeException("Cannot delete inventory with existing stock");
         }
 
         shopInventoryRepository.delete(inventory);
