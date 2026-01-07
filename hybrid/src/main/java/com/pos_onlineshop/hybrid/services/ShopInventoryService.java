@@ -202,38 +202,10 @@ public class ShopInventoryService {
         return shopInventoryRepository.save(inventory);
     }
 
-    /**
-     * Get low stock items for a shop
-     */
-    @Transactional(readOnly = true)
-    public List<ShopInventory> getLowStockItems(Long shopId) {
-        return shopInventoryRepository.findLowStockItemsByShop(shopId);
-    }
 
-    /**
-     * Get overstocked items for a shop
-     */
-    @Transactional(readOnly = true)
-    public List<ShopInventory> getOverstockedItems(Long shopId) {
-        return shopInventoryRepository.findOverstockedItemsByShop(shopId);
-    }
 
-    /**
-     * Get understocked items for a shop
-     */
-    @Transactional(readOnly = true)
-    public List<ShopInventory> getUnderstockedItems(Long shopId) {
-        return shopInventoryRepository.findUnderstockedItemsByShop(shopId);
-    }
 
-    /**
-     * Calculate total inventory value for a shop
-     */
-    @Transactional(readOnly = true)
-    public BigDecimal calculateShopInventoryValue(Long shopId) {
-        BigDecimal value = shopInventoryRepository.calculateShopInventoryValue(shopId);
-        return value != null ? value : BigDecimal.ZERO;
-    }
+
 
     /**
      * Get warehouse inventory for a product
@@ -310,13 +282,7 @@ public class ShopInventoryService {
         return isInStock(shopId, productId, requiredQuantity);
     }
 
-    /**
-     * Get items that need restocking
-     */
-    @Transactional(readOnly = true)
-    public List<ShopInventory> getItemsNeedingRestock(Long shopId) {
-        return shopInventoryRepository.findLowStockItemsByShop(shopId);
-    }
+
 
     /**
      * Delete inventory record

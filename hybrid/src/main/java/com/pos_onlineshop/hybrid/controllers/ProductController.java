@@ -4,7 +4,7 @@ import com.pos_onlineshop.hybrid.currency.Currency;
 import com.pos_onlineshop.hybrid.dtos.CreateProductRequest;
 import com.pos_onlineshop.hybrid.dtos.SetPriceRequest;
 import com.pos_onlineshop.hybrid.dtos.SetSpecialPriceRequest;
-import com.pos_onlineshop.hybrid.productPrice.ProductPrice;
+
 import com.pos_onlineshop.hybrid.products.Product;
 import com.pos_onlineshop.hybrid.services.CurrencyService;
 import com.pos_onlineshop.hybrid.services.ProductService;
@@ -42,11 +42,7 @@ public class ProductController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    @GetMapping("/{id}/prices")
-    public ResponseEntity<List<ProductPrice>> getProductPrices(@PathVariable Long id) {
-        List<ProductPrice> prices = productService.getProductPrices(id);
-        return ResponseEntity.ok(prices);
-    }
+
 
     @GetMapping("/{id}/price")
     public ResponseEntity<Map<String, Object>> getProductPrice(
