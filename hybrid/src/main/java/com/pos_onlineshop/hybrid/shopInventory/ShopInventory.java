@@ -56,7 +56,7 @@ public class ShopInventory {
     @JoinColumn(name = "currency_id", nullable = false)
     private Currency currency;
 
-    @Column(name = "price", nullable = false, precision = 19, scale = 4)
+    @Column(name = "unit_price", nullable = false, precision = 19, scale = 4)
     private BigDecimal unitPrice;
 
 

@@ -24,9 +24,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
 
 
-    @Query("SELECT p FROM Product p WHERE p.category = :category AND p.price <= :maxPrice")
-    List<Product> findByCategoryAndMaxPrice(@Param("category") String category,
-                                            @Param("maxPrice") BigDecimal maxPrice);
+
 
 
     /**
@@ -58,31 +56,15 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
             "OR LOWER(p.description) LIKE LOWER(CONCAT('%', :searchTerm, '%'))) AND p.active = true")
     List<Product> searchByNameOrDescription(@Param("searchTerm") String searchTerm);
 
-    /**
-     * Find products by SKU pattern
-     */
-    @Query("SELECT p FROM Product p WHERE p.sku LIKE :pattern AND p.active = true")
-    List<Product> findBySkuPattern(@Param("pattern") String pattern);
 
-    /**
-     * Find products by barcode pattern
-     */
-    @Query("SELECT p FROM Product p WHERE p.barcode LIKE :pattern AND p.active = true")
-    List<Product> findByBarcodePattern(@Param("pattern") String pattern);
+
 
     /**
      * Find products with tax rate
      */
     List<Product> findByTaxRateGreaterThan(BigDecimal taxRate);
 
-    /**
-     * Find products by price range and category
-     */
-    @Query("SELECT p FROM Product p WHERE p.price BETWEEN :minPrice AND :maxPrice " +
-            "AND LOWER(p.category) = LOWER(:category) AND p.active = true")
-    List<Product> findByPriceRangeAndCategory(@Param("minPrice") BigDecimal minPrice,
-                                              @Param("maxPrice") BigDecimal maxPrice,
-                                              @Param("category") String category);
+
 
     /**
      * Count products by category
@@ -109,9 +91,5 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     @Query("SELECT p FROM Product p WHERE (p.imageUrl IS NULL OR p.imageUrl = '') AND p.active = true")
     List<Product> findProductsWithoutImages();
 
-    /**
-     * Get product statistics
-     */
-    @Query("SELECT COUNT(p), MIN(p.price), MAX(p.price), AVG(p.price) FROM Product p WHERE p.active = true")
-    Object[] getProductStatistics();
+
 }

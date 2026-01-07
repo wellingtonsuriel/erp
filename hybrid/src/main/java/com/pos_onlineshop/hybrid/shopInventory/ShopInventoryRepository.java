@@ -27,18 +27,7 @@ public interface ShopInventoryRepository extends JpaRepository<ShopInventory, Lo
 
     List<ShopInventory> findByProduct(Product product);
 
-    @Query("SELECT si FROM ShopInventory si WHERE si.shop.id = :shopId AND si.quantity <= si.reorderLevel")
-    List<ShopInventory> findLowStockItemsByShop(@Param("shopId") Long shopId);
 
-    @Query("SELECT si FROM ShopInventory si WHERE si.shop.id = :shopId AND si.quantity > si.maxStock")
-    List<ShopInventory> findOverstockedItemsByShop(@Param("shopId") Long shopId);
-
-    @Query("SELECT si FROM ShopInventory si WHERE si.shop.id = :shopId AND si.quantity < si.minStock")
-    List<ShopInventory> findUnderstockedItemsByShop(@Param("shopId") Long shopId);
-
-    @Query("SELECT SUM(si.quantity * p.price) FROM ShopInventory si JOIN si.product p " +
-            "WHERE si.shop.id = :shopId")
-    BigDecimal calculateShopInventoryValue(@Param("shopId") Long shopId);
 
     @Query("SELECT si FROM ShopInventory si WHERE si.shop.type = 'WAREHOUSE' " +
             "AND si.product.id = :productId")
