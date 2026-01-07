@@ -3,6 +3,7 @@ package com.pos_onlineshop.hybrid.shopInventory;
 import com.pos_onlineshop.hybrid.currency.Currency;
 import com.pos_onlineshop.hybrid.products.Product;
 import com.pos_onlineshop.hybrid.shop.Shop;
+import com.pos_onlineshop.hybrid.suppliers.Suppliers;
 import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
