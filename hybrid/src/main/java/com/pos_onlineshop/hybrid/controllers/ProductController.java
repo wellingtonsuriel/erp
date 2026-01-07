@@ -74,23 +74,19 @@ public class ProductController {
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Product> createProduct(@Valid @RequestBody CreateProductRequest request) {
-        Currency baseCurrency = request.getBaseCurrencyCode() != null ?
-                currencyService.findByCode(request.getBaseCurrencyCode())
-                        .orElseThrow(() -> new RuntimeException("Currency not found")) :
-                currencyService.getBaseCurrency();
-
+        // Note: Product entity does not have barcode, sku, price, baseCurrency, taxRate, minQuantity fields
+        // Use ShopInventory for barcode/sku and SellingPrice for pricing
         Product product = Product.builder()
                 .name(request.getName())
                 .description(request.getDescription())
-                .price(request.getPrice())
-                .baseCurrency(baseCurrency)
                 .category(request.getCategory())
                 .imageUrl(request.getImageUrl())
-                .barcode(request.getBarcode())
-                .sku(request.getSku())
-                .taxRate(request.getTaxRate())
                 .weighable(request.isWeighable())
-                .minQuantity(request.getMinQuantity())
+                .weight(request.getWeight())
+                .unitOfMeasure(request.getUnitOfMeasure())
+                .actualMeasure(request.getActualMeasure())
+                .minStock(request.getMinStock())
+                .maxStock(request.getMaxStock())
                 .build();
 
         Product created = productService.createProduct(product);

@@ -29,7 +29,9 @@ public class ProductService {
     private final CurrencyService currencyService;
 
     /**
-     * Create a new product with base price
+     * Create a new product
+     * Note: Product entity does not have sku, barcode, price, baseCurrency fields.
+     * These should be managed through ShopInventory and SellingPrice entities.
      */
     public Product createProduct(Product product) {
         log.info("Creating new product: {}", product.getName());
@@ -39,31 +41,11 @@ public class ProductService {
             throw new IllegalArgumentException("Product name is required");
         }
 
-        if (product.getSku() == null || product.getSku().trim().isEmpty()) {
-            throw new IllegalArgumentException("Product SKU is required");
-        }
-
-        // Set base currency if not provided
-        if (product.getBaseCurrency() == null) {
-            product.setBaseCurrency(currencyService.getBaseCurrency());
-        }
-
-        // Validate price
-        if (product.getPrice() == null || product.getPrice().compareTo(BigDecimal.ZERO) < 0) {
-            throw new IllegalArgumentException("Product price must be non-negative");
+        if (product.getCategory() == null || product.getCategory().trim().isEmpty()) {
+            throw new IllegalArgumentException("Product category is required");
         }
 
         Product savedProduct = productRepository.save(product);
-
-        // Create base price entry in ProductPrice table
-        createProductPrice(savedProduct, savedProduct.getBaseCurrency(), savedProduct.getPrice(), PriceType.REGULAR);
-
-        // Initialize inventory if InventoryService supports it
-        try {
-            inventoryService.initializeInventory(savedProduct, 0);
-        } catch (Exception e) {
-            log.warn("Could not initialize inventory for product {}: {}", savedProduct.getName(), e.getMessage());
-        }
 
         log.info("Successfully created product: {} with ID: {}", savedProduct.getName(), savedProduct.getId());
         return savedProduct;
@@ -71,6 +53,8 @@ public class ProductService {
 
     /**
      * Set or update product price for specific currency
+     * Note: Product entity does not have price fields. Use SellingPriceService instead.
+     * This method maintains ProductPrice for backward compatibility.
      */
     public void setProductPrice(Product product, Currency currency, BigDecimal price) {
         setProductPrice(product, currency, price, PriceType.REGULAR);
@@ -78,6 +62,8 @@ public class ProductService {
 
     /**
      * Set or update product price with specific price type
+     * Note: Product entity does not have price fields. Use SellingPriceService instead.
+     * This method maintains ProductPrice for backward compatibility.
      */
     public void setProductPrice(Product product, Currency currency, BigDecimal price, PriceType priceType) {
         if (price == null || price.compareTo(BigDecimal.ZERO) < 0) {
@@ -99,18 +85,13 @@ public class ProductService {
             createProductPrice(product, currency, price, priceType);
         }
 
-        // If this is the base currency, update the product's base price
-        if (currency.equals(product.getBaseCurrency())) {
-            product.setPrice(price);
-            productRepository.save(product);
-        }
-
         log.info("Set {} price for product {} in {}: {}",
                 priceType, product.getName(), currency.getCode(), price);
     }
 
     /**
      * Set promotional/special price with time period
+     * Note: Use SellingPriceService for shop-specific pricing.
      */
     public void setPromotionalPrice(Product product, Currency currency, BigDecimal promotionalPrice,
                                     LocalDateTime from, LocalDateTime to) {
@@ -141,33 +122,13 @@ public class ProductService {
 
     /**
      * Get effective product price in specific currency
+     * Note: This uses ProductPrice table. For shop-specific prices, use SellingPriceService.
      */
     public BigDecimal getProductPrice(Product product, Currency currency) {
-        // First try to get price directly from product
-        BigDecimal price = product.getPriceInCurrency(currency);
+        Optional<ProductPrice> productPrice = productPriceRepository.findByProductAndCurrency(product, currency);
 
-        if (price != null) {
-            return price;
-        }
-
-        // If no direct price found, try currency conversion
-        if (!currency.equals(product.getBaseCurrency())) {
-            try {
-                BigDecimal basePrice = product.getPrice();
-                Currency baseCurrency = product.getBaseCurrency();
-
-                price = currencyService.convert(basePrice, baseCurrency, currency);
-
-                // Optionally cache the converted price
-                if (price != null) {
-                    setProductPrice(product, currency, price, PriceType.REGULAR);
-                }
-
-                return price;
-            } catch (Exception e) {
-                log.warn("Failed to convert price for product {} from {} to {}: {}",
-                        product.getName(), product.getBaseCurrency().getCode(), currency.getCode(), e.getMessage());
-            }
+        if (productPrice.isPresent() && productPrice.get().isActive()) {
+            return productPrice.get().getPrice();
         }
 
         return null;
@@ -183,9 +144,12 @@ public class ProductService {
 
     /**
      * Get product price with tax included
+     * Note: Product entity does not have taxRate field.
      */
     public BigDecimal getProductPriceWithTax(Product product, Currency currency) {
-        return product.getPriceWithTax(currency);
+        BigDecimal price = getProductPrice(product, currency);
+        // Since Product doesn't have taxRate, return price as-is
+        return price;
     }
 
     // CRUD Operations
@@ -195,14 +159,26 @@ public class ProductService {
         return productRepository.findById(id);
     }
 
+    /**
+     * Find product by barcode
+     * Note: Product entity does not have barcode field. Use ShopInventory to search by barcode.
+     */
     @Transactional(readOnly = true)
     public Optional<Product> findByBarcode(String barcode) {
-        return productRepository.findByBarcode(barcode);
+        // Product doesn't have barcode - this should query ShopInventory instead
+        log.warn("Product entity does not have barcode field. Use ShopInventory to find by barcode.");
+        return Optional.empty();
     }
 
+    /**
+     * Find product by SKU
+     * Note: Product entity does not have sku field. Use ShopInventory to search by SKU.
+     */
     @Transactional(readOnly = true)
     public Optional<Product> findBySku(String sku) {
-        return productRepository.findBySku(sku);
+        // Product doesn't have SKU - this should query ShopInventory instead
+        log.warn("Product entity does not have sku field. Use ShopInventory to find by SKU.");
+        return Optional.empty();
     }
 
     @Transactional(readOnly = true)
@@ -230,9 +206,14 @@ public class ProductService {
         return productRepository.findByNameContainingIgnoreCase(name);
     }
 
+    /**
+     * Find products by price range
+     * Note: Product entity does not have price field. Use SellingPrice or ProductPrice for price queries.
+     */
     @Transactional(readOnly = true)
     public List<Product> findByPriceRange(BigDecimal minPrice, BigDecimal maxPrice) {
-        return productRepository.findByPriceBetween(minPrice, maxPrice);
+        log.warn("Product entity does not have price field. Use SellingPrice or ProductPrice for price queries.");
+        return List.of();
     }
 
     @Transactional(readOnly = true)
@@ -264,26 +245,20 @@ public class ProductService {
                     if (productDetails.getImageUrl() != null) {
                         product.setImageUrl(productDetails.getImageUrl());
                     }
-                    if (productDetails.getBarcode() != null) {
-                        product.setBarcode(productDetails.getBarcode());
-                    }
-                    if (productDetails.getSku() != null) {
-                        product.setSku(productDetails.getSku());
-                    }
-                    if (productDetails.getTaxRate() != null) {
-                        product.setTaxRate(productDetails.getTaxRate());
-                    }
-                    if (productDetails.getMinQuantity() != null) {
-                        product.setMinQuantity(productDetails.getMinQuantity());
-                    }
-                    if (productDetails.getMaxQuantity() != null) {
-                        product.setMaxQuantity(productDetails.getMaxQuantity());
-                    }
                     if (productDetails.getWeight() != null) {
                         product.setWeight(productDetails.getWeight());
                     }
                     if (productDetails.getUnitOfMeasure() != null) {
                         product.setUnitOfMeasure(productDetails.getUnitOfMeasure());
+                    }
+                    if (productDetails.getActualMeasure() != null) {
+                        product.setActualMeasure(productDetails.getActualMeasure());
+                    }
+                    if (productDetails.getMaxStock() != null) {
+                        product.setMaxStock(productDetails.getMaxStock());
+                    }
+                    if (productDetails.getMinStock() != null) {
+                        product.setMinStock(productDetails.getMinStock());
                     }
 
                     // Update weighable flag
@@ -291,11 +266,6 @@ public class ProductService {
                     product.setActive(productDetails.isActive());
 
                     Product updated = productRepository.save(product);
-
-                    // Update base price if provided and base currency exists
-                    if (productDetails.getPrice() != null && product.getBaseCurrency() != null) {
-                        setProductPrice(updated, product.getBaseCurrency(), productDetails.getPrice());
-                    }
 
                     log.info("Updated product: {}", updated.getName());
                     return updated;
@@ -363,10 +333,6 @@ public class ProductService {
     public void removeProductPrice(Long productId, Currency currency) {
         Product product = findById(productId)
                 .orElseThrow(() -> new RuntimeException("Product not found: " + productId));
-
-        if (currency.equals(product.getBaseCurrency())) {
-            throw new IllegalArgumentException("Cannot remove base currency price");
-        }
 
         productPriceRepository.findByProductAndCurrency(product, currency)
                 .ifPresent(productPriceRepository::delete);
