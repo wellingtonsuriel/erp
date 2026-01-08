@@ -111,9 +111,6 @@ public class SellingPriceController {
         } catch (RuntimeException e) {
             log.error("Error updating selling price: " + priceId, e);
             return ResponseEntity.notFound().build();
-        } catch (IllegalArgumentException e) {
-            log.error("Validation error updating selling price: " + priceId, e);
-            return ResponseEntity.badRequest().build();
         } catch (Exception e) {
             log.error("Unexpected error updating selling price: " + priceId, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
