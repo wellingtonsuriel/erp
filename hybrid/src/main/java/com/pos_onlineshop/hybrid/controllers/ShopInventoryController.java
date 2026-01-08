@@ -11,13 +11,10 @@ import com.pos_onlineshop.hybrid.shop.ShopRepository;
 import com.pos_onlineshop.hybrid.shopInventory.ShopInventory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -144,96 +141,6 @@ public class ShopInventoryController {
     }
 
     /**
-     * Reserve stock for pending orders
-     */
-    @PostMapping("/shop/{shopId}/product/{productId}/reserve")
-    public ResponseEntity<ShopInventory> reserveStock(
-            @PathVariable Long shopId,
-            @PathVariable Long productId,
-            @RequestBody StockUpdateRequest request) {
-
-        try {
-            ShopInventory inventory = shopInventoryService.reserveStock(shopId, productId, request.getQuantity());
-            return ResponseEntity.ok(inventory);
-        } catch (RuntimeException e) {
-            log.error("Error reserving stock", e);
-            return ResponseEntity.badRequest().build();
-        }
-    }
-
-    /**
-     * Release reserved stock
-     */
-    @PostMapping("/shop/{shopId}/product/{productId}/release-reservation")
-    public ResponseEntity<ShopInventory> releaseReservedStock(
-            @PathVariable Long shopId,
-            @PathVariable Long productId,
-            @RequestBody StockUpdateRequest request) {
-
-        try {
-            ShopInventory inventory = shopInventoryService.releaseReservedStock(shopId, productId, request.getQuantity());
-            return ResponseEntity.ok(inventory);
-        } catch (RuntimeException e) {
-            log.error("Error releasing reserved stock", e);
-            return ResponseEntity.badRequest().build();
-        }
-    }
-
-    /**
-     * Update in-transit quantity
-     */
-    @PostMapping("/shop/{shopId}/product/{productId}/in-transit")
-    public ResponseEntity<ShopInventory> updateInTransitQuantity(
-            @PathVariable Long shopId,
-            @PathVariable Long productId,
-            @RequestBody StockUpdateRequest request) {
-
-        try {
-            ShopInventory inventory = shopInventoryService.updateInTransitQuantity(shopId, productId, request.getQuantity());
-            return ResponseEntity.ok(inventory);
-        } catch (RuntimeException e) {
-            log.error("Error updating in-transit quantity", e);
-            return ResponseEntity.badRequest().build();
-        }
-    }
-
-//    /**
-//     * Get low stock items for a shop
-//     */
-//    @GetMapping("/shop/{shopId}/low-stock")
-//    public ResponseEntity<List<ShopInventory>> getLowStockItems(@PathVariable Long shopId) {
-//        List<ShopInventory> lowStockItems = shopInventoryService.getLowStockItems(shopId);
-//        return ResponseEntity.ok(lowStockItems);
-//    }
-//
-//    /**
-//     * Get overstocked items for a shop
-//     */
-//    @GetMapping("/shop/{shopId}/overstocked")
-//    public ResponseEntity<List<ShopInventory>> getOverstockedItems(@PathVariable Long shopId) {
-//        List<ShopInventory> overstockedItems = shopInventoryService.getOverstockedItems(shopId);
-//        return ResponseEntity.ok(overstockedItems);
-//    }
-//
-//    /**
-//     * Get understocked items for a shop
-//     */
-//    @GetMapping("/shop/{shopId}/understocked")
-//    public ResponseEntity<List<ShopInventory>> getUnderstockedItems(@PathVariable Long shopId) {
-//        List<ShopInventory> understockedItems = shopInventoryService.getUnderstockedItems(shopId);
-//        return ResponseEntity.ok(understockedItems);
-//    }
-//
-//    /**
-//     * Calculate total inventory value for a shop
-//     */
-//    @GetMapping("/shop/{shopId}/value")
-//    public ResponseEntity<BigDecimal> calculateShopInventoryValue(@PathVariable Long shopId) {
-//        BigDecimal inventoryValue = shopInventoryService.calculateShopInventoryValue(shopId);
-//        return ResponseEntity.ok(inventoryValue);
-//    }
-
-    /**
      * Get warehouse inventory for a product
      */
     @GetMapping("/warehouse/product/{productId}")
@@ -241,43 +148,6 @@ public class ShopInventoryController {
         Optional<ShopInventory> warehouseInventory = shopInventoryService.getWarehouseInventory(productId);
         return warehouseInventory.map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
-    }
-
-    /**
-     * Update reorder level for inventory
-     */
-    @PutMapping("/shop/{shopId}/product/{productId}/reorder-level")
-    public ResponseEntity<ShopInventory> updateReorderLevel(
-            @PathVariable Long shopId,
-            @PathVariable Long productId,
-            @RequestBody ReorderLevelRequest request) {
-
-        try {
-            ShopInventory inventory = shopInventoryService.updateReorderLevel(shopId, productId, request.getReorderLevel());
-            return ResponseEntity.ok(inventory);
-        } catch (RuntimeException e) {
-            log.error("Error updating reorder level", e);
-            return ResponseEntity.badRequest().build();
-        }
-    }
-
-    /**
-     * Update stock limits (min/max)
-     */
-    @PutMapping("/shop/{shopId}/product/{productId}/stock-limits")
-    public ResponseEntity<ShopInventory> updateStockLimits(
-            @PathVariable Long shopId,
-            @PathVariable Long productId,
-            @RequestBody StockLimitsRequest request) {
-
-        try {
-            ShopInventory inventory = shopInventoryService.updateStockLimits(
-                    shopId, productId, request.getMinStock(), request.getMaxStock());
-            return ResponseEntity.ok(inventory);
-        } catch (RuntimeException e) {
-            log.error("Error updating stock limits", e);
-            return ResponseEntity.badRequest().build();
-        }
     }
 
     /**
@@ -293,15 +163,6 @@ public class ShopInventoryController {
         AvailabilityResponse response = new AvailabilityResponse(available, requiredQuantity);
         return ResponseEntity.ok(response);
     }
-
-//    /**
-//     * Get items that need restocking
-//     */
-//    @GetMapping("/shop/{shopId}/restock-needed")
-//    public ResponseEntity<List<ShopInventory>> getItemsNeedingRestock(@PathVariable Long shopId) {
-//        List<ShopInventory> itemsNeedingRestock = shopInventoryService.getItemsNeedingRestock(shopId);
-//        return ResponseEntity.ok(itemsNeedingRestock);
-//    }
 
     /**
      * Delete inventory record
