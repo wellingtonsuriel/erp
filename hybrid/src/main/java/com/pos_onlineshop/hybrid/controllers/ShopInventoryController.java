@@ -213,5 +213,19 @@ public class ShopInventoryController {
         }
     }
 
+    /**
+     * Get all products available in a specific shop
+     */
+    @GetMapping("/shop/{shopId}/products")
+    public ResponseEntity<List<Product>> getProductsByShopId(@PathVariable Long shopId) {
+        Optional<Shop> shop = shopRepository.findById(shopId);
+
+        if (shop.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        List<Product> products = shopInventoryService.getProductsByShopId(shopId);
+        return ResponseEntity.ok(products);
+    }
 
 }
