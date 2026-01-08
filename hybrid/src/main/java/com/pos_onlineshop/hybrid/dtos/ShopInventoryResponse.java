@@ -28,5 +28,8 @@ public class ShopInventoryResponse {
     private String currencyCode;
     private BigDecimal unitPrice;
     private LocalDateTime expiryDate;
+    private Integer reorderLevel;
+    private Integer minStock;
+    private Integer maxStock;
     private LocalDateTime addedAt;
 }

@@ -70,20 +70,78 @@ public class ShopInventoryService {
     /**
      * Create or update inventory for a shop
      */
-    public ShopInventory createOrUpdateInventory(Shop shop, Product product, Integer quantity) {
+    public ShopInventory createOrUpdateInventory(Shop shop, Product product, Integer quantity,
+                                                  Integer inTransitQuantity, Long supplierId,
+                                                  Long currencyId, BigDecimal unitPrice,
+                                                  LocalDateTime expiryDate, Integer reorderLevel,
+                                                  Integer minStock, Integer maxStock) {
         Optional<ShopInventory> existingInventory = shopInventoryRepository.findByShopAndProduct(shop, product);
 
         if (existingInventory.isPresent()) {
             ShopInventory inventory = existingInventory.get();
-            inventory.setQuantity(quantity);
+
+            // Update all fields
+            if (quantity != null) {
+                inventory.setQuantity(quantity);
+            }
+            if (inTransitQuantity != null) {
+                inventory.setInTransitQuantity(inTransitQuantity);
+            }
+            if (supplierId != null) {
+                Suppliers supplier = suppliersRepository.findById(supplierId)
+                        .orElseThrow(() -> new RuntimeException("Supplier not found with id: " + supplierId));
+                inventory.setSuppliers(supplier);
+            }
+            if (currencyId != null) {
+                Currency currency = currencyRepository.findById(currencyId)
+                        .orElseThrow(() -> new RuntimeException("Currency not found with id: " + currencyId));
+                inventory.setCurrency(currency);
+            }
+            if (unitPrice != null) {
+                inventory.setUnitPrice(unitPrice);
+            }
+            if (expiryDate != null) {
+                inventory.setExpiryDate(expiryDate);
+            }
+            if (reorderLevel != null) {
+                inventory.setReorderLevel(reorderLevel);
+            }
+            if (minStock != null) {
+                inventory.setMinStock(minStock);
+            }
+            if (maxStock != null) {
+                inventory.setMaxStock(maxStock);
+            }
+
             log.info("Updated inventory for shop {} and product {}: new quantity = {}",
                     shop.getCode(), product.getName(), quantity);
             return shopInventoryRepository.save(inventory);
         } else {
+            // Resolve supplier and currency for new inventory
+            Suppliers supplier = null;
+            if (supplierId != null) {
+                supplier = suppliersRepository.findById(supplierId)
+                        .orElseThrow(() -> new RuntimeException("Supplier not found with id: " + supplierId));
+            }
+
+            Currency currency = null;
+            if (currencyId != null) {
+                currency = currencyRepository.findById(currencyId)
+                        .orElseThrow(() -> new RuntimeException("Currency not found with id: " + currencyId));
+            }
+
             ShopInventory newInventory = ShopInventory.builder()
                     .shop(shop)
                     .product(product)
-                    .quantity(quantity)
+                    .quantity(quantity != null ? quantity : 0)
+                    .inTransitQuantity(inTransitQuantity != null ? inTransitQuantity : 0)
+                    .suppliers(supplier)
+                    .currency(currency)
+                    .unitPrice(unitPrice)
+                    .expiryDate(expiryDate)
+                    .reorderLevel(reorderLevel)
+                    .minStock(minStock)
+                    .maxStock(maxStock)
                     .build();
             log.info("Created new inventory for shop {} and product {}: quantity = {}",
                     shop.getCode(), product.getName(), quantity);
@@ -257,6 +315,9 @@ public class ShopInventoryService {
                 .inTransitQuantity(request.getInTransitQuantity() != null ? request.getInTransitQuantity() : 0)
                 .unitPrice(request.getUnitPrice())
                 .expiryDate(request.getExpiryDate())
+                .reorderLevel(request.getReorderLevel())
+                .minStock(request.getMinStock())
+                .maxStock(request.getMaxStock())
                 .build();
 
         ShopInventory savedInventory = shopInventoryRepository.save(shopInventory);
@@ -306,6 +367,18 @@ public class ShopInventoryService {
             inventory.setExpiryDate(request.getExpiryDate());
         }
 
+        if (request.getReorderLevel() != null) {
+            inventory.setReorderLevel(request.getReorderLevel());
+        }
+
+        if (request.getMinStock() != null) {
+            inventory.setMinStock(request.getMinStock());
+        }
+
+        if (request.getMaxStock() != null) {
+            inventory.setMaxStock(request.getMaxStock());
+        }
+
         ShopInventory updatedInventory = shopInventoryRepository.save(inventory);
         log.info("Updated shop inventory for shop {} and product {}",
                 inventory.getShop().getCode(), inventory.getProduct().getName());
@@ -333,6 +406,9 @@ public class ShopInventoryService {
                 .currencyCode(inventory.getCurrency() != null ? inventory.getCurrency().getCode() : null)
                 .unitPrice(inventory.getUnitPrice())
                 .expiryDate(inventory.getExpiryDate())
+                .reorderLevel(inventory.getReorderLevel())
+                .minStock(inventory.getMinStock())
+                .maxStock(inventory.getMaxStock())
                 .addedAt(inventory.getAddedAt())
                 .build();
     }

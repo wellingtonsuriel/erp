@@ -60,6 +60,15 @@ public class ShopInventory {
     private BigDecimal unitPrice;
 
 
+    @Column(name = "reorder_level")
+    private Integer reorderLevel;
+
+    @Column(name = "min_stock")
+    private Integer minStock;
+
+    @Column(name = "max_stock")
+    private Integer maxStock;
+
     @Column(name = "created_at")
     @Builder.Default
     private LocalDateTime addedAt = LocalDateTime.now();

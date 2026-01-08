@@ -218,7 +218,15 @@ public class InventoryTransferService {
                     shopInventoryService.createOrUpdateInventory(
                             transfer.getToShop(),
                             item.getProduct(),
-                            0);
+                            0,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null);
                 }
 
                 // 3. Add in-transit quantity to destination shop

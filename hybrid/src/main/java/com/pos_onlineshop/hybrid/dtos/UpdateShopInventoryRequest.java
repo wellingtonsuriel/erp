@@ -27,4 +27,13 @@ public class UpdateShopInventoryRequest {
     private BigDecimal unitPrice;
 
     private LocalDateTime expiryDate;
+
+    @PositiveOrZero(message = "Reorder level must be zero or positive")
+    private Integer reorderLevel;
+
+    @PositiveOrZero(message = "Min stock must be zero or positive")
+    private Integer minStock;
+
+    @PositiveOrZero(message = "Max stock must be zero or positive")
+    private Integer maxStock;
 }

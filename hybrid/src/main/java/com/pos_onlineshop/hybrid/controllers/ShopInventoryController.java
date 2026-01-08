@@ -99,7 +99,11 @@ public class ShopInventoryController {
 
         try {
             ShopInventory inventory = shopInventoryService.createOrUpdateInventory(
-                    shop.get(), product.get(), request.getQuantity());
+                    shop.get(), product.get(), request.getQuantity(),
+                    request.getInTransitQuantity(), request.getSupplierId(),
+                    request.getCurrencyId(), request.getUnitPrice(),
+                    request.getExpiryDate(), request.getReorderLevel(),
+                    request.getMinStock(), request.getMaxStock());
             return ResponseEntity.ok(shopInventoryService.toResponse(inventory));
         } catch (Exception e) {
             log.error("Error creating/updating inventory", e);
