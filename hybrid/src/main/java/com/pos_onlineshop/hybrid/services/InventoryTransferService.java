@@ -103,7 +103,7 @@ public class InventoryTransferService {
         }
 
         // Check if source shop has sufficient inventory
-        if (!shopInventoryService.isProductAvailable(transfer.getFromShop().getId(), productId, quantity)) {
+        if (!shopInventoryService.isInStock(transfer.getFromShop().getId(), productId, quantity)) {
             // Get actual available quantity for better error message
             Optional<ShopInventory> inventory = shopInventoryService.getInventory(transfer.getFromShop(), product);
             int availableQuantity = inventory.map(ShopInventory::getQuantity).orElse(0);
@@ -165,7 +165,7 @@ public class InventoryTransferService {
 
         // Validate inventory availability again
         for (InventoryTransferItem item : transfer.getTransferItems()) {
-            if (!shopInventoryService.isProductAvailable(
+            if (!shopInventoryService.isInStock(
                     transfer.getFromShop().getId(),
                     item.getProduct().getId(),
                     item.getRequestedQuantity())) {
@@ -190,7 +190,7 @@ public class InventoryTransferService {
 
         // Validate inventory availability before shipping
         for (InventoryTransferItem item : transfer.getTransferItems()) {
-            if (!shopInventoryService.isProductAvailable(
+            if (!shopInventoryService.isInStock(
                     transfer.getFromShop().getId(),
                     item.getProduct().getId(),
                     item.getRequestedQuantity())) {

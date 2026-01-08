@@ -83,7 +83,7 @@ public class OrderService {
             }
 
             // Get product price in order currency
-           
+
 
             OrderLine orderLine = OrderLine.builder()
                     .quantity(cartItem.getQuantity())
@@ -151,7 +151,7 @@ public class OrderService {
             order.addOrderLine(orderLine);
 
             // Remove from shop inventory
-            shopInventoryService.removeStock(shop.getId(), item.getProductId(), item.getQuantity());
+            shopInventoryService.reduceStock(shop.getId(), item.getProductId(), item.getQuantity());
         }
 
         if (paymentMethod == PaymentMethod.CASH && cashGiven != null) {

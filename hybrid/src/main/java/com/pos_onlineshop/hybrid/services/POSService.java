@@ -80,7 +80,7 @@ public class POSService {
             order.addOrderLine(orderLine);
 
             // Remove from shop inventory using the corrected method
-            shopInventoryService.removeStock(shop.getId(), item.getProductId(), item.getQuantity());
+            shopInventoryService.reduceStock(shop.getId(), item.getProductId(), item.getQuantity());
         }
 
         if (paymentMethod == PaymentMethod.CASH && cashGiven != null) {
