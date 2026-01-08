@@ -12,14 +12,21 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class InventoryRequest {
+public class ShopInventoryResponse {
+    private Long id;
+    private Long shopId;
+    private String shopCode;
+    private String shopName;
+    private Long productId;
+    private String productName;
+    private String productBarcode;
+    private Long supplierId;
+    private String supplierName;
     private Integer quantity;
     private Integer inTransitQuantity;
-    private Long supplierId;
     private Long currencyId;
+    private String currencyCode;
     private BigDecimal unitPrice;
     private LocalDateTime expiryDate;
-    private Integer reorderLevel;
-    private Integer minStock;
-    private Integer maxStock;
+    private LocalDateTime addedAt;
 }
