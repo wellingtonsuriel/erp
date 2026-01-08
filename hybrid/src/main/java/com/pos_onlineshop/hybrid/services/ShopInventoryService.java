@@ -1,12 +1,19 @@
 package com.pos_onlineshop.hybrid.services;
 
 
+import com.pos_onlineshop.hybrid.currency.Currency;
+import com.pos_onlineshop.hybrid.currency.CurrencyRepository;
+import com.pos_onlineshop.hybrid.dtos.CreateShopInventoryRequest;
+import com.pos_onlineshop.hybrid.dtos.ShopInventoryResponse;
+import com.pos_onlineshop.hybrid.dtos.UpdateShopInventoryRequest;
 import com.pos_onlineshop.hybrid.products.Product;
 import com.pos_onlineshop.hybrid.products.ProductRepository;
 import com.pos_onlineshop.hybrid.shop.Shop;
 import com.pos_onlineshop.hybrid.shop.ShopRepository;
 import com.pos_onlineshop.hybrid.shopInventory.ShopInventory;
 import com.pos_onlineshop.hybrid.shopInventory.ShopInventoryRepository;
+import com.pos_onlineshop.hybrid.suppliers.Suppliers;
+import com.pos_onlineshop.hybrid.suppliers.SuppliersRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -14,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -23,7 +31,9 @@ public class ShopInventoryService {
 
     private final ShopInventoryRepository shopInventoryRepository;
     private final ShopRepository shopRepository;
-    private final ProductRepository productRepository; // Add this dependency
+    private final ProductRepository productRepository;
+    private final SuppliersRepository suppliersRepository;
+    private final CurrencyRepository currencyRepository;
 
     /**
      * Get inventory for a specific shop and product
@@ -228,5 +238,127 @@ public class ShopInventoryService {
     @Transactional(readOnly = true)
     public List<Product> getProductsByShopId(Long shopId) {
         return shopInventoryRepository.findProductsByShopId(shopId);
+    }
+
+    /**
+     * Create new shop inventory with full details
+     */
+    public ShopInventory createShopInventory(CreateShopInventoryRequest request) {
+        Shop shop = shopRepository.findById(request.getShopId())
+                .orElseThrow(() -> new RuntimeException("Shop not found with id: " + request.getShopId()));
+
+        Product product = productRepository.findById(request.getProductId())
+                .orElseThrow(() -> new RuntimeException("Product not found with id: " + request.getProductId()));
+
+        Suppliers supplier = suppliersRepository.findById(request.getSupplierId())
+                .orElseThrow(() -> new RuntimeException("Supplier not found with id: " + request.getSupplierId()));
+
+        Currency currency = currencyRepository.findById(request.getCurrencyId())
+                .orElseThrow(() -> new RuntimeException("Currency not found with id: " + request.getCurrencyId()));
+
+        // Check if inventory already exists
+        Optional<ShopInventory> existingInventory = shopInventoryRepository.findByShopAndProduct(shop, product);
+        if (existingInventory.isPresent()) {
+            throw new RuntimeException("Inventory already exists for shop " + shop.getCode() +
+                    " and product " + product.getName());
+        }
+
+        ShopInventory shopInventory = ShopInventory.builder()
+                .shop(shop)
+                .product(product)
+                .suppliers(supplier)
+                .currency(currency)
+                .quantity(request.getQuantity())
+                .inTransitQuantity(request.getInTransitQuantity() != null ? request.getInTransitQuantity() : 0)
+                .unitPrice(request.getUnitPrice())
+                .expiryDate(request.getExpiryDate())
+                .build();
+
+        ShopInventory savedInventory = shopInventoryRepository.save(shopInventory);
+        log.info("Created shop inventory for shop {} and product {}", shop.getCode(), product.getName());
+
+        return savedInventory;
+    }
+
+    /**
+     * Update existing shop inventory
+     */
+    public ShopInventory updateShopInventory(Long shopId, Long productId, UpdateShopInventoryRequest request) {
+        Optional<ShopInventory> inventoryOpt = shopInventoryRepository.findByShopIdAndProductIdWithLock(shopId, productId);
+
+        if (inventoryOpt.isEmpty()) {
+            throw new RuntimeException("Inventory not found for shop " + shopId + " and product " + productId);
+        }
+
+        ShopInventory inventory = inventoryOpt.get();
+
+        // Update fields if provided
+        if (request.getSupplierId() != null) {
+            Suppliers supplier = suppliersRepository.findById(request.getSupplierId())
+                    .orElseThrow(() -> new RuntimeException("Supplier not found with id: " + request.getSupplierId()));
+            inventory.setSuppliers(supplier);
+        }
+
+        if (request.getCurrencyId() != null) {
+            Currency currency = currencyRepository.findById(request.getCurrencyId())
+                    .orElseThrow(() -> new RuntimeException("Currency not found with id: " + request.getCurrencyId()));
+            inventory.setCurrency(currency);
+        }
+
+        if (request.getQuantity() != null) {
+            inventory.setQuantity(request.getQuantity());
+        }
+
+        if (request.getInTransitQuantity() != null) {
+            inventory.setInTransitQuantity(request.getInTransitQuantity());
+        }
+
+        if (request.getUnitPrice() != null) {
+            inventory.setUnitPrice(request.getUnitPrice());
+        }
+
+        if (request.getExpiryDate() != null) {
+            inventory.setExpiryDate(request.getExpiryDate());
+        }
+
+        ShopInventory updatedInventory = shopInventoryRepository.save(inventory);
+        log.info("Updated shop inventory for shop {} and product {}",
+                inventory.getShop().getCode(), inventory.getProduct().getName());
+
+        return updatedInventory;
+    }
+
+    /**
+     * Convert ShopInventory entity to ShopInventoryResponse DTO
+     */
+    public ShopInventoryResponse toResponse(ShopInventory inventory) {
+        return ShopInventoryResponse.builder()
+                .id(inventory.getId())
+                .shopId(inventory.getShop().getId())
+                .shopCode(inventory.getShop().getCode())
+                .shopName(inventory.getShop().getName())
+                .productId(inventory.getProduct().getId())
+                .productName(inventory.getProduct().getName())
+                .productBarcode(inventory.getProduct().getBarcode())
+                .supplierId(inventory.getSuppliers().getId())
+                .supplierName(inventory.getSuppliers().getName())
+                .quantity(inventory.getQuantity())
+                .inTransitQuantity(inventory.getInTransitQuantity())
+                .currencyId(inventory.getCurrency().getId())
+                .currencyCode(inventory.getCurrency().getCode())
+                .unitPrice(inventory.getUnitPrice())
+                .expiryDate(inventory.getExpiryDate())
+                .addedAt(inventory.getAddedAt())
+                .build();
+    }
+
+    /**
+     * Convert list of ShopInventory entities to list of ShopInventoryResponse DTOs
+     */
+    @Transactional(readOnly = true)
+    public List<ShopInventoryResponse> toResponseList(List<ShopInventory> inventories) {
+        return inventories.stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
     }
 }
