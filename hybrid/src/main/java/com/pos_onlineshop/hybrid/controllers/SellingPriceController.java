@@ -78,6 +78,64 @@ public class SellingPriceController {
     }
 
     /**
+     * Update an existing selling price
+     */
+    @PutMapping("/{priceId}")
+    public ResponseEntity<SellingPriceResponse> updateSellingPrice(
+            @PathVariable Long priceId,
+            @RequestBody SellingPriceUpdateRequest request) {
+        try {
+            SellingPrice updates = SellingPrice.builder()
+                    .priceType(request.getPriceType())
+                    .sellingPrice(request.getSellingPrice())
+                    .discountPercentage(request.getDiscountPercentage())
+                    .minSellingPrice(request.getMinSellingPrice())
+                    .maxSellingPrice(request.getMaxSellingPrice())
+                    .quantityBreak(request.getQuantityBreak())
+                    .bulkPrice(request.getBulkPrice())
+                    .effectiveFrom(request.getEffectiveFrom())
+                    .effectiveTo(request.getEffectiveTo())
+                    .priority(request.getPriority())
+                    .notes(request.getNotes())
+                    .build();
+
+            if (request.getActive() != null) {
+                updates.setActive(request.getActive());
+            }
+
+            SellingPrice updatedPrice = sellingPriceService.updatePrice(
+                    priceId, updates, request.getUpdatedBy());
+
+            SellingPriceResponse response = sellingPriceService.toResponse(updatedPrice);
+            return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            log.error("Error updating selling price: " + priceId, e);
+            return ResponseEntity.notFound().build();
+        } catch (IllegalArgumentException e) {
+            log.error("Validation error updating selling price: " + priceId, e);
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            log.error("Unexpected error updating selling price: " + priceId, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
+     * Get a selling price by ID
+     */
+    @GetMapping("/{priceId}")
+    public ResponseEntity<SellingPriceResponse> getSellingPriceById(@PathVariable Long priceId) {
+        try {
+            SellingPrice price = sellingPriceService.findById(priceId);
+            SellingPriceResponse response = sellingPriceService.toResponse(price);
+            return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            log.error("Selling price not found: " + priceId, e);
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    /**
      * Get current price for a product in a shop
      */
     @GetMapping("/shop/{shopId}/product/{productId}/current")

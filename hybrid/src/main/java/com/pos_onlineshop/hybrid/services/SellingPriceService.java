@@ -3,6 +3,8 @@ package com.pos_onlineshop.hybrid.services;
 
 
 import com.pos_onlineshop.hybrid.currency.Currency;
+import com.pos_onlineshop.hybrid.dtos.SellingPriceResponse;
+import com.pos_onlineshop.hybrid.dtos.SellingPriceSummaryResponse;
 import com.pos_onlineshop.hybrid.enums.PriceType;
 import com.pos_onlineshop.hybrid.products.Product;
 
@@ -19,6 +21,7 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -47,6 +50,14 @@ public class SellingPriceService {
                 sellingPrice.getSellingPrice());
 
         return savedPrice;
+    }
+
+    /**
+     * Find selling price by ID
+     */
+    public SellingPrice findById(Long priceId) {
+        return sellingPriceRepository.findById(priceId)
+                .orElseThrow(() -> new RuntimeException("Selling price not found: " + priceId));
     }
 
     /**
@@ -301,6 +312,54 @@ public class SellingPriceService {
     }
 
     /**
+     * Update existing price with new data
+     */
+    public SellingPrice updatePrice(Long priceId, SellingPrice updates, String updatedBy) {
+        SellingPrice existingPrice = sellingPriceRepository.findById(priceId)
+                .orElseThrow(() -> new RuntimeException("Selling price not found: " + priceId));
+
+        if (updates.getPriceType() != null) {
+            existingPrice.setPriceType(updates.getPriceType());
+        }
+        if (updates.getSellingPrice() != null) {
+            existingPrice.setSellingPrice(updates.getSellingPrice());
+        }
+        if (updates.getDiscountPercentage() != null) {
+            existingPrice.setDiscountPercentage(updates.getDiscountPercentage());
+        }
+        if (updates.getMinSellingPrice() != null) {
+            existingPrice.setMinSellingPrice(updates.getMinSellingPrice());
+        }
+        if (updates.getMaxSellingPrice() != null) {
+            existingPrice.setMaxSellingPrice(updates.getMaxSellingPrice());
+        }
+        if (updates.getQuantityBreak() != null) {
+            existingPrice.setQuantityBreak(updates.getQuantityBreak());
+        }
+        if (updates.getBulkPrice() != null) {
+            existingPrice.setBulkPrice(updates.getBulkPrice());
+        }
+        if (updates.getEffectiveFrom() != null) {
+            existingPrice.setEffectiveFrom(updates.getEffectiveFrom());
+        }
+        if (updates.getEffectiveTo() != null) {
+            existingPrice.setEffectiveTo(updates.getEffectiveTo());
+        }
+        if (updates.getPriority() != null) {
+            existingPrice.setPriority(updates.getPriority());
+        }
+        if (updates.getNotes() != null) {
+            existingPrice.setNotes(updates.getNotes());
+        }
+
+        existingPrice.setUpdatedBy(updatedBy);
+
+        validateSellingPrice(existingPrice);
+
+        return sellingPriceRepository.save(existingPrice);
+    }
+
+    /**
      * Validate selling price data
      */
     private void validateSellingPrice(SellingPrice sellingPrice) {
@@ -334,5 +393,74 @@ public class SellingPriceService {
                 sellingPrice.getEffectiveTo().isBefore(sellingPrice.getEffectiveFrom())) {
             throw new IllegalArgumentException("Effective to date cannot be before effective from date");
         }
+    }
+
+    /**
+     * Convert SellingPrice entity to SellingPriceResponse DTO
+     */
+    public SellingPriceResponse toResponse(SellingPrice sellingPrice) {
+        return SellingPriceResponse.builder()
+                .id(sellingPrice.getId())
+                .productId(sellingPrice.getProduct().getId())
+                .productName(sellingPrice.getProduct().getName())
+                .shopId(sellingPrice.getShop().getId())
+                .shopName(sellingPrice.getShop().getName())
+                .currencyId(sellingPrice.getCurrency().getId())
+                .currencyCode(sellingPrice.getCurrency().getCode())
+                .priceType(sellingPrice.getPriceType())
+                .sellingPrice(sellingPrice.getSellingPrice())
+                .discountPercentage(sellingPrice.getDiscountPercentage())
+                .finalPrice(sellingPrice.getFinalPrice())
+                .minSellingPrice(sellingPrice.getMinSellingPrice())
+                .maxSellingPrice(sellingPrice.getMaxSellingPrice())
+                .quantityBreak(sellingPrice.getQuantityBreak())
+                .bulkPrice(sellingPrice.getBulkPrice())
+                .effectiveFrom(sellingPrice.getEffectiveFrom())
+                .effectiveTo(sellingPrice.getEffectiveTo())
+                .active(sellingPrice.isActive())
+                .currentlyEffective(sellingPrice.isCurrentlyEffective())
+                .priority(sellingPrice.getPriority())
+                .createdBy(sellingPrice.getCreatedBy())
+                .updatedBy(sellingPrice.getUpdatedBy())
+                .createdAt(sellingPrice.getCreatedAt())
+                .updatedAt(sellingPrice.getUpdatedAt())
+                .notes(sellingPrice.getNotes())
+                .build();
+    }
+
+    /**
+     * Convert list of SellingPrice entities to SellingPriceResponse DTOs
+     */
+    public List<SellingPriceResponse> toResponseList(List<SellingPrice> sellingPrices) {
+        return sellingPrices.stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Convert SellingPrice entity to SellingPriceSummaryResponse DTO
+     */
+    public SellingPriceSummaryResponse toSummaryResponse(SellingPrice sellingPrice) {
+        return SellingPriceSummaryResponse.builder()
+                .id(sellingPrice.getId())
+                .productId(sellingPrice.getProduct().getId())
+                .productName(sellingPrice.getProduct().getName())
+                .priceType(sellingPrice.getPriceType())
+                .sellingPrice(sellingPrice.getSellingPrice())
+                .finalPrice(sellingPrice.getFinalPrice())
+                .currentlyEffective(sellingPrice.isCurrentlyEffective())
+                .effectiveFrom(sellingPrice.getEffectiveFrom())
+                .effectiveTo(sellingPrice.getEffectiveTo())
+                .priority(sellingPrice.getPriority())
+                .build();
+    }
+
+    /**
+     * Convert list of SellingPrice entities to SellingPriceSummaryResponse DTOs
+     */
+    public List<SellingPriceSummaryResponse> toSummaryResponseList(List<SellingPrice> sellingPrices) {
+        return sellingPrices.stream()
+                .map(this::toSummaryResponse)
+                .collect(Collectors.toList());
     }
 }
