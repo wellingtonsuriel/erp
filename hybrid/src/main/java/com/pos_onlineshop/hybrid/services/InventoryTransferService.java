@@ -1,11 +1,11 @@
 package com.pos_onlineshop.hybrid.services;
 
-
-
 import com.pos_onlineshop.hybrid.cashier.Cashier;
 import com.pos_onlineshop.hybrid.enums.TransferPriority;
 import com.pos_onlineshop.hybrid.enums.TransferStatus;
 import com.pos_onlineshop.hybrid.enums.TransferType;
+import com.pos_onlineshop.hybrid.exceptions.InsufficientInventoryException;
+import com.pos_onlineshop.hybrid.exceptions.ResourceNotFoundException;
 import com.pos_onlineshop.hybrid.inventoryTransfer.InventoryTransfer;
 import com.pos_onlineshop.hybrid.inventoryTransfer.InventoryTransferRepository;
 import com.pos_onlineshop.hybrid.inventoryTransferItems.InventoryTransferItem;
@@ -46,10 +46,10 @@ public class InventoryTransferService {
                                             String notes) {
 
         Shop fromShop = shopRepository.findById(fromShopId)
-                .orElseThrow(() -> new RuntimeException("Source shop not found: " + fromShopId));
+                .orElseThrow(() -> new ResourceNotFoundException("Shop", fromShopId));
 
         Shop toShop = shopRepository.findById(toShopId)
-                .orElseThrow(() -> new RuntimeException("Destination shop not found: " + toShopId));
+                .orElseThrow(() -> new ResourceNotFoundException("Shop", toShopId));
 
         if (fromShop.equals(toShop)) {
             throw new IllegalArgumentException("Source and destination shops cannot be the same");
@@ -80,14 +80,14 @@ public class InventoryTransferService {
                                                BigDecimal unitCost, String notes) {
 
         InventoryTransfer transfer = transferRepository.findById(transferId)
-                .orElseThrow(() -> new RuntimeException("Transfer not found: " + transferId));
+                .orElseThrow(() -> new ResourceNotFoundException("Transfer", transferId));
 
         if (transfer.getStatus() != TransferStatus.PENDING) {
             throw new IllegalStateException("Cannot add items to transfer in status: " + transfer.getStatus());
         }
 
         Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new RuntimeException("Product not found: " + productId));
+                .orElseThrow(() -> new ResourceNotFoundException("Product", productId));
 
         // Validate quantity
         if (quantity == null || quantity <= 0) {
@@ -106,13 +106,13 @@ public class InventoryTransferService {
         if (!shopInventoryService.isProductAvailable(transfer.getFromShop().getId(), productId, quantity)) {
             // Get actual available quantity for better error message
             Optional<ShopInventory> inventory = shopInventoryService.getInventory(transfer.getFromShop(), product);
+            int availableQuantity = inventory.map(ShopInventory::getQuantity).orElse(0);
 
-
-            throw new IllegalArgumentException(
+            throw new InsufficientInventoryException(
                     String.format("Insufficient inventory in source shop %s. Requested: %d, Available: %d for product %s",
                             transfer.getFromShop().getName(),
                             quantity,
-                           "",
+                            availableQuantity,
                             product.getName()));
         }
 
@@ -141,7 +141,7 @@ public class InventoryTransferService {
      */
     public InventoryTransfer removeItemFromTransfer(Long transferId, Long productId) {
         InventoryTransfer transfer = transferRepository.findById(transferId)
-                .orElseThrow(() -> new RuntimeException("Transfer not found: " + transferId));
+                .orElseThrow(() -> new ResourceNotFoundException("Transfer", transferId));
 
         if (transfer.getStatus() != TransferStatus.PENDING) {
             throw new IllegalStateException("Cannot remove items from transfer in status: " + transfer.getStatus());
@@ -157,7 +157,7 @@ public class InventoryTransferService {
      */
     public InventoryTransfer approveTransfer(Long transferId, Cashier approver) {
         InventoryTransfer transfer = transferRepository.findById(transferId)
-                .orElseThrow(() -> new RuntimeException("Transfer not found: " + transferId));
+                .orElseThrow(() -> new ResourceNotFoundException("Transfer", transferId));
 
         if (transfer.getTransferItems().isEmpty()) {
             throw new IllegalStateException("Cannot approve transfer with no items");
@@ -169,7 +169,7 @@ public class InventoryTransferService {
                     transfer.getFromShop().getId(),
                     item.getProduct().getId(),
                     item.getRequestedQuantity())) {
-                throw new IllegalStateException("Insufficient inventory for product: " + item.getProduct().getName());
+                throw new InsufficientInventoryException("Insufficient inventory for product: " + item.getProduct().getName());
             }
         }
 
@@ -186,7 +186,7 @@ public class InventoryTransferService {
      */
     public InventoryTransfer shipTransfer(Long transferId, Cashier shipper) {
         InventoryTransfer transfer = transferRepository.findById(transferId)
-                .orElseThrow(() -> new RuntimeException("Transfer not found: " + transferId));
+                .orElseThrow(() -> new ResourceNotFoundException("Transfer", transferId));
 
         // Validate inventory availability before shipping
         for (InventoryTransferItem item : transfer.getTransferItems()) {
@@ -194,7 +194,7 @@ public class InventoryTransferService {
                     transfer.getFromShop().getId(),
                     item.getProduct().getId(),
                     item.getRequestedQuantity())) {
-                throw new IllegalStateException("Insufficient inventory for product: " + item.getProduct().getName());
+                throw new InsufficientInventoryException("Insufficient inventory for product: " + item.getProduct().getName());
             }
         }
 
@@ -261,14 +261,14 @@ public class InventoryTransferService {
                                              List<ReceiveItemDto> receivedItems) {
 
         InventoryTransfer transfer = transferRepository.findById(transferId)
-                .orElseThrow(() -> new RuntimeException("Transfer not found: " + transferId));
+                .orElseThrow(() -> new ResourceNotFoundException("Transfer", transferId));
 
         // Update received quantities for each item
         for (ReceiveItemDto receivedItem : receivedItems) {
             InventoryTransferItem transferItem = transfer.getTransferItems().stream()
                     .filter(item -> item.getProduct().getId().equals(receivedItem.getProductId()))
                     .findFirst()
-                    .orElseThrow(() -> new RuntimeException("Product not found in transfer: " + receivedItem.getProductId()));
+                    .orElseThrow(() -> new ResourceNotFoundException("Product not found in transfer with id: " + receivedItem.getProductId()));
 
             // Validate received quantities
             int totalReceived = receivedItem.getReceivedQuantity() +
@@ -356,7 +356,7 @@ public class InventoryTransferService {
      */
     public InventoryTransfer cancelTransfer(Long transferId, String reason) {
         InventoryTransfer transfer = transferRepository.findById(transferId)
-                .orElseThrow(() -> new RuntimeException("Transfer not found: " + transferId));
+                .orElseThrow(() -> new ResourceNotFoundException("Transfer", transferId));
 
         // If transfer was shipped, need to reverse inventory changes
         if (transfer.getStatus() == TransferStatus.IN_TRANSIT) {
@@ -409,7 +409,7 @@ public class InventoryTransferService {
      */
     public InventoryTransfer completeTransfer(Long transferId) {
         InventoryTransfer transfer = transferRepository.findById(transferId)
-                .orElseThrow(() -> new RuntimeException("Transfer not found: " + transferId));
+                .orElseThrow(() -> new ResourceNotFoundException("Transfer", transferId));
 
         transfer.complete();
 
@@ -439,14 +439,14 @@ public class InventoryTransferService {
     @Transactional(readOnly = true)
     public Page<InventoryTransfer> findTransfersFromShop(Long shopId, Pageable pageable) {
         Shop shop = shopRepository.findById(shopId)
-                .orElseThrow(() -> new RuntimeException("Shop not found: " + shopId));
+                .orElseThrow(() -> new ResourceNotFoundException("Shop", shopId));
         return transferRepository.findByFromShop(shop, pageable);
     }
 
     @Transactional(readOnly = true)
     public Page<InventoryTransfer> findTransfersToShop(Long shopId, Pageable pageable) {
         Shop shop = shopRepository.findById(shopId)
-                .orElseThrow(() -> new RuntimeException("Shop not found: " + shopId));
+                .orElseThrow(() -> new ResourceNotFoundException("Shop", shopId));
         return transferRepository.findByToShop(shop, pageable);
     }
 
