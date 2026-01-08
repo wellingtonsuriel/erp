@@ -10,8 +10,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -26,8 +24,6 @@ public class ProductService {
 
     /**
      * Create a new product
-     * Note: Product entity does not have sku, barcode, price, baseCurrency fields.
-     * These should be managed through ShopInventory and SellingPrice entities.
      */
     public Product createProduct(Product product) {
         log.info("Creating new product: {}", product.getName());
@@ -54,26 +50,14 @@ public class ProductService {
         return productRepository.findById(id);
     }
 
-    /**
-     * Find product by barcode
-     * Note: Product entity does not have barcode field. Use ShopInventory to search by barcode.
-     */
     @Transactional(readOnly = true)
     public Optional<Product> findByBarcode(String barcode) {
-        // Product doesn't have barcode - this should query ShopInventory instead
-        log.warn("Product entity does not have barcode field. Use ShopInventory to find by barcode.");
-        return Optional.empty();
+        return productRepository.findByBarcode(barcode);
     }
 
-    /**
-     * Find product by SKU
-     * Note: Product entity does not have sku field. Use ShopInventory to search by SKU.
-     */
     @Transactional(readOnly = true)
     public Optional<Product> findBySku(String sku) {
-        // Product doesn't have SKU - this should query ShopInventory instead
-        log.warn("Product entity does not have sku field. Use ShopInventory to find by SKU.");
-        return Optional.empty();
+        return productRepository.findBySku(sku);
     }
 
     @Transactional(readOnly = true)
@@ -99,16 +83,6 @@ public class ProductService {
     @Transactional(readOnly = true)
     public List<Product> searchByName(String name) {
         return productRepository.findByNameContainingIgnoreCase(name);
-    }
-
-    /**
-     * Find products by price range
-     * Note: Product entity does not have price field. Use SellingPrice or ProductPrice for price queries.
-     */
-    @Transactional(readOnly = true)
-    public List<Product> findByPriceRange(BigDecimal minPrice, BigDecimal maxPrice) {
-        log.warn("Product entity does not have price field. Use SellingPrice or ProductPrice for price queries.");
-        return List.of();
     }
 
     @Transactional(readOnly = true)
