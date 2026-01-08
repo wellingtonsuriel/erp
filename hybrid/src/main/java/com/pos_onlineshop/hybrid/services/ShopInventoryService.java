@@ -162,16 +162,6 @@ public class ShopInventoryService {
     }
 
     /**
-     * Check if product is available in sufficient quantity (alternative method)
-     */
-    @Transactional(readOnly = true)
-    public boolean isProductAvailable(Long shopId, Long productId, Integer requiredQuantity) {
-        return isInStock(shopId, productId, requiredQuantity);
-    }
-
-
-
-    /**
      * Delete inventory record
      */
     public void deleteInventory(Long shopId, Long productId) {
