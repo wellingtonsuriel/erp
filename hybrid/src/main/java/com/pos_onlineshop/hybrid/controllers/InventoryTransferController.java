@@ -3,12 +3,11 @@ package com.pos_onlineshop.hybrid.controllers;
 import com.pos_onlineshop.hybrid.cashier.Cashier;
 import com.pos_onlineshop.hybrid.cashier.CashierRepository;
 import com.pos_onlineshop.hybrid.dtos.*;
-import com.pos_onlineshop.hybrid.enums.TransferPriority;
 import com.pos_onlineshop.hybrid.enums.TransferStatus;
-import com.pos_onlineshop.hybrid.enums.TransferType;
+import com.pos_onlineshop.hybrid.exceptions.InsufficientInventoryException;
+import com.pos_onlineshop.hybrid.exceptions.ResourceNotFoundException;
 import com.pos_onlineshop.hybrid.inventoryTransfer.InventoryTransfer;
 import com.pos_onlineshop.hybrid.services.InventoryTransferService;
-import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -36,12 +35,10 @@ public class InventoryTransferController {
      * Create a new inventory transfer
      */
     @PostMapping
-    public ResponseEntity<InventoryTransfer> createTransfer(@RequestBody CreateTransferRequest request) {
+    public ResponseEntity<?> createTransfer(@RequestBody CreateTransferRequest request) {
         try {
-
-
             Cashier initiator = cashierRepository.findById(request.getInitiatorId())
-                    .orElseThrow(() -> new RuntimeException("Initiator not found: " + request.getInitiatorId()));
+                    .orElseThrow(() -> new ResourceNotFoundException("Cashier", request.getInitiatorId()));
 
             InventoryTransfer transfer = transferService.createTransfer(
                     request.getFromShopId(),
@@ -53,9 +50,18 @@ public class InventoryTransferController {
             );
 
             return ResponseEntity.status(HttpStatus.CREATED).body(transfer);
+        } catch (ResourceNotFoundException e) {
+            log.error("Resource not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ErrorResponse.of(HttpStatus.NOT_FOUND.value(), "Not Found", e.getMessage(), "/api/inventory-transfers"));
+        } catch (IllegalArgumentException e) {
+            log.error("Invalid request: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), "Bad Request", e.getMessage(), "/api/inventory-transfers"));
         } catch (Exception e) {
             log.error("Error creating transfer", e);
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ErrorResponse.of(HttpStatus.INTERNAL_SERVER_ERROR.value(), "Internal Server Error", "Failed to create transfer", "/api/inventory-transfers"));
         }
     }
 
@@ -149,17 +155,18 @@ public class InventoryTransferController {
      * Add item to transfer (Enhanced - with detailed inventory validation)
      */
     @PostMapping("/{transferId}/items")
-    public ResponseEntity<InventoryTransfer> addItemToTransfer(
+    public ResponseEntity<?> addItemToTransfer(
             @PathVariable Long transferId,
             @RequestBody AddItemRequest request) {
 
         try {
             // Validate request
             if (request.getQuantity() == null || request.getQuantity() <= 0) {
-                return ResponseEntity.badRequest().build();
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), "Bad Request",
+                            "Quantity must be greater than zero", "/api/inventory-transfers/" + transferId + "/items"));
             }
 
-            // Enhanced item addition with comprehensive validation
             InventoryTransfer transfer = transferService.addItemToTransfer(
                     transferId,
                     request.getProductId(),
@@ -175,15 +182,26 @@ public class InventoryTransferController {
                     transfer.getTotalItems());
 
             return ResponseEntity.ok(transfer);
-        } catch (IllegalArgumentException e) {
-            log.error("Invalid item data for transfer {}: {}", transferId, e.getMessage());
-            return ResponseEntity.badRequest().build();
-        } catch (IllegalStateException e) {
-            log.error("Cannot add item to transfer {}: {}", transferId, e.getMessage());
-            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        } catch (ResourceNotFoundException e) {
+            log.error("Resource not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ErrorResponse.of(HttpStatus.NOT_FOUND.value(), "Not Found", e.getMessage(),
+                        "/api/inventory-transfers/" + transferId + "/items"));
+        } catch (InsufficientInventoryException e) {
+            log.error("Insufficient inventory: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ErrorResponse.of(HttpStatus.CONFLICT.value(), "Insufficient Inventory", e.getMessage(),
+                        "/api/inventory-transfers/" + transferId + "/items"));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            log.error("Invalid operation: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), "Bad Request", e.getMessage(),
+                        "/api/inventory-transfers/" + transferId + "/items"));
         } catch (Exception e) {
             log.error("Error adding item to transfer {}: {}", transferId, e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ErrorResponse.of(HttpStatus.INTERNAL_SERVER_ERROR.value(), "Internal Server Error",
+                        "Failed to add item to transfer", "/api/inventory-transfers/" + transferId + "/items"));
         }
     }
 
@@ -191,16 +209,28 @@ public class InventoryTransferController {
      * Remove item from transfer
      */
     @DeleteMapping("/{transferId}/items/{productId}")
-    public ResponseEntity<InventoryTransfer> removeItemFromTransfer(
+    public ResponseEntity<?> removeItemFromTransfer(
             @PathVariable Long transferId,
             @PathVariable Long productId) {
 
         try {
             InventoryTransfer transfer = transferService.removeItemFromTransfer(transferId, productId);
             return ResponseEntity.ok(transfer);
+        } catch (ResourceNotFoundException e) {
+            log.error("Resource not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ErrorResponse.of(HttpStatus.NOT_FOUND.value(), "Not Found", e.getMessage(),
+                        "/api/inventory-transfers/" + transferId + "/items/" + productId));
+        } catch (IllegalStateException e) {
+            log.error("Invalid operation: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), "Bad Request", e.getMessage(),
+                        "/api/inventory-transfers/" + transferId + "/items/" + productId));
         } catch (Exception e) {
             log.error("Error removing item from transfer", e);
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ErrorResponse.of(HttpStatus.INTERNAL_SERVER_ERROR.value(), "Internal Server Error",
+                        "Failed to remove item from transfer", "/api/inventory-transfers/" + transferId + "/items/" + productId));
         }
     }
 
@@ -208,19 +238,36 @@ public class InventoryTransferController {
      * Approve transfer
      */
     @PostMapping("/{transferId}/approve")
-    public ResponseEntity<InventoryTransfer> approveTransfer(
+    public ResponseEntity<?> approveTransfer(
             @PathVariable Long transferId,
             @RequestBody ApprovalRequest request) {
 
         try {
             Cashier approver = cashierRepository.findById(request.getApproverId())
-                    .orElseThrow(() -> new RuntimeException("Approver not found: " + request.getApproverId()));
+                    .orElseThrow(() -> new ResourceNotFoundException("Cashier", request.getApproverId()));
 
             InventoryTransfer transfer = transferService.approveTransfer(transferId, approver);
             return ResponseEntity.ok(transfer);
+        } catch (ResourceNotFoundException e) {
+            log.error("Resource not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ErrorResponse.of(HttpStatus.NOT_FOUND.value(), "Not Found", e.getMessage(),
+                        "/api/inventory-transfers/" + transferId + "/approve"));
+        } catch (InsufficientInventoryException e) {
+            log.error("Insufficient inventory: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ErrorResponse.of(HttpStatus.CONFLICT.value(), "Insufficient Inventory", e.getMessage(),
+                        "/api/inventory-transfers/" + transferId + "/approve"));
+        } catch (IllegalStateException e) {
+            log.error("Invalid operation: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), "Bad Request", e.getMessage(),
+                        "/api/inventory-transfers/" + transferId + "/approve"));
         } catch (Exception e) {
             log.error("Error approving transfer", e);
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ErrorResponse.of(HttpStatus.INTERNAL_SERVER_ERROR.value(), "Internal Server Error",
+                        "Failed to approve transfer", "/api/inventory-transfers/" + transferId + "/approve"));
         }
     }
 
@@ -228,15 +275,14 @@ public class InventoryTransferController {
      * Ship transfer (Enhanced - removes stock from source, adds in-transit to destination)
      */
     @PostMapping("/{transferId}/ship")
-    public ResponseEntity<InventoryTransfer> shipTransfer(
+    public ResponseEntity<?> shipTransfer(
             @PathVariable Long transferId,
             @RequestBody ShipmentRequest request) {
 
         try {
             Cashier shipper = cashierRepository.findById(request.getShipperId())
-                    .orElseThrow(() -> new RuntimeException("Shipper not found: " + request.getShipperId()));
+                    .orElseThrow(() -> new ResourceNotFoundException("Cashier", request.getShipperId()));
 
-            // Enhanced shipping with comprehensive inventory management
             InventoryTransfer transfer = transferService.shipTransfer(transferId, shipper);
 
             log.info("Successfully shipped transfer {} - {} items from {} to {}",
@@ -246,12 +292,26 @@ public class InventoryTransferController {
                     transfer.getToShop().getName());
 
             return ResponseEntity.ok(transfer);
+        } catch (ResourceNotFoundException e) {
+            log.error("Resource not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ErrorResponse.of(HttpStatus.NOT_FOUND.value(), "Not Found", e.getMessage(),
+                        "/api/inventory-transfers/" + transferId + "/ship"));
+        } catch (InsufficientInventoryException e) {
+            log.error("Insufficient inventory: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ErrorResponse.of(HttpStatus.CONFLICT.value(), "Insufficient Inventory", e.getMessage(),
+                        "/api/inventory-transfers/" + transferId + "/ship"));
         } catch (IllegalStateException e) {
-            log.error("Cannot ship transfer {}: {}", transferId, e.getMessage());
-            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+            log.error("Invalid operation: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), "Bad Request", e.getMessage(),
+                        "/api/inventory-transfers/" + transferId + "/ship"));
         } catch (Exception e) {
             log.error("Error shipping transfer {}: {}", transferId, e.getMessage());
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ErrorResponse.of(HttpStatus.INTERNAL_SERVER_ERROR.value(), "Internal Server Error",
+                        "Failed to ship transfer", "/api/inventory-transfers/" + transferId + "/ship"));
         }
     }
 
@@ -259,20 +319,21 @@ public class InventoryTransferController {
      * Receive transfer (Enhanced - handles damage tracking and partial receipts)
      */
     @PostMapping("/{transferId}/receive")
-    public ResponseEntity<InventoryTransfer> receiveTransfer(
+    public ResponseEntity<?> receiveTransfer(
             @PathVariable Long transferId,
             @RequestBody ReceiveTransferRequest request) {
 
         try {
             Cashier receiver = cashierRepository.findById(request.getReceiverId())
-                    .orElseThrow(() -> new RuntimeException("Receiver not found: " + request.getReceiverId()));
+                    .orElseThrow(() -> new ResourceNotFoundException("Cashier", request.getReceiverId()));
 
             // Validate received items
             if (request.getReceivedItems() == null || request.getReceivedItems().isEmpty()) {
-                return ResponseEntity.badRequest().build();
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), "Bad Request",
+                            "Received items cannot be empty", "/api/inventory-transfers/" + transferId + "/receive"));
             }
 
-            // Enhanced receiving with damage and loss tracking
             InventoryTransfer transfer = transferService.receiveTransfer(
                     transferId,
                     receiver,
@@ -294,12 +355,21 @@ public class InventoryTransferController {
                     transfer.getTotalReceivedValue());
 
             return ResponseEntity.ok(transfer);
-        } catch (IllegalArgumentException e) {
-            log.error("Invalid receive data for transfer {}: {}", transferId, e.getMessage());
-            return ResponseEntity.badRequest().build();
+        } catch (ResourceNotFoundException e) {
+            log.error("Resource not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ErrorResponse.of(HttpStatus.NOT_FOUND.value(), "Not Found", e.getMessage(),
+                        "/api/inventory-transfers/" + transferId + "/receive"));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            log.error("Invalid operation: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), "Bad Request", e.getMessage(),
+                        "/api/inventory-transfers/" + transferId + "/receive"));
         } catch (Exception e) {
             log.error("Error receiving transfer {}: {}", transferId, e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ErrorResponse.of(HttpStatus.INTERNAL_SERVER_ERROR.value(), "Internal Server Error",
+                        "Failed to receive transfer", "/api/inventory-transfers/" + transferId + "/receive"));
         }
     }
 
@@ -307,16 +377,17 @@ public class InventoryTransferController {
      * Cancel transfer (Enhanced - reverses inventory changes if shipped)
      */
     @PostMapping("/{transferId}/cancel")
-    public ResponseEntity<InventoryTransfer> cancelTransfer(
+    public ResponseEntity<?> cancelTransfer(
             @PathVariable Long transferId,
             @RequestBody CancellationRequest request) {
 
         try {
             if (request.getReason() == null || request.getReason().trim().isEmpty()) {
-                return ResponseEntity.badRequest().build();
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), "Bad Request",
+                            "Cancellation reason is required", "/api/inventory-transfers/" + transferId + "/cancel"));
             }
 
-            // Enhanced cancellation with inventory reversal
             InventoryTransfer transfer = transferService.cancelTransfer(transferId, request.getReason());
 
             log.info("Successfully cancelled transfer {} - Status was: {}, Reason: {}",
@@ -325,12 +396,21 @@ public class InventoryTransferController {
                     request.getReason());
 
             return ResponseEntity.ok(transfer);
+        } catch (ResourceNotFoundException e) {
+            log.error("Resource not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ErrorResponse.of(HttpStatus.NOT_FOUND.value(), "Not Found", e.getMessage(),
+                        "/api/inventory-transfers/" + transferId + "/cancel"));
         } catch (IllegalStateException e) {
-            log.error("Cannot cancel transfer {}: {}", transferId, e.getMessage());
-            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+            log.error("Invalid operation: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), "Bad Request", e.getMessage(),
+                        "/api/inventory-transfers/" + transferId + "/cancel"));
         } catch (Exception e) {
             log.error("Error cancelling transfer {}: {}", transferId, e.getMessage());
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ErrorResponse.of(HttpStatus.INTERNAL_SERVER_ERROR.value(), "Internal Server Error",
+                        "Failed to cancel transfer", "/api/inventory-transfers/" + transferId + "/cancel"));
         }
     }
 
@@ -338,13 +418,25 @@ public class InventoryTransferController {
      * Complete transfer
      */
     @PostMapping("/{transferId}/complete")
-    public ResponseEntity<InventoryTransfer> completeTransfer(@PathVariable Long transferId) {
+    public ResponseEntity<?> completeTransfer(@PathVariable Long transferId) {
         try {
             InventoryTransfer transfer = transferService.completeTransfer(transferId);
             return ResponseEntity.ok(transfer);
+        } catch (ResourceNotFoundException e) {
+            log.error("Resource not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ErrorResponse.of(HttpStatus.NOT_FOUND.value(), "Not Found", e.getMessage(),
+                        "/api/inventory-transfers/" + transferId + "/complete"));
+        } catch (IllegalStateException e) {
+            log.error("Invalid operation: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), "Bad Request", e.getMessage(),
+                        "/api/inventory-transfers/" + transferId + "/complete"));
         } catch (Exception e) {
             log.error("Error completing transfer", e);
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ErrorResponse.of(HttpStatus.INTERNAL_SERVER_ERROR.value(), "Internal Server Error",
+                        "Failed to complete transfer", "/api/inventory-transfers/" + transferId + "/complete"));
         }
     }
 
