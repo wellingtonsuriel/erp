@@ -167,19 +167,19 @@ public class ShopInventoryController {
     }
 
     /**
-     * Remove stock (alias for reduce stock)
+     * Reduce stock (for sales or transfers)
      */
-    @PostMapping("/shop/{shopId}/product/{productId}/remove-stock")
-    public ResponseEntity<ShopInventoryResponse> removeStock(
+    @PostMapping("/shop/{shopId}/product/{productId}/reduce-stock")
+    public ResponseEntity<ShopInventoryResponse> reduceStock(
             @PathVariable Long shopId,
             @PathVariable Long productId,
             @RequestBody StockUpdateRequest request) {
 
         try {
-            ShopInventory inventory = shopInventoryService.removeStock(shopId, productId, request.getQuantity());
+            ShopInventory inventory = shopInventoryService.reduceStock(shopId, productId, request.getQuantity());
             return ResponseEntity.ok(shopInventoryService.toResponse(inventory));
         } catch (RuntimeException e) {
-            log.error("Error removing stock", e);
+            log.error("Error reducing stock", e);
             return ResponseEntity.badRequest().build();
         }
     }

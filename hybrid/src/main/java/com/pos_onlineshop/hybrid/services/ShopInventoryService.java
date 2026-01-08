@@ -112,13 +112,6 @@ public class ShopInventoryService {
     }
 
     /**
-     * Remove stock (for sales or transfers) - alias for reduceStock
-     */
-    public ShopInventory removeStock(Long shopId, Long productId, Integer quantity) {
-        return reduceStock(shopId, productId, quantity);
-    }
-
-    /**
      * Reduce stock (for sales or transfers)
      */
     public ShopInventory reduceStock(Long shopId, Long productId, Integer quantity) {
@@ -169,14 +162,6 @@ public class ShopInventoryService {
 
         ShopInventory inventory = inventoryOpt.get();
         return inventory.getQuantity() >= requiredQuantity;
-    }
-
-    /**
-     * Check if product is available with sufficient quantity (alias for isInStock)
-     */
-    @Transactional(readOnly = true)
-    public boolean isProductAvailable(Long shopId, Long productId, Integer requiredQuantity) {
-        return isInStock(shopId, productId, requiredQuantity);
     }
 
     /**
@@ -334,18 +319,18 @@ public class ShopInventoryService {
     public ShopInventoryResponse toResponse(ShopInventory inventory) {
         return ShopInventoryResponse.builder()
                 .id(inventory.getId())
-                .shopId(inventory.getShop().getId())
-                .shopCode(inventory.getShop().getCode())
-                .shopName(inventory.getShop().getName())
-                .productId(inventory.getProduct().getId())
-                .productName(inventory.getProduct().getName())
-                .productBarcode(inventory.getProduct().getBarcode())
-                .supplierId(inventory.getSuppliers().getId())
-                .supplierName(inventory.getSuppliers().getName())
+                .shopId(inventory.getShop() != null ? inventory.getShop().getId() : null)
+                .shopCode(inventory.getShop() != null ? inventory.getShop().getCode() : null)
+                .shopName(inventory.getShop() != null ? inventory.getShop().getName() : null)
+                .productId(inventory.getProduct() != null ? inventory.getProduct().getId() : null)
+                .productName(inventory.getProduct() != null ? inventory.getProduct().getName() : null)
+                .productBarcode(inventory.getProduct() != null ? inventory.getProduct().getBarcode() : null)
+                .supplierId(inventory.getSuppliers() != null ? inventory.getSuppliers().getId() : null)
+                .supplierName(inventory.getSuppliers() != null ? inventory.getSuppliers().getName() : null)
                 .quantity(inventory.getQuantity())
                 .inTransitQuantity(inventory.getInTransitQuantity())
-                .currencyId(inventory.getCurrency().getId())
-                .currencyCode(inventory.getCurrency().getCode())
+                .currencyId(inventory.getCurrency() != null ? inventory.getCurrency().getId() : null)
+                .currencyCode(inventory.getCurrency() != null ? inventory.getCurrency().getCode() : null)
                 .unitPrice(inventory.getUnitPrice())
                 .expiryDate(inventory.getExpiryDate())
                 .addedAt(inventory.getAddedAt())
