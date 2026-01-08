@@ -83,10 +83,7 @@ public class OrderService {
             }
 
             // Get product price in order currency
-            BigDecimal priceInCurrency = productService.getProductPrice(product, orderCurrency);
-            if (priceInCurrency == null) {
-                throw new RuntimeException("Product price not available in currency: " + orderCurrency.getCode());
-            }
+           
 
             OrderLine orderLine = OrderLine.builder()
                     .quantity(cartItem.getQuantity())
@@ -144,11 +141,7 @@ public class OrderService {
                 throw new RuntimeException("Insufficient stock in shop for: " + product.getName());
             }
 
-            // Get product price in shop currency
-            BigDecimal priceInCurrency = productService.getProductPrice(product, shopCurrency);
-            if (priceInCurrency == null) {
-                throw new RuntimeException("Product price not available in shop currency");
-            }
+
 
             OrderLine orderLine = OrderLine.builder()
                     .quantity(item.getQuantity())

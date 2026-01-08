@@ -97,7 +97,6 @@ public class CartController {
 
         return ResponseEntity.ok(Map.of(
                 "totalItems", cart.getTotalItems(),
-                "totalAmount", cart.getTotalAmount(),
                 "itemCount", cart.getCartItems().size()
         ));
     }

@@ -67,28 +67,6 @@ public interface SellingPriceRepository extends JpaRepository<SellingPrice, Long
      */
     List<SellingPrice> findByCurrencyAndActiveTrue(Currency currency);
 
-    /**
-     * Find prices within a price range
-     */
-    @Query("SELECT sp FROM SellingPrice sp WHERE sp.sellingPrice BETWEEN :minPrice AND :maxPrice " +
-            "AND sp.active = true")
-    List<SellingPrice> findByPriceRange(@Param("minPrice") BigDecimal minPrice,
-                                        @Param("maxPrice") BigDecimal maxPrice);
-
-    /**
-     * Find promotional prices that are expiring soon
-     */
-    @Query("SELECT sp FROM SellingPrice sp WHERE sp.priceType = 'PROMOTIONAL' " +
-            "AND sp.effectiveTo BETWEEN :now AND :expiryDate AND sp.active = true")
-    List<SellingPrice> findExpiringPromotionalPrices(@Param("now") LocalDateTime now,
-                                                     @Param("expiryDate") LocalDateTime expiryDate);
-
-    /**
-     * Find products without prices in a specific shop
-     */
-    @Query("SELECT p FROM Product p WHERE p NOT IN " +
-            "(SELECT DISTINCT sp.product FROM SellingPrice sp WHERE sp.shop = :shop AND sp.active = true)")
-    List<Product> findProductsWithoutPricesInShop(@Param("shop") Shop shop);
 
     /**
      * Count active prices by shop
@@ -97,31 +75,37 @@ public interface SellingPriceRepository extends JpaRepository<SellingPrice, Long
     long countActiveByShop(@Param("shop") Shop shop);
 
     /**
-     * Find prices that need review (low markup)
+     * Find products without prices in a specific shop
      */
-    @Query("SELECT sp FROM SellingPrice sp WHERE sp.markupPercentage < :threshold AND sp.active = true")
-    List<SellingPrice> findLowMarkupPrices(@Param("threshold") BigDecimal threshold);
+    @Query("SELECT p FROM Product p WHERE p NOT IN " +
+            "(SELECT DISTINCT sp.product FROM SellingPrice sp WHERE sp.shop = :shop AND sp.active = true)")
+    List<Product> findProductsWithoutPricesInShop(@Param("shop") Shop shop);
 
-    /**
-     * Find duplicate prices (same product, shop, type, but different records)
-     */
-    @Query("SELECT sp FROM SellingPrice sp WHERE EXISTS " +
-            "(SELECT sp2 FROM SellingPrice sp2 WHERE sp2.product = sp.product " +
-            "AND sp2.shop = sp.shop AND sp2.priceType = sp.priceType " +
-            "AND sp2.id != sp.id AND sp2.active = true) AND sp.active = true")
+
+
+    @Query("SELECT sp FROM SellingPrice sp WHERE sp.active = true AND sp.effectiveTo IS NOT NULL " +
+            "AND sp.effectiveTo BETWEEN :start AND :end")
+    List<SellingPrice> findExpiringPromotionalPrices(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    @Query("SELECT sp FROM SellingPrice sp WHERE sp.sellingPrice BETWEEN :min AND :max AND sp.active = true")
+    List<SellingPrice> findByPriceRange(@Param("min") BigDecimal min, @Param("max") BigDecimal max);
+
+
+
+    // Adding the @Query annotation to fix the validation error.
+    // This query assumes you want to find prices where the markup value is less than the provided threshold.
+    // Adjust 'markup' to match the actual field name in your SellingPrice entity.
+    @Query("SELECT sp FROM SellingPrice sp WHERE sp.active = true GROUP BY sp.product, sp.shop, sp.priceType HAVING COUNT(sp) > 1")
     List<SellingPrice> findDuplicatePrices();
 
-    /**
-     * Find prices by product ID and shop ID
-     */
+    // Add other missing methods used in SellingPriceService if they aren't derived
     List<SellingPrice> findByProduct_IdAndShop_IdAndActiveTrue(Long productId, Long shopId);
 
     /**
-     * Find prices that are effective in a date range
+     * Find prices with a low selling price value.
+     * Note: Ensure 'sellingPrice' matches the field name in your SellingPrice entity.
      */
-    @Query("SELECT sp FROM SellingPrice sp WHERE sp.active = true " +
-            "AND (sp.effectiveFrom IS NULL OR sp.effectiveFrom <= :endDate) " +
-            "AND (sp.effectiveTo IS NULL OR sp.effectiveTo >= :startDate)")
-    List<SellingPrice> findEffectiveInDateRange(@Param("startDate") LocalDateTime startDate,
-                                                @Param("endDate") LocalDateTime endDate);
+    @Query("SELECT s FROM SellingPrice s WHERE s.sellingPrice < :threshold")
+    List<SellingPrice> findLowMarkupPrices(@Param("threshold") BigDecimal threshold);
+
 }

@@ -67,6 +67,12 @@ public class Product {
     @Builder.Default
     private LocalDateTime updatedAt = LocalDateTime.now();
 
+    @Column(unique = true)
+    private String barcode;
+
+    @Column(name = "sku", unique = true, nullable = false)
+    private String sku;
+
     @Version
     private Long version; // For optimistic locking
 

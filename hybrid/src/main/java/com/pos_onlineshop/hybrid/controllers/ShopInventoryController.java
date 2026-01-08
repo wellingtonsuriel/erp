@@ -197,41 +197,41 @@ public class ShopInventoryController {
         }
     }
 
-    /**
-     * Get low stock items for a shop
-     */
-    @GetMapping("/shop/{shopId}/low-stock")
-    public ResponseEntity<List<ShopInventory>> getLowStockItems(@PathVariable Long shopId) {
-        List<ShopInventory> lowStockItems = shopInventoryService.getLowStockItems(shopId);
-        return ResponseEntity.ok(lowStockItems);
-    }
-
-    /**
-     * Get overstocked items for a shop
-     */
-    @GetMapping("/shop/{shopId}/overstocked")
-    public ResponseEntity<List<ShopInventory>> getOverstockedItems(@PathVariable Long shopId) {
-        List<ShopInventory> overstockedItems = shopInventoryService.getOverstockedItems(shopId);
-        return ResponseEntity.ok(overstockedItems);
-    }
-
-    /**
-     * Get understocked items for a shop
-     */
-    @GetMapping("/shop/{shopId}/understocked")
-    public ResponseEntity<List<ShopInventory>> getUnderstockedItems(@PathVariable Long shopId) {
-        List<ShopInventory> understockedItems = shopInventoryService.getUnderstockedItems(shopId);
-        return ResponseEntity.ok(understockedItems);
-    }
-
-    /**
-     * Calculate total inventory value for a shop
-     */
-    @GetMapping("/shop/{shopId}/value")
-    public ResponseEntity<BigDecimal> calculateShopInventoryValue(@PathVariable Long shopId) {
-        BigDecimal inventoryValue = shopInventoryService.calculateShopInventoryValue(shopId);
-        return ResponseEntity.ok(inventoryValue);
-    }
+//    /**
+//     * Get low stock items for a shop
+//     */
+//    @GetMapping("/shop/{shopId}/low-stock")
+//    public ResponseEntity<List<ShopInventory>> getLowStockItems(@PathVariable Long shopId) {
+//        List<ShopInventory> lowStockItems = shopInventoryService.getLowStockItems(shopId);
+//        return ResponseEntity.ok(lowStockItems);
+//    }
+//
+//    /**
+//     * Get overstocked items for a shop
+//     */
+//    @GetMapping("/shop/{shopId}/overstocked")
+//    public ResponseEntity<List<ShopInventory>> getOverstockedItems(@PathVariable Long shopId) {
+//        List<ShopInventory> overstockedItems = shopInventoryService.getOverstockedItems(shopId);
+//        return ResponseEntity.ok(overstockedItems);
+//    }
+//
+//    /**
+//     * Get understocked items for a shop
+//     */
+//    @GetMapping("/shop/{shopId}/understocked")
+//    public ResponseEntity<List<ShopInventory>> getUnderstockedItems(@PathVariable Long shopId) {
+//        List<ShopInventory> understockedItems = shopInventoryService.getUnderstockedItems(shopId);
+//        return ResponseEntity.ok(understockedItems);
+//    }
+//
+//    /**
+//     * Calculate total inventory value for a shop
+//     */
+//    @GetMapping("/shop/{shopId}/value")
+//    public ResponseEntity<BigDecimal> calculateShopInventoryValue(@PathVariable Long shopId) {
+//        BigDecimal inventoryValue = shopInventoryService.calculateShopInventoryValue(shopId);
+//        return ResponseEntity.ok(inventoryValue);
+//    }
 
     /**
      * Get warehouse inventory for a product
@@ -294,14 +294,14 @@ public class ShopInventoryController {
         return ResponseEntity.ok(response);
     }
 
-    /**
-     * Get items that need restocking
-     */
-    @GetMapping("/shop/{shopId}/restock-needed")
-    public ResponseEntity<List<ShopInventory>> getItemsNeedingRestock(@PathVariable Long shopId) {
-        List<ShopInventory> itemsNeedingRestock = shopInventoryService.getItemsNeedingRestock(shopId);
-        return ResponseEntity.ok(itemsNeedingRestock);
-    }
+//    /**
+//     * Get items that need restocking
+//     */
+//    @GetMapping("/shop/{shopId}/restock-needed")
+//    public ResponseEntity<List<ShopInventory>> getItemsNeedingRestock(@PathVariable Long shopId) {
+//        List<ShopInventory> itemsNeedingRestock = shopInventoryService.getItemsNeedingRestock(shopId);
+//        return ResponseEntity.ok(itemsNeedingRestock);
+//    }
 
     /**
      * Delete inventory record

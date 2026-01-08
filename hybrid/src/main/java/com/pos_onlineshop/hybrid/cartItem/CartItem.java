@@ -48,7 +48,5 @@ public class CartItem {
         }
     }
 
-    public BigDecimal getSubtotal() {
-        return product.getPrice().multiply(BigDecimal.valueOf(quantity));
-    }
+
 }

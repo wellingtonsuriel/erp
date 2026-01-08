@@ -42,11 +42,7 @@ public class ShopInventory {
     @Column(name = "expiry_date")
     private LocalDateTime expiryDate;
 
-    @Column(unique = true)
-    private String barcode;
 
-    @Column(name = "sku", unique = true, nullable = false)
-    private String sku;
 
     @Column(nullable = false)
     @Builder.Default

@@ -26,6 +26,10 @@ public interface InventoryItemRepository extends JpaRepository<InventoryItem, Lo
     @Query("SELECT i FROM InventoryItem i WHERE i.quantity <= i.reorderLevel")
     List<InventoryItem> findItemsNeedingReorder();
 
-    @Query("SELECT SUM(i.quantity * i.product.price) FROM InventoryItem i")
+
+
+    @Query(value = "SELECT SUM(CAST(i.quantity AS decimal) * p.price) " +
+            "FROM inventory_items i " +
+            "JOIN products p ON i.product_id = p.id", nativeQuery = true)
     BigDecimal calculateTotalInventoryValue();
 }

@@ -106,13 +106,13 @@ public class InventoryTransferService {
         if (!shopInventoryService.isProductAvailable(transfer.getFromShop().getId(), productId, quantity)) {
             // Get actual available quantity for better error message
             Optional<ShopInventory> inventory = shopInventoryService.getInventory(transfer.getFromShop(), product);
-            int availableQuantity = inventory.map(ShopInventory::getAvailableQuantity).orElse(0);
+
 
             throw new IllegalArgumentException(
                     String.format("Insufficient inventory in source shop %s. Requested: %d, Available: %d for product %s",
                             transfer.getFromShop().getName(),
                             quantity,
-                            availableQuantity,
+                           "",
                             product.getName()));
         }
 

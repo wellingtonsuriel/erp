@@ -16,8 +16,6 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     List<Product> findByNameContainingIgnoreCase(String name);
 
-    List<Product> findByPriceBetween(BigDecimal minPrice, BigDecimal maxPrice);
-
     Optional<Product> findByBarcode(String barcode);
 
     Optional<Product> findBySku(String sku);
@@ -56,13 +54,6 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
             "OR LOWER(p.description) LIKE LOWER(CONCAT('%', :searchTerm, '%'))) AND p.active = true")
     List<Product> searchByNameOrDescription(@Param("searchTerm") String searchTerm);
 
-
-
-
-    /**
-     * Find products with tax rate
-     */
-    List<Product> findByTaxRateGreaterThan(BigDecimal taxRate);
 
 
 

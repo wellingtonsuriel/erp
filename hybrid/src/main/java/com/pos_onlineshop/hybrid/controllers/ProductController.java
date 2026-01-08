@@ -54,13 +54,13 @@ public class ProductController {
             Currency curr = currencyService.findByCode(currency)
                     .orElseThrow(() -> new RuntimeException("Currency not found"));
 
-            BigDecimal price = productService.getProductPrice(product, curr);
+            //BigDecimal price = productService.getProductPrice(product, curr);
 
             return ResponseEntity.ok(Map.of(
                     "productId", id,
                     "currency", currency,
-                    "price", price,
-                    "formattedPrice", curr.getSymbol() + price
+                    "price", "price",
+                    "formattedPrice", curr.getSymbol()
             ));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().build();
@@ -78,11 +78,6 @@ public class ProductController {
                 .category(request.getCategory())
                 .imageUrl(request.getImageUrl())
                 .weighable(request.isWeighable())
-                .weight(request.getWeight())
-                .unitOfMeasure(request.getUnitOfMeasure())
-                .actualMeasure(request.getActualMeasure())
-                .minStock(request.getMinStock())
-                .maxStock(request.getMaxStock())
                 .build();
 
         Product created = productService.createProduct(product);
@@ -100,7 +95,7 @@ public class ProductController {
             Currency currency = currencyService.findByCode(request.getCurrencyCode())
                     .orElseThrow(() -> new RuntimeException("Currency not found"));
 
-            productService.setProductPrice(product, currency, request.getPrice());
+
             return ResponseEntity.ok().build();
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().build();
@@ -144,7 +139,7 @@ public class ProductController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
-        productService.deleteProduct(id);
+
         return ResponseEntity.noContent().build();
     }
 

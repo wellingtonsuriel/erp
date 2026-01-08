@@ -55,11 +55,12 @@ public class Cart {
         this.updatedAt = LocalDateTime.now();
     }
 
-    public BigDecimal getTotalAmount() {
-        return cartItems.stream()
-                .map(item -> item.getProduct().getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
+//    public BigDecimal getTotalAmount() {
+//        //
+//        return cartItems.stream()
+//                .map(CartItem::getSubtotal)
+//                .reduce(BigDecimal.ZERO, BigDecimal::add);
+//    }
 
     public int getTotalItems() {
         return cartItems.stream()

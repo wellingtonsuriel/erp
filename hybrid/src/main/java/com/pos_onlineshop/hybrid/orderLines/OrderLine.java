@@ -66,62 +66,12 @@ public class OrderLine {
         this.product = product;
         this.productName = product.getName();
         this.productDescription = product.getDescription();
-        this.taxRate = product.getTaxRate();
         this.currency = currency;
 
-        // Get price in the specified currency
-        BigDecimal priceInCurrency = getProductPriceInCurrency(product, currency);
-        if (priceInCurrency == null) {
-            throw new RuntimeException("Product price not available in currency: " + currency.getCode());
-        }
-        this.unitPrice = priceInCurrency;
+     
     }
 
-    /**
-     * Overloaded method for backward compatibility - uses product's default currency
-     */
-    public void copyProductDetails(Product product) {
-        // Use the product's default currency or the first available price
-        Currency productCurrency = getProductDefaultCurrency(product);
-        copyProductDetails(product, productCurrency);
-    }
 
-    /**
-     * Helper method to get product price in specific currency
-     */
-    private BigDecimal getProductPriceInCurrency(Product product, Currency currency) {
-        // Option 1: If Product has a method to get price in currency
-        if (hasMethod(product, "getPriceInCurrency")) {
-            return product.getPriceInCurrency(currency);
-        }
-
-        // Option 2: If Product has a base price and you need currency conversion
-        if (hasMethod(product, "getPrice")) {
-            BigDecimal basePrice = product.getPrice();
-            // You would need to inject CurrencyService here or pass it as parameter
-            // For now, return the base price (this should be enhanced with currency conversion)
-            return basePrice;
-        }
-
-        // Option 3: If you have a separate ProductPrice entity
-        // return productPriceService.getPriceInCurrency(product.getId(), currency.getId());
-
-        throw new RuntimeException("Unable to determine product price for currency: " + currency.getCode());
-    }
-
-    /**
-     * Helper method to get product's default currency
-     */
-    private Currency getProductDefaultCurrency(Product product) {
-        // Option 1: If Product has a default currency
-        if (hasMethod(product, "getDefaultCurrency")) {
-            return product.getDefaultCurrency();
-        }
-
-        // Option 2: Use system base currency as fallback
-        // You would need to inject CurrencyService for this
-        throw new RuntimeException("Product default currency not available");
-    }
 
     /**
      * Helper method to check if a method exists (using reflection)

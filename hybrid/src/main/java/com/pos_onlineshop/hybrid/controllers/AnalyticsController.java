@@ -60,11 +60,11 @@ public class AnalyticsController {
             // Inventory statistics
             if (shopId != null) {
                 // Shop-specific inventory data
-                dashboard.put("shopInventoryValue", shopInventoryService.calculateShopInventoryValue(shopId));
-                dashboard.put("shopLowStockCount", shopInventoryService.getLowStockItems(shopId).size());
-                dashboard.put("shopOverstockedCount", shopInventoryService.getOverstockedItems(shopId).size());
-                dashboard.put("shopUnderstockedCount", shopInventoryService.getUnderstockedItems(shopId).size());
-                dashboard.put("shopItemsNeedingRestock", shopInventoryService.getItemsNeedingRestock(shopId).size());
+//                dashboard.put("shopInventoryValue", shopInventoryService.calculateShopInventoryValue(shopId));
+//                dashboard.put("shopLowStockCount", shopInventoryService.getLowStockItems(shopId).size());
+//                dashboard.put("shopOverstockedCount", shopInventoryService.getOverstockedItems(shopId).size());
+//                dashboard.put("shopUnderstockedCount", shopInventoryService.getUnderstockedItems(shopId).size());
+//                dashboard.put("shopItemsNeedingRestock", shopInventoryService.getItemsNeedingRestock(shopId).size());
             } else {
                 // System-wide inventory data using existing InventoryService
                 dashboard.put("totalInventoryValue", inventoryService.calculateTotalInventoryValue());
@@ -219,11 +219,11 @@ public class AnalyticsController {
         try {
             if (shopId != null) {
                 // Shop-specific inventory
-                inventoryData.put("totalValue", shopInventoryService.calculateShopInventoryValue(shopId));
-                inventoryData.put("lowStock", shopInventoryService.getLowStockItems(shopId));
-                inventoryData.put("overstocked", shopInventoryService.getOverstockedItems(shopId));
-                inventoryData.put("understocked", shopInventoryService.getUnderstockedItems(shopId));
-                inventoryData.put("needsRestock", shopInventoryService.getItemsNeedingRestock(shopId));
+//                inventoryData.put("totalValue", shopInventoryService.calculateShopInventoryValue(shopId));
+//                inventoryData.put("lowStock", shopInventoryService.getLowStockItems(shopId));
+//                inventoryData.put("overstocked", shopInventoryService.getOverstockedItems(shopId));
+//                inventoryData.put("understocked", shopInventoryService.getUnderstockedItems(shopId));
+//                inventoryData.put("needsRestock", shopInventoryService.getItemsNeedingRestock(shopId));
                 inventoryData.put("shopId", shopId);
             } else {
                 // System-wide inventory using existing InventoryService
