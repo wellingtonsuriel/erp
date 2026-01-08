@@ -191,4 +191,12 @@ public class ShopInventoryService {
         log.info("Deleted inventory for shop {} and product {}",
                 inventory.getShop().getCode(), inventory.getProduct().getName());
     }
+
+    /**
+     * Get all products available in a specific shop
+     */
+    @Transactional(readOnly = true)
+    public List<Product> getProductsByShopId(Long shopId) {
+        return shopInventoryRepository.findProductsByShopId(shopId);
+    }
 }

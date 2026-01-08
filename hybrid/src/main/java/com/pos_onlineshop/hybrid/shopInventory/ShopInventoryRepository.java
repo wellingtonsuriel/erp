@@ -32,4 +32,7 @@ public interface ShopInventoryRepository extends JpaRepository<ShopInventory, Lo
     @Query("SELECT si FROM ShopInventory si WHERE si.shop.type = 'WAREHOUSE' " +
             "AND si.product.id = :productId")
     Optional<ShopInventory> findWarehouseInventory(@Param("productId") Long productId);
+
+    @Query("SELECT si.product FROM ShopInventory si WHERE si.shop.id = :shopId")
+    List<Product> findProductsByShopId(@Param("shopId") Long shopId);
 }
