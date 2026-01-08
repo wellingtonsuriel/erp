@@ -48,6 +48,10 @@ public class ShopInventory {
     @Builder.Default
     private Integer quantity = 0;
 
+    @Column(name = "in_transit_quantity", nullable = false)
+    @Builder.Default
+    private Integer inTransitQuantity = 0;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "currency_id", nullable = false)
     private Currency currency;

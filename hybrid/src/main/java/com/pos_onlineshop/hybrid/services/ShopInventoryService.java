@@ -162,6 +162,46 @@ public class ShopInventoryService {
     }
 
     /**
+     * Check if product is available with sufficient quantity (alias for isInStock)
+     */
+    @Transactional(readOnly = true)
+    public boolean isProductAvailable(Long shopId, Long productId, Integer requiredQuantity) {
+        return isInStock(shopId, productId, requiredQuantity);
+    }
+
+    /**
+     * Update in-transit quantity for inventory transfers
+     * @param shopId the shop ID
+     * @param productId the product ID
+     * @param quantityChange the quantity change (positive to add, negative to subtract)
+     */
+    public ShopInventory updateInTransitQuantity(Long shopId, Long productId, Integer quantityChange) {
+        Optional<ShopInventory> inventoryOpt = shopInventoryRepository.findByShopIdAndProductIdWithLock(shopId, productId);
+
+        if (inventoryOpt.isEmpty()) {
+            throw new RuntimeException("Inventory not found for shop " + shopId + " and product " + productId);
+        }
+
+        ShopInventory inventory = inventoryOpt.get();
+        int newInTransitQuantity = inventory.getInTransitQuantity() + quantityChange;
+
+        if (newInTransitQuantity < 0) {
+            throw new RuntimeException("In-transit quantity cannot be negative. Current: " +
+                    inventory.getInTransitQuantity() + ", Attempting to change by: " + quantityChange);
+        }
+
+        inventory.setInTransitQuantity(newInTransitQuantity);
+
+        log.info("Updated in-transit quantity for shop {} and product {}: {} -> {}",
+                inventory.getShop().getCode(),
+                inventory.getProduct().getName(),
+                inventory.getInTransitQuantity() - quantityChange,
+                newInTransitQuantity);
+
+        return shopInventoryRepository.save(inventory);
+    }
+
+    /**
      * Delete inventory record
      */
     public void deleteInventory(Long shopId, Long productId) {
