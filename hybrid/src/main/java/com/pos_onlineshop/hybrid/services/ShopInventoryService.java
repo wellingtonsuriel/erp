@@ -19,6 +19,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -71,10 +73,10 @@ public class ShopInventoryService {
      * Create or update inventory for a shop
      */
     public ShopInventory createOrUpdateInventory(Shop shop, Product product, Integer quantity,
-                                                  Integer inTransitQuantity, Long supplierId,
-                                                  Long currencyId, BigDecimal unitPrice,
-                                                  LocalDateTime expiryDate, Integer reorderLevel,
-                                                  Integer minStock, Integer maxStock) {
+                                                 Integer inTransitQuantity, Long supplierId,
+                                                 Long currencyId, BigDecimal unitPrice,
+                                                 LocalDateTime expiryDate, Integer reorderLevel,
+                                                 Integer minStock, Integer maxStock) {
         Optional<ShopInventory> existingInventory = shopInventoryRepository.findByShopAndProduct(shop, product);
 
         if (existingInventory.isPresent()) {
