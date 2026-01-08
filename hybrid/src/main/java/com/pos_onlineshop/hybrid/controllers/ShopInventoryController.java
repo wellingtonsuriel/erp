@@ -123,24 +123,6 @@ public class ShopInventoryController {
     }
 
     /**
-     * Reduce stock (for sales or transfers)
-     */
-    @PostMapping("/shop/{shopId}/product/{productId}/reduce-stock")
-    public ResponseEntity<ShopInventory> reduceStock(
-            @PathVariable Long shopId,
-            @PathVariable Long productId,
-            @RequestBody StockUpdateRequest request) {
-
-        try {
-            ShopInventory inventory = shopInventoryService.reduceStock(shopId, productId, request.getQuantity());
-            return ResponseEntity.ok(inventory);
-        } catch (RuntimeException e) {
-            log.error("Error reducing stock", e);
-            return ResponseEntity.badRequest().build();
-        }
-    }
-
-    /**
      * Get warehouse inventory for a product
      */
     @GetMapping("/warehouse/product/{productId}")
@@ -148,20 +130,6 @@ public class ShopInventoryController {
         Optional<ShopInventory> warehouseInventory = shopInventoryService.getWarehouseInventory(productId);
         return warehouseInventory.map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
-    }
-
-    /**
-     * Check if product is available in sufficient quantity
-     */
-    @GetMapping("/shop/{shopId}/product/{productId}/availability")
-    public ResponseEntity<AvailabilityResponse> checkProductAvailability(
-            @PathVariable Long shopId,
-            @PathVariable Long productId,
-            @RequestParam Integer requiredQuantity) {
-
-        boolean available = shopInventoryService.isProductAvailable(shopId, productId, requiredQuantity);
-        AvailabilityResponse response = new AvailabilityResponse(available, requiredQuantity);
-        return ResponseEntity.ok(response);
     }
 
     /**
