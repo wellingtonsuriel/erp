@@ -81,53 +81,7 @@ public class ShopInventoryController {
         return ResponseEntity.ok(responses);
     }
 
-    /**
-     * Create or update inventory (legacy - for backward compatibility)
-     */
-    @PostMapping("/shop/{shopId}/product/{productId}")
-    public ResponseEntity<ShopInventoryResponse> createOrUpdateInventory(
-            @PathVariable Long shopId,
-            @PathVariable Long productId,
-            @RequestBody InventoryRequest request) {
 
-        Optional<Shop> shop = shopRepository.findById(shopId);
-        Optional<Product> product = productRepository.findById(productId);
-
-        if (shop.isEmpty() || product.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-
-        try {
-            ShopInventory inventory = shopInventoryService.createOrUpdateInventory(
-                    shop.get(), product.get(), request.getQuantity(),
-                    request.getInTransitQuantity(), request.getSupplierId(),
-                    request.getCurrencyId(), request.getUnitPrice(),
-                    request.getExpiryDate(), request.getReorderLevel(),
-                    request.getMinStock(), request.getMaxStock());
-            return ResponseEntity.ok(shopInventoryService.toResponse(inventory));
-        } catch (Exception e) {
-            log.error("Error creating/updating inventory", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-
-    /**
-     * Add stock to existing inventory
-     */
-    @PostMapping("/shop/{shopId}/product/{productId}/add-stock")
-    public ResponseEntity<ShopInventoryResponse> addStock(
-            @PathVariable Long shopId,
-            @PathVariable Long productId,
-            @RequestBody StockUpdateRequest request) {
-
-        try {
-            ShopInventory inventory = shopInventoryService.addStock(shopId, productId, request.getQuantity());
-            return ResponseEntity.ok(shopInventoryService.toResponse(inventory));
-        } catch (RuntimeException e) {
-            log.error("Error adding stock", e);
-            return ResponseEntity.badRequest().build();
-        }
-    }
 
     /**
      * Get warehouse inventory for a product

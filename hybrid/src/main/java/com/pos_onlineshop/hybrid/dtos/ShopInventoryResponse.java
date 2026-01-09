@@ -23,6 +23,7 @@ public class ShopInventoryResponse {
     private Long supplierId;
     private String supplierName;
     private Integer quantity;
+    private Integer totalStock;
     private Integer inTransitQuantity;
     private Long currencyId;
     private String currencyCode;

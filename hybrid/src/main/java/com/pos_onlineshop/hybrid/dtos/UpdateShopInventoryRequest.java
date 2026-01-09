@@ -18,9 +18,6 @@ public class UpdateShopInventoryRequest {
 
     private Long currencyId;
 
-    @PositiveOrZero(message = "Quantity must be zero or positive")
-    private Integer quantity;
-
     @PositiveOrZero(message = "In-transit quantity must be zero or positive")
     private Integer inTransitQuantity;
 
