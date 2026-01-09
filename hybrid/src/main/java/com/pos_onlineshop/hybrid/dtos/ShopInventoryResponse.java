@@ -25,6 +25,7 @@ public class ShopInventoryResponse {
     private Integer quantity;
     private Integer totalStock;
     private Integer inTransitQuantity;
+    private Integer totalStock; // Total cumulative stock added (audit trail)
     private Long currencyId;
     private String currencyCode;
     private BigDecimal unitPrice;

@@ -158,7 +158,15 @@ public class ShopInventoryController {
     }
 
     /**
-     * Create new shop inventory with full details
+     * Create new shop inventory with full details (WORLD-CLASS IMPLEMENTATION)
+     *
+     * Features:
+     * - Strictly creates new records only (returns 400 if exists)
+     * - Initializes totalStock with initial quantity for audit trail
+     * - Validates maxStock limits before creation
+     * - Requires all essential fields (supplier, currency, unitPrice)
+     * - Use addStock() endpoint to increase stock after creation
+     * - Use PATCH endpoint to update metadata (prices, thresholds, etc.)
      */
     @PostMapping
     public ResponseEntity<ShopInventoryResponse> createShopInventory(
@@ -168,8 +176,11 @@ public class ShopInventoryController {
             ShopInventory inventory = shopInventoryService.createShopInventory(request);
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(shopInventoryService.toResponse(inventory));
+        } catch (IllegalArgumentException e) {
+            log.error("Validation error creating shop inventory: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
         } catch (RuntimeException e) {
-            log.error("Error creating shop inventory", e);
+            log.error("Error creating shop inventory: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
         }
     }
