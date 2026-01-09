@@ -241,8 +241,8 @@ public class ShopInventoryService {
     /**
      * Create new shop inventory with full details
      * Features:
-     * - If inventory already exists, updates it instead of creating duplicate
-     * - Creates or updates InventoryTotal record with initial quantity
+     * - Creates a new record each time for audit/record-keeping purposes
+     * - Adds quantity to InventoryTotal (cumulative stock tracking)
      * - Validates maxStock limits
      * - Strict validation of all required fields
      */
@@ -259,9 +259,6 @@ public class ShopInventoryService {
         Currency currency = currencyRepository.findById(request.getCurrencyId())
                 .orElseThrow(() -> new RuntimeException("Currency not found with id: " + request.getCurrencyId()));
 
-        // Check if inventory already exists for this shop and product
-        Optional<ShopInventory> existingInventoryOpt = shopInventoryRepository.findByShopAndProduct(shop, product);
-
         // Initialize quantities
         int initialQuantity = request.getQuantity() != null ? request.getQuantity() : 0;
 
@@ -271,63 +268,30 @@ public class ShopInventoryService {
                     ") exceeds maximum stock limit (" + request.getMaxStock() + ")");
         }
 
-        ShopInventory savedInventory;
+        // Always create a new inventory record (for audit trail)
+        ShopInventory shopInventory = ShopInventory.builder()
+                .shop(shop)
+                .product(product)
+                .suppliers(supplier)
+                .currency(currency)
+                .quantity(request.getQuantity())
+                .unitPrice(request.getUnitPrice())
+                .expiryDate(request.getExpiryDate())
+                .reorderLevel(request.getReorderLevel())
+                .minStock(request.getMinStock())
+                .maxStock(request.getMaxStock())
+                .build();
 
-        if (existingInventoryOpt.isPresent()) {
-            // Update existing inventory
-            ShopInventory existingInventory = existingInventoryOpt.get();
-            existingInventory.setSuppliers(supplier);
-            existingInventory.setCurrency(currency);
-            existingInventory.setUnitPrice(request.getUnitPrice());
-            existingInventory.setExpiryDate(request.getExpiryDate());
-            existingInventory.setReorderLevel(request.getReorderLevel());
-            existingInventory.setMinStock(request.getMinStock());
-            existingInventory.setMaxStock(request.getMaxStock());
+        ShopInventory savedInventory = shopInventoryRepository.save(shopInventory);
 
-            savedInventory = shopInventoryRepository.save(existingInventory);
-
-            // Add the new quantity to existing stock in InventoryTotal
-            if (initialQuantity > 0) {
-                addStock(shop.getId(), product.getId(), initialQuantity);
-                log.info("Updated existing shop inventory for shop {} and product {}: added quantity = {}",
-                        shop.getCode(), product.getName(), initialQuantity);
-            } else {
-                log.info("Updated existing shop inventory for shop {} and product {} with no quantity change",
-                        shop.getCode(), product.getName());
-            }
+        // Add to inventory total (cumulative tracking)
+        if (initialQuantity > 0) {
+            addStock(shop.getId(), product.getId(), initialQuantity);
+            log.info("Created shop inventory record for shop {} and product {}: quantity = {}",
+                    shop.getCode(), product.getName(), initialQuantity);
         } else {
-            // Create new inventory
-            ShopInventory shopInventory = ShopInventory.builder()
-                    .shop(shop)
-                    .product(product)
-                    .suppliers(supplier)
-                    .currency(currency)
-                    .quantity(request.getQuantity())
-                    .unitPrice(request.getUnitPrice())
-                    .expiryDate(request.getExpiryDate())
-                    .reorderLevel(request.getReorderLevel())
-                    .minStock(request.getMinStock())
-                    .maxStock(request.getMaxStock())
-                    .build();
-
-            savedInventory = shopInventoryRepository.save(shopInventory);
-
-            // Create inventory total record
-            if (initialQuantity > 0) {
-                InventoryTotal inventoryTotal = InventoryTotal.builder()
-                        .shop(shop)
-                        .product(product)
-                        .totalstock(initialQuantity)
-                        .lastUpdated(LocalDateTime.now())
-                        .build();
-                inventoryTotalRepository.save(inventoryTotal);
-
-                log.info("Created shop inventory for shop {} and product {}: initial quantity = {}",
-                        shop.getCode(), product.getName(), initialQuantity);
-            } else {
-                log.info("Created shop inventory for shop {} and product {} with zero initial quantity",
-                        shop.getCode(), product.getName());
-            }
+            log.info("Created shop inventory record for shop {} and product {} with zero quantity",
+                    shop.getCode(), product.getName());
         }
 
         return savedInventory;

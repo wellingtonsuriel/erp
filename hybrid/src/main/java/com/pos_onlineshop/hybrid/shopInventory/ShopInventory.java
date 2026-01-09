@@ -12,10 +12,10 @@ import java.time.LocalDateTime;
 /**
  * ShopInventory entity tracking product stock levels per shop.
  * Enhanced with better stock management features.
+ * Each record represents a stock addition for audit/record-keeping purposes.
  */
 @Entity
-@Table(name = "shop_inventories",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"shop_id", "product_id"}))
+@Table(name = "shop_inventories")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
