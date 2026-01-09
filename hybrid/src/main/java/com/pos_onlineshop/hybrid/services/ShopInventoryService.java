@@ -14,8 +14,6 @@ import com.pos_onlineshop.hybrid.shop.Shop;
 import com.pos_onlineshop.hybrid.shop.ShopRepository;
 import com.pos_onlineshop.hybrid.shopInventory.ShopInventory;
 import com.pos_onlineshop.hybrid.shopInventory.ShopInventoryRepository;
-import com.pos_onlineshop.hybrid.stockMovement.StockMovement;
-import com.pos_onlineshop.hybrid.stockMovement.StockMovementRepository;
 import com.pos_onlineshop.hybrid.suppliers.Suppliers;
 import com.pos_onlineshop.hybrid.suppliers.SuppliersRepository;
 import lombok.RequiredArgsConstructor;
@@ -41,7 +39,6 @@ public class ShopInventoryService {
     private final SuppliersRepository suppliersRepository;
     private final CurrencyRepository currencyRepository;
     private final InventoryTotalRepository inventoryTotalRepository;
-    private final StockMovementRepository stockMovementRepository;
 
     /**
      * Get inventory for a specific shop and product
@@ -97,17 +94,6 @@ public class ShopInventoryService {
                 .orElseThrow(() -> new RuntimeException("Shop not found with id: " + shopId));
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new RuntimeException("Product not found with id: " + productId));
-
-        // Create stock movement record (audit trail)
-        StockMovement movement = StockMovement.builder()
-                .shop(shop)
-                .product(product)
-                .quantity(additionalQuantity)
-                .movementType(StockMovement.MovementType.ADDITION)
-                .notes(notes)
-                .createdAt(LocalDateTime.now())
-                .build();
-        stockMovementRepository.save(movement);
 
         // Update or create inventory total with pessimistic lock
         Optional<InventoryTotal> inventoryTotalOpt = inventoryTotalRepository.findByShopIdAndProductIdWithLock(shopId, productId);
@@ -170,17 +156,6 @@ public class ShopInventoryService {
             throw new RuntimeException("Insufficient stock. Available: " + inventoryTotal.getTotalstock() +
                     ", Requested: " + quantity);
         }
-
-        // Create stock movement record (audit trail)
-        StockMovement movement = StockMovement.builder()
-                .shop(shop)
-                .product(product)
-                .quantity(quantity)
-                .movementType(StockMovement.MovementType.REDUCTION)
-                .notes(notes)
-                .createdAt(LocalDateTime.now())
-                .build();
-        stockMovementRepository.save(movement);
 
         // Update inventory total
         inventoryTotal.setTotalstock(inventoryTotal.getTotalstock() - quantity);
@@ -359,17 +334,6 @@ public class ShopInventoryService {
                     .lastUpdated(LocalDateTime.now())
                     .build();
             inventoryTotalRepository.save(inventoryTotal);
-
-            // Create initial stock movement record
-            StockMovement movement = StockMovement.builder()
-                    .shop(shop)
-                    .product(product)
-                    .quantity(initialQuantity)
-                    .movementType(StockMovement.MovementType.ADDITION)
-                    .notes("Initial inventory creation")
-                    .createdAt(LocalDateTime.now())
-                    .build();
-            stockMovementRepository.save(movement);
 
             log.info("Created shop inventory for shop {} and product {}: initial quantity = {}",
                     shop.getCode(), product.getName(), initialQuantity);
