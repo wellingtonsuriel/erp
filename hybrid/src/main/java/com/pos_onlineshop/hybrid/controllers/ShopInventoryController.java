@@ -134,8 +134,20 @@ public class ShopInventoryController {
             @RequestBody StockUpdateRequest request) {
 
         try {
-            ShopInventory inventory = shopInventoryService.reduceStock(shopId, productId, request.getQuantity());
-            return ResponseEntity.ok(shopInventoryService.toResponse(inventory));
+            // Reduce stock (updates InventoryTotal)
+            shopInventoryService.reduceStock(shopId, productId, request.getQuantity());
+
+            // Fetch the ShopInventory to return complete details
+            Optional<ShopInventory> inventoryOpt = shopInventoryService.getInventory(
+                    shopRepository.findById(shopId).orElseThrow(),
+                    productRepository.findById(productId).orElseThrow()
+            );
+
+            if (inventoryOpt.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            return ResponseEntity.ok(shopInventoryService.toResponse(inventoryOpt.get()));
         } catch (RuntimeException e) {
             log.error("Error reducing stock", e);
             return ResponseEntity.badRequest().build();
