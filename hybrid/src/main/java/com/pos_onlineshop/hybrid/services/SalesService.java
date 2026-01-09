@@ -1,13 +1,21 @@
 package com.pos_onlineshop.hybrid.services;
 
 import com.pos_onlineshop.hybrid.currency.Currency;
+import com.pos_onlineshop.hybrid.currency.CurrencyRepository;
 import com.pos_onlineshop.hybrid.customers.Customers;
+import com.pos_onlineshop.hybrid.customers.CustomersRepository;
+import com.pos_onlineshop.hybrid.dtos.CreateSaleRequest;
+import com.pos_onlineshop.hybrid.dtos.SaleResponse;
+import com.pos_onlineshop.hybrid.dtos.UpdateSaleRequest;
 import com.pos_onlineshop.hybrid.enums.PaymentMethod;
 import com.pos_onlineshop.hybrid.enums.SaleType;
+import com.pos_onlineshop.hybrid.mappers.SaleMapper;
 import com.pos_onlineshop.hybrid.products.Product;
+import com.pos_onlineshop.hybrid.products.ProductRepository;
 import com.pos_onlineshop.hybrid.sales.Sales;
 import com.pos_onlineshop.hybrid.sales.SalesRepository;
 import com.pos_onlineshop.hybrid.shop.Shop;
+import com.pos_onlineshop.hybrid.shop.ShopRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -27,6 +35,52 @@ import java.util.Optional;
 public class SalesService {
 
     private final SalesRepository salesRepository;
+    private final ShopRepository shopRepository;
+    private final CustomersRepository customersRepository;
+    private final ProductRepository productRepository;
+    private final CurrencyRepository currencyRepository;
+    private final SaleMapper saleMapper;
+
+    /**
+     * Create a new sale from DTO
+     */
+    public SaleResponse createSaleFromRequest(CreateSaleRequest request) {
+        log.info("Creating new sale from request for product ID: {}", request.getProductId());
+
+        // Fetch required entities
+        Shop shop = shopRepository.findById(request.getShopId())
+                .orElseThrow(() -> new IllegalArgumentException("Shop not found: " + request.getShopId()));
+
+        Product product = productRepository.findById(request.getProductId())
+                .orElseThrow(() -> new IllegalArgumentException("Product not found: " + request.getProductId()));
+
+        Currency currency = currencyRepository.findById(request.getCurrencyId())
+                .orElseThrow(() -> new IllegalArgumentException("Currency not found: " + request.getCurrencyId()));
+
+        // Fetch optional customer
+        Customers customer = null;
+        if (request.getCustomerId() != null) {
+            customer = customersRepository.findById(request.getCustomerId())
+                    .orElseThrow(() -> new IllegalArgumentException("Customer not found: " + request.getCustomerId()));
+        }
+
+        // Build sale entity
+        Sales sale = Sales.builder()
+                .shop(shop)
+                .customer(customer)
+                .product(product)
+                .quantity(request.getQuantity())
+                .currency(currency)
+                .unitPrice(request.getUnitPrice())
+                .paymentMethod(request.getPaymentMethod())
+                .saleType(request.getSaleType())
+                .build();
+
+        Sales savedSale = salesRepository.save(sale);
+        log.info("Successfully created sale with ID: {}", savedSale.getId());
+
+        return saleMapper.toResponse(savedSale);
+    }
 
     /**
      * Create a new sale
@@ -41,6 +95,67 @@ public class SalesService {
         log.info("Successfully created sale with ID: {}", savedSale.getId());
 
         return savedSale;
+    }
+
+    /**
+     * Update an existing sale from DTO
+     */
+    public SaleResponse updateSaleFromRequest(Long id, UpdateSaleRequest request) {
+        return salesRepository.findById(id)
+                .map(sale -> {
+                    // Update shop if provided
+                    if (request.getShopId() != null) {
+                        Shop shop = shopRepository.findById(request.getShopId())
+                                .orElseThrow(() -> new IllegalArgumentException("Shop not found: " + request.getShopId()));
+                        sale.setShop(shop);
+                    }
+
+                    // Update customer if provided
+                    if (request.getCustomerId() != null) {
+                        Customers customer = customersRepository.findById(request.getCustomerId())
+                                .orElseThrow(() -> new IllegalArgumentException("Customer not found: " + request.getCustomerId()));
+                        sale.setCustomer(customer);
+                    }
+
+                    // Update product if provided
+                    if (request.getProductId() != null) {
+                        Product product = productRepository.findById(request.getProductId())
+                                .orElseThrow(() -> new IllegalArgumentException("Product not found: " + request.getProductId()));
+                        sale.setProduct(product);
+                    }
+
+                    // Update quantity if provided
+                    if (request.getQuantity() != null) {
+                        sale.setQuantity(request.getQuantity());
+                    }
+
+                    // Update currency if provided
+                    if (request.getCurrencyId() != null) {
+                        Currency currency = currencyRepository.findById(request.getCurrencyId())
+                                .orElseThrow(() -> new IllegalArgumentException("Currency not found: " + request.getCurrencyId()));
+                        sale.setCurrency(currency);
+                    }
+
+                    // Update unit price if provided
+                    if (request.getUnitPrice() != null) {
+                        sale.setUnitPrice(request.getUnitPrice());
+                    }
+
+                    // Update payment method if provided
+                    if (request.getPaymentMethod() != null) {
+                        sale.setPaymentMethod(request.getPaymentMethod());
+                    }
+
+                    // Update sale type if provided
+                    if (request.getSaleType() != null) {
+                        sale.setSaleType(request.getSaleType());
+                    }
+
+                    Sales updated = salesRepository.save(sale);
+                    log.info("Updated sale with ID: {}", updated.getId());
+                    return saleMapper.toResponse(updated);
+                })
+                .orElseThrow(() -> new RuntimeException("Sale not found: " + id));
     }
 
     /**

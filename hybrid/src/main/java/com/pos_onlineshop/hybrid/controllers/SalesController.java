@@ -1,6 +1,9 @@
 package com.pos_onlineshop.hybrid.controllers;
 
 import com.pos_onlineshop.hybrid.customers.Customers;
+import com.pos_onlineshop.hybrid.dtos.CreateSaleRequest;
+import com.pos_onlineshop.hybrid.dtos.SaleResponse;
+import com.pos_onlineshop.hybrid.dtos.UpdateSaleRequest;
 import com.pos_onlineshop.hybrid.enums.PaymentMethod;
 import com.pos_onlineshop.hybrid.enums.SaleType;
 import com.pos_onlineshop.hybrid.products.Product;
@@ -269,9 +272,9 @@ public class SalesController {
      */
     @PostMapping
     @PreAuthorize("hasRole('ADMIN') or hasRole('CASHIER')")
-    public ResponseEntity<Sales> createSale(@Valid @RequestBody Sales sale) {
+    public ResponseEntity<SaleResponse> createSale(@Valid @RequestBody CreateSaleRequest request) {
         try {
-            Sales created = salesService.createSale(sale);
+            SaleResponse created = salesService.createSaleFromRequest(request);
             return ResponseEntity.status(HttpStatus.CREATED).body(created);
         } catch (IllegalArgumentException e) {
             log.error("Validation error creating sale", e);
@@ -287,11 +290,11 @@ public class SalesController {
      */
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Sales> updateSale(
+    public ResponseEntity<SaleResponse> updateSale(
             @PathVariable Long id,
-            @Valid @RequestBody Sales saleDetails) {
+            @Valid @RequestBody UpdateSaleRequest request) {
         try {
-            Sales updated = salesService.updateSale(id, saleDetails);
+            SaleResponse updated = salesService.updateSaleFromRequest(id, request);
             return ResponseEntity.ok(updated);
         } catch (IllegalArgumentException e) {
             log.error("Validation error updating sale", e);
