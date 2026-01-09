@@ -6,6 +6,8 @@ import com.pos_onlineshop.hybrid.currency.CurrencyRepository;
 import com.pos_onlineshop.hybrid.dtos.CreateShopInventoryRequest;
 import com.pos_onlineshop.hybrid.dtos.ShopInventoryResponse;
 import com.pos_onlineshop.hybrid.dtos.UpdateShopInventoryRequest;
+import com.pos_onlineshop.hybrid.inventoryTotal.InventoryTotal;
+import com.pos_onlineshop.hybrid.inventoryTotal.InventoryTotalRepository;
 import com.pos_onlineshop.hybrid.products.Product;
 import com.pos_onlineshop.hybrid.products.ProductRepository;
 import com.pos_onlineshop.hybrid.shop.Shop;
@@ -32,6 +34,7 @@ import java.util.stream.Collectors;
 public class ShopInventoryService {
 
     private final ShopInventoryRepository shopInventoryRepository;
+    private final InventoryTotalRepository inventoryTotalRepository;
     private final ShopRepository shopRepository;
     private final ProductRepository productRepository;
     private final SuppliersRepository suppliersRepository;
@@ -72,7 +75,7 @@ public class ShopInventoryService {
 
     /**
      * Add stock to existing inventory
-     * Updates totalStock while keeping quantity unchanged for audit trail
+     * Updates totalStock in InventoryTotal table
      */
     public ShopInventory addStock(Long shopId, Long productId, Integer additionalQuantity) {
         Optional<ShopInventory> inventoryOpt = shopInventoryRepository.findByShopIdAndProductIdWithLock(shopId, productId);
@@ -89,12 +92,15 @@ public class ShopInventoryService {
                 additionalQuantity, inventory.getShop().getCode(), inventory.getProduct().getName(),
                 inventory.getTotalStock());
 
+        // Update InventoryTotal
+        updateInventoryTotal(inventory.getShop(), inventory.getProduct(), additionalQuantity);
+
         return shopInventoryRepository.save(inventory);
     }
 
     /**
      * Reduce stock (for sales or transfers)
-     * Updates totalStock while keeping quantity unchanged for audit trail
+     * Updates totalStock in InventoryTotal table
      */
     public ShopInventory reduceStock(Long shopId, Long productId, Integer quantity) {
         Optional<ShopInventory> inventoryOpt = shopInventoryRepository.findByShopIdAndProductIdWithLock(shopId, productId);
@@ -105,8 +111,15 @@ public class ShopInventoryService {
 
         ShopInventory inventory = inventoryOpt.get();
 
-        if (inventory.getTotalStock() < quantity) {
-            throw new RuntimeException("Insufficient stock. Available: " + inventory.getTotalStock() +
+        // Check InventoryTotal for available stock
+        Optional<InventoryTotal> inventoryTotalOpt = inventoryTotalRepository.findByShopIdAndProductIdWithLock(shopId, productId);
+        if (inventoryTotalOpt.isEmpty()) {
+            throw new RuntimeException("Inventory total not found for shop " + shopId + " and product " + productId);
+        }
+
+        InventoryTotal inventoryTotal = inventoryTotalOpt.get();
+        if (inventoryTotal.getTotalStock() < quantity) {
+            throw new RuntimeException("Insufficient stock. Available: " + inventoryTotal.getTotalStock() +
                     ", Requested: " + quantity);
         }
 
@@ -115,6 +128,9 @@ public class ShopInventoryService {
         log.info("Reduced {} items from inventory for shop {} and product {}. Total stock: {}",
                 quantity, inventory.getShop().getCode(), inventory.getProduct().getName(),
                 inventory.getTotalStock());
+
+        // Update InventoryTotal (reduce stock)
+        updateInventoryTotal(inventory.getShop(), inventory.getProduct(), -quantity);
 
         return shopInventoryRepository.save(inventory);
     }
@@ -224,36 +240,7 @@ public class ShopInventoryService {
         Currency currency = currencyRepository.findById(request.getCurrencyId())
                 .orElseThrow(() -> new RuntimeException("Currency not found with id: " + request.getCurrencyId()));
 
-        // Check if inventory already exists
-        Optional<ShopInventory> existingInventory = shopInventoryRepository.findByShopAndProduct(shop, product);
-        if (existingInventory.isPresent()) {
-            // Update existing inventory instead of throwing error
-            ShopInventory inventory = existingInventory.get();
-
-            // Add new quantity to existing totalStock
-            inventory.setTotalStock(inventory.getTotalStock() + request.getQuantity());
-
-            // Update other fields
-            inventory.setSuppliers(supplier);
-            inventory.setCurrency(currency);
-            inventory.setUnitPrice(request.getUnitPrice());
-            inventory.setExpiryDate(request.getExpiryDate());
-            inventory.setReorderLevel(request.getReorderLevel());
-            inventory.setMinStock(request.getMinStock());
-            inventory.setMaxStock(request.getMaxStock());
-
-            if (request.getInTransitQuantity() != null) {
-                inventory.setInTransitQuantity(inventory.getInTransitQuantity() + request.getInTransitQuantity());
-            }
-
-            ShopInventory updatedInventory = shopInventoryRepository.save(inventory);
-            log.info("Updated existing shop inventory for shop {} and product {}. Added {} to totalStock. New totalStock: {}",
-                    shop.getCode(), product.getName(), request.getQuantity(), updatedInventory.getTotalStock());
-
-            return updatedInventory;
-        }
-
-        // Create new inventory if it doesn't exist
+        // Create new inventory record (allow duplicates)
         ShopInventory shopInventory = ShopInventory.builder()
                 .shop(shop)
                 .product(product)
@@ -270,7 +257,10 @@ public class ShopInventoryService {
                 .build();
 
         ShopInventory savedInventory = shopInventoryRepository.save(shopInventory);
-        log.info("Created new shop inventory for shop {} and product {}", shop.getCode(), product.getName());
+        log.info("Created new shop inventory record for shop {} and product {}", shop.getCode(), product.getName());
+
+        // Update or create InventoryTotal record
+        updateInventoryTotal(shop, product, request.getQuantity());
 
         return savedInventory;
     }
@@ -332,6 +322,37 @@ public class ShopInventoryService {
                 inventory.getShop().getCode(), inventory.getProduct().getName());
 
         return updatedInventory;
+    }
+
+    /**
+     * Update or create InventoryTotal record
+     * This method handles incrementing or decrementing the total stock for a shop-product combination
+     * @param shop the shop
+     * @param product the product
+     * @param quantityChange the quantity to add (positive) or subtract (negative)
+     */
+    private void updateInventoryTotal(Shop shop, Product product, Integer quantityChange) {
+        Optional<InventoryTotal> inventoryTotalOpt = inventoryTotalRepository.findByShopAndProduct(shop, product);
+
+        if (inventoryTotalOpt.isPresent()) {
+            // Update existing InventoryTotal
+            InventoryTotal inventoryTotal = inventoryTotalOpt.get();
+            inventoryTotal.setTotalStock(inventoryTotal.getTotalStock() + quantityChange);
+            inventoryTotal.setUpdatedAt(LocalDateTime.now());
+            inventoryTotalRepository.save(inventoryTotal);
+            log.info("Updated InventoryTotal for shop {} and product {}. Quantity change: {}. New total stock: {}",
+                    shop.getCode(), product.getName(), quantityChange, inventoryTotal.getTotalStock());
+        } else {
+            // Create new InventoryTotal
+            InventoryTotal inventoryTotal = InventoryTotal.builder()
+                    .shop(shop)
+                    .product(product)
+                    .totalStock(quantityChange)
+                    .build();
+            inventoryTotalRepository.save(inventoryTotal);
+            log.info("Created new InventoryTotal for shop {} and product {}. Total stock: {}",
+                    shop.getCode(), product.getName(), quantityChange);
+        }
     }
 
     /**

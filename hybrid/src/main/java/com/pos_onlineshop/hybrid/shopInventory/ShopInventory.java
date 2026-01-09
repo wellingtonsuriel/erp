@@ -14,8 +14,7 @@ import java.time.LocalDateTime;
  * Enhanced with better stock management features.
  */
 @Entity
-@Table(name = "shop_inventories",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"shop_id", "product_id"}))
+@Table(name = "shop_inventories")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
