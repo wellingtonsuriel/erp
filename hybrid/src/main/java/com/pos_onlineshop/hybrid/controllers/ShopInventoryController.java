@@ -82,7 +82,15 @@ public class ShopInventoryController {
     }
 
     /**
-     * Create or update inventory (legacy - for backward compatibility)
+     * Create inventory (CREATE ONLY - legacy endpoint)
+     *
+     * IMPORTANT: This endpoint now ONLY creates new inventory records.
+     * - Returns 400 if inventory already exists
+     * - Use POST /api/shop-inventory with CreateShopInventoryRequest for new creation
+     * - Use PATCH /api/shop-inventory/shop/{shopId}/product/{productId} to update metadata
+     * - Use POST /api/shop-inventory/shop/{shopId}/product/{productId}/add-stock to add stock
+     *
+     * @deprecated Use POST /api/shop-inventory instead for better validation
      */
     @PostMapping("/shop/{shopId}/product/{productId}")
     public ResponseEntity<ShopInventoryResponse> createOrUpdateInventory(
@@ -104,15 +112,26 @@ public class ShopInventoryController {
                     request.getCurrencyId(), request.getUnitPrice(),
                     request.getExpiryDate(), request.getReorderLevel(),
                     request.getMinStock(), request.getMaxStock());
-            return ResponseEntity.ok(shopInventoryService.toResponse(inventory));
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(shopInventoryService.toResponse(inventory));
+        } catch (RuntimeException e) {
+            log.error("Error creating inventory: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
         } catch (Exception e) {
-            log.error("Error creating/updating inventory", e);
+            log.error("Error creating inventory", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
     /**
-     * Add stock to existing inventory
+     * Add stock to existing inventory (WORLD-CLASS IMPLEMENTATION)
+     *
+     * Features:
+     * - Thread-safe with pessimistic locking
+     * - Validates maxStock limits before adding
+     * - Updates quantity (current available stock)
+     * - Increments totalStock (lifetime cumulative additions for audit trail)
+     * - Returns 400 if inventory doesn't exist or would exceed maxStock
      */
     @PostMapping("/shop/{shopId}/product/{productId}/add-stock")
     public ResponseEntity<ShopInventoryResponse> addStock(
@@ -123,8 +142,11 @@ public class ShopInventoryController {
         try {
             ShopInventory inventory = shopInventoryService.addStock(shopId, productId, request.getQuantity());
             return ResponseEntity.ok(shopInventoryService.toResponse(inventory));
+        } catch (IllegalArgumentException e) {
+            log.error("Validation error adding stock: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
         } catch (RuntimeException e) {
-            log.error("Error adding stock", e);
+            log.error("Error adding stock: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
         }
     }
@@ -204,7 +226,15 @@ public class ShopInventoryController {
     }
 
     /**
-     * Create new shop inventory with full details
+     * Create new shop inventory with full details (WORLD-CLASS IMPLEMENTATION)
+     *
+     * Features:
+     * - Strictly creates new records only (returns 400 if exists)
+     * - Initializes totalStock with initial quantity for audit trail
+     * - Validates maxStock limits before creation
+     * - Requires all essential fields (supplier, currency, unitPrice)
+     * - Use addStock() endpoint to increase stock after creation
+     * - Use PATCH endpoint to update metadata (prices, thresholds, etc.)
      */
     @PostMapping
     public ResponseEntity<ShopInventoryResponse> createShopInventory(
@@ -214,8 +244,11 @@ public class ShopInventoryController {
             ShopInventory inventory = shopInventoryService.createShopInventory(request);
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(shopInventoryService.toResponse(inventory));
+        } catch (IllegalArgumentException e) {
+            log.error("Validation error creating shop inventory: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
         } catch (RuntimeException e) {
-            log.error("Error creating shop inventory", e);
+            log.error("Error creating shop inventory: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
         }
     }
