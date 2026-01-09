@@ -81,75 +81,7 @@ public class ShopInventoryController {
         return ResponseEntity.ok(responses);
     }
 
-    /**
-     * Create inventory (CREATE ONLY - legacy endpoint)
-     *
-     * IMPORTANT: This endpoint now ONLY creates new inventory records.
-     * - Returns 400 if inventory already exists
-     * - Use POST /api/shop-inventory with CreateShopInventoryRequest for new creation
-     * - Use PATCH /api/shop-inventory/shop/{shopId}/product/{productId} to update metadata
-     * - Use POST /api/shop-inventory/shop/{shopId}/product/{productId}/add-stock to add stock
-     *
-     * @deprecated Use POST /api/shop-inventory instead for better validation
-     */
-    @PostMapping("/shop/{shopId}/product/{productId}")
-    public ResponseEntity<ShopInventoryResponse> createOrUpdateInventory(
-            @PathVariable Long shopId,
-            @PathVariable Long productId,
-            @RequestBody InventoryRequest request) {
 
-        Optional<Shop> shop = shopRepository.findById(shopId);
-        Optional<Product> product = productRepository.findById(productId);
-
-        if (shop.isEmpty() || product.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-
-        try {
-            ShopInventory inventory = shopInventoryService.createOrUpdateInventory(
-                    shop.get(), product.get(), request.getQuantity(),
-                    request.getInTransitQuantity(), request.getSupplierId(),
-                    request.getCurrencyId(), request.getUnitPrice(),
-                    request.getExpiryDate(), request.getReorderLevel(),
-                    request.getMinStock(), request.getMaxStock());
-            return ResponseEntity.status(HttpStatus.CREATED)
-                    .body(shopInventoryService.toResponse(inventory));
-        } catch (RuntimeException e) {
-            log.error("Error creating inventory: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
-        } catch (Exception e) {
-            log.error("Error creating inventory", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-
-    /**
-     * Add stock to existing inventory (WORLD-CLASS IMPLEMENTATION)
-     *
-     * Features:
-     * - Thread-safe with pessimistic locking
-     * - Validates maxStock limits before adding
-     * - Updates quantity (current available stock)
-     * - Increments totalStock (lifetime cumulative additions for audit trail)
-     * - Returns 400 if inventory doesn't exist or would exceed maxStock
-     */
-    @PostMapping("/shop/{shopId}/product/{productId}/add-stock")
-    public ResponseEntity<ShopInventoryResponse> addStock(
-            @PathVariable Long shopId,
-            @PathVariable Long productId,
-            @RequestBody StockUpdateRequest request) {
-
-        try {
-            ShopInventory inventory = shopInventoryService.addStock(shopId, productId, request.getQuantity());
-            return ResponseEntity.ok(shopInventoryService.toResponse(inventory));
-        } catch (IllegalArgumentException e) {
-            log.error("Validation error adding stock: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
-        } catch (RuntimeException e) {
-            log.error("Error adding stock: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
-        }
-    }
 
     /**
      * Get warehouse inventory for a product

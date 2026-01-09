@@ -69,90 +69,10 @@ public class ShopInventoryService {
         return shopInventoryRepository.findByProduct(product);
     }
 
-    /**
-     * Create inventory for a shop (CREATE ONLY - throws exception if already exists)
-     * For world-class inventory management:
-     * - Strictly creates new records only
-     * - Initializes totalStock with initial quantity
-     * - Validates maxStock limits if provided
-     * - Requires all essential fields (supplier, currency, unitPrice)
-     * - Use updateShopInventory() for metadata updates
-     * - Use addStock() for stock increases
-     */
-    public ShopInventory createOrUpdateInventory(Shop shop, Product product, Integer quantity,
-                                                 Integer inTransitQuantity, Long supplierId,
-                                                 Long currencyId, BigDecimal unitPrice,
-                                                 LocalDateTime expiryDate, Integer reorderLevel,
-                                                 Integer minStock, Integer maxStock) {
-        // Check if inventory already exists
-        Optional<ShopInventory> existingInventory = shopInventoryRepository.findByShopAndProduct(shop, product);
-
-        if (existingInventory.isPresent()) {
-            throw new RuntimeException("Inventory already exists for shop " + shop.getCode() +
-                    " and product " + product.getName() +
-                    ". Use updateShopInventory() to modify metadata or addStock() to increase stock.");
-        }
-
-        // Validate required fields
-        if (supplierId == null) {
-            throw new IllegalArgumentException("Supplier is required when creating inventory");
-        }
-        if (currencyId == null) {
-            throw new IllegalArgumentException("Currency is required when creating inventory");
-        }
-        if (unitPrice == null) {
-            throw new IllegalArgumentException("Unit price is required when creating inventory");
-        }
-
-        // Resolve supplier and currency
-        Suppliers supplier = suppliersRepository.findById(supplierId)
-                .orElseThrow(() -> new RuntimeException("Supplier not found with id: " + supplierId));
-
-        Currency currency = currencyRepository.findById(currencyId)
-                .orElseThrow(() -> new RuntimeException("Currency not found with id: " + currencyId));
-
-        // Initialize quantities with defaults
-        int initialQuantity = quantity != null ? quantity : 0;
-        int initialInTransit = inTransitQuantity != null ? inTransitQuantity : 0;
-
-        // Validate against maxStock if provided
-        if (maxStock != null && (initialQuantity + initialInTransit) > maxStock) {
-            throw new IllegalArgumentException("Initial stock (" + (initialQuantity + initialInTransit) +
-                    ") exceeds maximum stock limit (" + maxStock + ")");
-        }
-
-        // Create new inventory with totalStock initialized to initial quantity
-        ShopInventory newInventory = ShopInventory.builder()
-                .shop(shop)
-                .product(product)
-                .quantity(initialQuantity)
-                .inTransitQuantity(initialInTransit)
-                .totalStock(initialQuantity) // Initialize totalStock with initial quantity
-                .suppliers(supplier)
-                .currency(currency)
-                .unitPrice(unitPrice)
-                .expiryDate(expiryDate)
-                .reorderLevel(reorderLevel)
-                .minStock(minStock)
-                .maxStock(maxStock)
-                .build();
-
-        ShopInventory savedInventory = shopInventoryRepository.save(newInventory);
-
-        log.info("Created new inventory for shop {} and product {}: quantity = {}, totalStock = {}",
-                shop.getCode(), product.getName(), initialQuantity, initialQuantity);
-
-        return savedInventory;
-    }
 
     /**
-     * Add stock to existing inventory (WORLD-CLASS IMPLEMENTATION)
-     * Features:
-     * - Thread-safe with pessimistic locking
-     * - Validates maxStock limits before adding
-     * - Increments both quantity and totalStock
-     * - Maintains audit trail via totalStock
-     * - Atomic transaction
+     * Add stock to existing inventory
+     * Updates totalStock while keeping quantity unchanged for audit trail
      */
     public ShopInventory addStock(Long shopId, Long productId, Integer additionalQuantity) {
         // Validate input
@@ -170,22 +90,11 @@ public class ShopInventoryService {
 
         ShopInventory inventory = inventoryOpt.get();
 
-        // Calculate new quantities
-        int newQuantity = inventory.getQuantity() + additionalQuantity;
-        int newTotalStock = inventory.getTotalStock() + additionalQuantity;
+        inventory.setTotalStock(inventory.getTotalStock() + additionalQuantity);
 
-        // Validate against maxStock limit
-        if (inventory.getMaxStock() != null && newQuantity > inventory.getMaxStock()) {
-            throw new IllegalArgumentException(String.format(
-                    "Cannot add stock: Would exceed maximum stock limit. " +
-                    "Current: %d, Adding: %d, New Total: %d, Max Allowed: %d",
-                    inventory.getQuantity(), additionalQuantity, newQuantity, inventory.getMaxStock()
-            ));
-        }
-
-        // Update both current quantity and lifetime total
-        inventory.setQuantity(newQuantity);
-        inventory.setTotalStock(newTotalStock);
+        log.info("Added {} items to inventory for shop {} and product {}. Total stock: {}",
+                additionalQuantity, inventory.getShop().getCode(), inventory.getProduct().getName(),
+                inventory.getTotalStock());
 
         ShopInventory savedInventory = shopInventoryRepository.save(inventory);
 
@@ -203,6 +112,7 @@ public class ShopInventoryService {
 
     /**
      * Reduce stock (for sales or transfers)
+     * Updates totalStock while keeping quantity unchanged for audit trail
      */
     public ShopInventory reduceStock(Long shopId, Long productId, Integer quantity) {
         Optional<ShopInventory> inventoryOpt = shopInventoryRepository.findByShopIdAndProductIdWithLock(shopId, productId);
@@ -213,15 +123,16 @@ public class ShopInventoryService {
 
         ShopInventory inventory = inventoryOpt.get();
 
-        if (inventory.getQuantity() < quantity) {
-            throw new RuntimeException("Insufficient stock. Available: " + inventory.getQuantity() +
+        if (inventory.getTotalStock() < quantity) {
+            throw new RuntimeException("Insufficient stock. Available: " + inventory.getTotalStock() +
                     ", Requested: " + quantity);
         }
 
-        inventory.setQuantity(inventory.getQuantity() - quantity);
+        inventory.setTotalStock(inventory.getTotalStock() - quantity);
 
-        log.info("Reduced {} items from inventory for shop {} and product {}",
-                quantity, inventory.getShop().getCode(), inventory.getProduct().getName());
+        log.info("Reduced {} items from inventory for shop {} and product {}. Total stock: {}",
+                quantity, inventory.getShop().getCode(), inventory.getProduct().getName(),
+                inventory.getTotalStock());
 
         return shopInventoryRepository.save(inventory);
     }
@@ -237,12 +148,12 @@ public class ShopInventoryService {
 
     /**
      * Check if product is in stock with sufficient quantity
+     * Checks against totalStock (current available stock)
      */
     @Transactional(readOnly = true)
     public boolean isInStock(Long shopId, Long productId, Integer requiredQuantity) {
         Optional<ShopInventory> inventoryOpt = shopInventoryRepository.findByShopAndProduct(
                 shopRepository.findById(shopId).orElse(null),
-                // Assuming you have ProductRepository injected
                 productRepository.findById(productId).orElse(null)
         );
 
@@ -251,7 +162,7 @@ public class ShopInventoryService {
         }
 
         ShopInventory inventory = inventoryOpt.get();
-        return inventory.getQuantity() >= requiredQuantity;
+        return inventory.getTotalStock() >= requiredQuantity;
     }
 
     /**
@@ -298,7 +209,7 @@ public class ShopInventoryService {
 
         ShopInventory inventory = inventoryOpt.get();
 
-        if (inventory.getQuantity() > 0) {
+        if (inventory.getTotalStock() > 0) {
             throw new RuntimeException("Cannot delete inventory with existing stock");
         }
 
@@ -359,9 +270,9 @@ public class ShopInventoryService {
                 .product(product)
                 .suppliers(supplier)
                 .currency(currency)
-                .quantity(initialQuantity)
-                .inTransitQuantity(initialInTransit)
-                .totalStock(initialQuantity) // Initialize totalStock with initial quantity
+                .quantity(request.getQuantity())
+                .totalStock(request.getQuantity()) // Initialize totalStock with quantity for audit trail
+                .inTransitQuantity(request.getInTransitQuantity() != null ? request.getInTransitQuantity() : 0)
                 .unitPrice(request.getUnitPrice())
                 .expiryDate(request.getExpiryDate())
                 .reorderLevel(request.getReorderLevel())
@@ -401,9 +312,8 @@ public class ShopInventoryService {
             inventory.setCurrency(currency);
         }
 
-        if (request.getQuantity() != null) {
-            inventory.setQuantity(request.getQuantity());
-        }
+        // Note: quantity is immutable (for audit trail) and cannot be updated
+        // Use addStock() or reduceStock() methods to change totalStock
 
         if (request.getInTransitQuantity() != null) {
             inventory.setInTransitQuantity(request.getInTransitQuantity());
@@ -451,6 +361,7 @@ public class ShopInventoryService {
                 .supplierId(inventory.getSuppliers() != null ? inventory.getSuppliers().getId() : null)
                 .supplierName(inventory.getSuppliers() != null ? inventory.getSuppliers().getName() : null)
                 .quantity(inventory.getQuantity())
+                .totalStock(inventory.getTotalStock())
                 .inTransitQuantity(inventory.getInTransitQuantity())
                 .totalStock(inventory.getTotalStock())
                 .currencyId(inventory.getCurrency() != null ? inventory.getCurrency().getId() : null)

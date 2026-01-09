@@ -48,6 +48,10 @@ public class ShopInventory {
     @Builder.Default
     private Integer quantity = 0;
 
+    @Column(name = "total_stock", nullable = false)
+    @Builder.Default
+    private Integer totalStock = 0;
+
     @Column(name = "in_transit_quantity", nullable = false)
     @Builder.Default
     private Integer inTransitQuantity = 0;

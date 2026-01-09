@@ -209,24 +209,14 @@ public class InventoryTransferService {
                         item.getProduct().getId(),
                         item.getRequestedQuantity());
 
-                // 2. Create or update inventory record in destination shop if it doesn't exist
+                // 2. Check that destination shop has inventory record
                 Optional<ShopInventory> destinationInventory = shopInventoryService.getInventory(
                         transfer.getToShop(), item.getProduct());
 
                 if (destinationInventory.isEmpty()) {
-                    // Create new inventory record with 0 quantity but with in-transit
-                    shopInventoryService.createOrUpdateInventory(
-                            transfer.getToShop(),
-                            item.getProduct(),
-                            0,
-                            null,
-                            null,
-                            null,
-                            null,
-                            null,
-                            null,
-                            null,
-                            null);
+                    throw new RuntimeException("Destination shop " + transfer.getToShop().getName() +
+                            " must have inventory record for product " + item.getProduct().getName() +
+                            " before transfer. Please create inventory first using createShopInventory().");
                 }
 
                 // 3. Add in-transit quantity to destination shop
