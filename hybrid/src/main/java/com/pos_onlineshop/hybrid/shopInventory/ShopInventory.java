@@ -48,9 +48,7 @@ public class ShopInventory {
     @Builder.Default
     private Integer quantity = 0;
 
-    @Column(name = "total_stock", nullable = false)
-    @Builder.Default
-    private Integer totalStock = 0;
+
 
     @Column(name = "in_transit_quantity", nullable = false)
     @Builder.Default
@@ -60,9 +58,7 @@ public class ShopInventory {
      * Total cumulative stock added to this inventory (lifetime tracking)
      * This field only increases with addStock operations and provides audit trail
      */
-    @Column(name = "total_stock", nullable = false)
-    @Builder.Default
-    private Integer totalStock = 0;
+
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "currency_id", nullable = false)
