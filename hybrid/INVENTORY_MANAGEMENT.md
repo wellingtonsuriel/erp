@@ -8,16 +8,15 @@ This document describes the enhanced inventory management system with proper sep
 
 ### 1. **Separation of Concerns**
 - **ShopInventory**: Stores metadata (prices, thresholds, suppliers, etc.) - one record per shop/product
-- **InventoryTotal**: Maintains running total stock per shop/product
-- **StockMovement**: Audit trail of all stock additions and reductions (creates new record for each operation)
-- **ADD STOCK**: Creates StockMovement record and updates InventoryTotal
-- **REDUCE STOCK**: Creates StockMovement record and updates InventoryTotal
+- **InventoryTotal**: Maintains running total stock per shop/product with built-in audit tracking
+- **ADD STOCK**: Updates InventoryTotal
+- **REDUCE STOCK**: Updates InventoryTotal
 
 ### 2. **Data Integrity**
 - `ShopInventory.quantity`: Configuration field for initial quantity
 - `ShopInventory.inTransitQuantity`: Stock in transit from suppliers
 - `InventoryTotal.totalstock`: **Current available stock** (increases with additions, decreases with reductions)
-- `StockMovement`: **Complete audit trail** - new record for each stock operation
+- `InventoryTotal.lastUpdated`: Timestamp of last stock operation for audit purposes
 
 ### 3. **Thread Safety**
 - All stock operations use pessimistic locking
@@ -64,20 +63,6 @@ Maintains running total stock per shop/product.
 | `lastUpdated` | DateTime | Last update timestamp |
 | `version` | Long | Optimistic locking version |
 
-### StockMovement
-Audit trail of all stock operations.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | Long | Primary key |
-| `shop` | Shop | Reference to shop |
-| `product` | Product | Reference to product |
-| `quantity` | Integer | Quantity added or reduced |
-| `movementType` | Enum | ADDITION, REDUCTION, or ADJUSTMENT |
-| `notes` | String | Optional notes |
-| `createdAt` | DateTime | Operation timestamp |
-| `createdBy` | String | User who performed operation |
-
 ---
 
 ## API Endpoints
@@ -123,8 +108,7 @@ Content-Type: application/json
 3. Validates initial stock doesn't exceed maxStock
 4. Creates ShopInventory record
 5. Creates InventoryTotal record with initial quantity
-6. Creates StockMovement record (type: ADDITION) for audit trail
-7. Returns 400 if inventory exists or validation fails
+6. Returns 400 if inventory exists or validation fails
 
 ---
 
@@ -152,12 +136,9 @@ Content-Type: application/json
 
 **Business Logic:**
 1. Validates quantity is positive
-2. Creates a new **StockMovement** record (audit trail):
-   - quantity: 100
-   - movementType: ADDITION
-   - notes: "Received from supplier XYZ"
-3. Acquires pessimistic lock on InventoryTotal
-4. Updates InventoryTotal: `totalstock += 100`
+2. Acquires pessimistic lock on InventoryTotal
+3. Updates InventoryTotal: `totalstock += 100`
+4. Updates lastUpdated timestamp
 5. Returns updated InventoryTotal
 
 **Example Validation Error:**
@@ -210,12 +191,9 @@ Content-Type: application/json
 **Business Logic:**
 1. Validates quantity is positive
 2. Validates sufficient stock available in InventoryTotal
-3. Creates a new **StockMovement** record (audit trail):
-   - quantity: 30
-   - movementType: REDUCTION
-   - notes: "Sold to customer"
-4. Acquires pessimistic lock on InventoryTotal
-5. Updates InventoryTotal: `totalstock -= 30`
+3. Acquires pessimistic lock on InventoryTotal
+4. Updates InventoryTotal: `totalstock -= 30`
+5. Updates lastUpdated timestamp
 6. Returns updated InventoryTotal
 
 ---
@@ -236,32 +214,28 @@ Content-Type: application/json
    }
    Database Records Created:
    - ShopInventory: id=123, quantity=50, unitPrice=10.50, ...
-   - InventoryTotal: id=1, totalstock=50
-   - StockMovement: id=1, quantity=50, type=ADDITION, notes="Initial inventory creation"
+   - InventoryTotal: id=1, totalstock=50, lastUpdated=2026-01-09 10:00
 
 2. Add Stock (First Purchase)
    POST /api/shop-inventory/shop/1/product/100/add-stock
    { "quantity": 100, "notes": "Purchase order #123" }
    Database Records:
    - ShopInventory: unchanged
-   - InventoryTotal: totalstock=150 (was 50)
-   - StockMovement: NEW RECORD id=2, quantity=100, type=ADDITION
+   - InventoryTotal: totalstock=150 (was 50), lastUpdated=2026-01-09 11:00
 
 3. Sell Products (Reduce Stock)
    POST /api/shop-inventory/shop/1/product/100/reduce-stock
    { "quantity": 30, "notes": "Sale #456" }
    Database Records:
    - ShopInventory: unchanged
-   - InventoryTotal: totalstock=120 (was 150)
-   - StockMovement: NEW RECORD id=3, quantity=30, type=REDUCTION
+   - InventoryTotal: totalstock=120 (was 150), lastUpdated=2026-01-09 12:00
 
 4. Add Stock (Second Purchase)
    POST /api/shop-inventory/shop/1/product/100/add-stock
    { "quantity": 50, "notes": "Purchase order #124" }
    Database Records:
    - ShopInventory: unchanged
-   - InventoryTotal: totalstock=170 (was 120)
-   - StockMovement: NEW RECORD id=4, quantity=50, type=ADDITION
+   - InventoryTotal: totalstock=170 (was 120), lastUpdated=2026-01-09 13:00
 
 5. Update Price (Metadata)
    PATCH /api/shop-inventory/shop/1/product/100
@@ -269,22 +243,11 @@ Content-Type: application/json
    Database Records:
    - ShopInventory: unitPrice updated to 12.00
    - InventoryTotal: unchanged
-   - StockMovement: no new record
 ```
-
-**Audit Trail (StockMovement table):**
-| ID | Quantity | Type | Notes | Created At |
-|----|----------|------|-------|------------|
-| 1  | 50       | ADDITION | Initial inventory creation | 2026-01-09 10:00 |
-| 2  | 100      | ADDITION | Purchase order #123 | 2026-01-09 11:00 |
-| 3  | 30       | REDUCTION | Sale #456 | 2026-01-09 12:00 |
-| 4  | 50       | ADDITION | Purchase order #124 | 2026-01-09 13:00 |
 
 **Current State:**
 - InventoryTotal.totalstock = 170 (current available stock)
-- Total additions: 50 + 100 + 50 = 200
-- Total reductions: 30
-- Net stock: 200 - 30 = 170 ✓
+- For detailed audit trail, use InventoryTransfer records
 
 ---
 
@@ -327,24 +290,6 @@ CREATE TABLE inventory_total (
   CONSTRAINT fk_invtotal_shop FOREIGN KEY (shop_id) REFERENCES shops(id),
   CONSTRAINT fk_invtotal_product FOREIGN KEY (product_id) REFERENCES products(id)
 );
-
--- StockMovement: Complete audit trail
-CREATE TABLE stock_movements (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-  shop_id BIGINT NOT NULL,
-  product_id BIGINT NOT NULL,
-  quantity INT NOT NULL,
-  movement_type VARCHAR(20) NOT NULL,
-  notes VARCHAR(500),
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  created_by VARCHAR(255),
-
-  INDEX idx_shop_product (shop_id, product_id),
-  INDEX idx_created_at (created_at),
-  INDEX idx_movement_type (movement_type),
-  CONSTRAINT fk_stockmove_shop FOREIGN KEY (shop_id) REFERENCES shops(id),
-  CONSTRAINT fk_stockmove_product FOREIGN KEY (product_id) REFERENCES products(id)
-);
 ```
 
 ---
@@ -371,14 +316,13 @@ The application uses `spring.jpa.hibernate.ddl-auto=update`, so the column will 
 
 ## Benefits of This Design
 
-### 1. **Complete Audit Trail**
-- **StockMovement** table creates a new record for every stock operation
-- Never modified or deleted - complete historical record
-- Tracks who performed operations, when, and why (via notes)
-- Can reconstruct inventory state at any point in time
+### 1. **Simplified Audit Trail**
+- **InventoryTotal** table tracks current stock levels with lastUpdated timestamp
+- Use **InventoryTransfer** module for detailed transfer tracking between locations
+- Simplified design reduces database complexity
 
 ### 2. **Data Integrity**
-- Separate tables for metadata (ShopInventory), totals (InventoryTotal), and audit (StockMovement)
+- Separate tables for metadata (ShopInventory) and totals (InventoryTotal)
 - Validation ensures business rules are always enforced
 - Thread-safe operations with pessimistic locking prevent race conditions
 - Optimistic locking on InventoryTotal prevents lost updates
@@ -392,14 +336,14 @@ The application uses `spring.jpa.hibernate.ddl-auto=update`, so the column will 
 ### 4. **Performance**
 - Pessimistic locking only where needed (InventoryTotal operations)
 - Read-only queries don't acquire locks
-- Indexed fields for fast lookups (shop_id, product_id, created_at)
-- StockMovement inserts are fast (append-only, no updates)
+- Indexed fields for fast lookups (shop_id, product_id)
+- Fewer tables means simpler queries and better performance
 
 ### 5. **Scalability & Analytics**
-- Separate audit table allows independent archival strategies
-- Can query StockMovement for detailed analytics without impacting operational tables
+- Simplified table structure reduces database overhead
 - InventoryTotal provides fast current stock lookups
 - ShopInventory metadata rarely changes, can be heavily cached
+- Use InventoryTransfer for detailed movement tracking and analytics
 
 ---
 
@@ -448,42 +392,17 @@ FROM inventory_total it
 JOIN products p ON it.product_id = p.id
 GROUP BY p.id, p.name;
 
--- Stock movement summary (audit analysis)
+-- Recent inventory updates
 SELECT
+  it.last_updated,
   s.code as shop_code,
   p.name as product_name,
-  SUM(CASE WHEN movement_type = 'ADDITION' THEN quantity ELSE 0 END) as total_additions,
-  SUM(CASE WHEN movement_type = 'REDUCTION' THEN quantity ELSE 0 END) as total_reductions,
-  SUM(CASE WHEN movement_type = 'ADDITION' THEN quantity ELSE -quantity END) as net_change
-FROM stock_movements sm
-JOIN shops s ON sm.shop_id = s.id
-JOIN products p ON sm.product_id = p.id
-GROUP BY s.code, p.name;
-
--- Recent stock movements (last 7 days)
-SELECT
-  sm.created_at,
-  s.code as shop_code,
-  p.name as product_name,
-  sm.quantity,
-  sm.movement_type,
-  sm.notes
-FROM stock_movements sm
-JOIN shops s ON sm.shop_id = s.id
-JOIN products p ON sm.product_id = p.id
-WHERE sm.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-ORDER BY sm.created_at DESC;
-
--- Verify inventory integrity (should always match)
-SELECT
-  it.shop_id,
-  it.product_id,
-  it.totalstock as current_total,
-  COALESCE(SUM(CASE WHEN sm.movement_type = 'ADDITION' THEN sm.quantity ELSE -sm.quantity END), 0) as calculated_total
+  it.totalstock as current_stock
 FROM inventory_total it
-LEFT JOIN stock_movements sm ON it.shop_id = sm.shop_id AND it.product_id = sm.product_id
-GROUP BY it.shop_id, it.product_id, it.totalstock
-HAVING current_total != calculated_total;
+JOIN shops s ON it.shop_id = s.id
+JOIN products p ON it.product_id = p.id
+WHERE it.last_updated >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+ORDER BY it.last_updated DESC;
 
 -- Products approaching max capacity
 SELECT
