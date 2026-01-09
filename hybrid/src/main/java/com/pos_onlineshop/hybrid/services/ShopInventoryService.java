@@ -241,8 +241,8 @@ public class ShopInventoryService {
     /**
      * Create new shop inventory with full details
      * Features:
-     * - Validates inventory doesn't already exist
-     * - Creates InventoryTotal record with initial quantity
+     * - Creates a new record each time for audit/record-keeping purposes
+     * - Adds quantity to InventoryTotal (cumulative stock tracking)
      * - Validates maxStock limits
      * - Strict validation of all required fields
      */
@@ -259,8 +259,6 @@ public class ShopInventoryService {
         Currency currency = currencyRepository.findById(request.getCurrencyId())
                 .orElseThrow(() -> new RuntimeException("Currency not found with id: " + request.getCurrencyId()));
 
-
-
         // Initialize quantities
         int initialQuantity = request.getQuantity() != null ? request.getQuantity() : 0;
 
@@ -270,6 +268,7 @@ public class ShopInventoryService {
                     ") exceeds maximum stock limit (" + request.getMaxStock() + ")");
         }
 
+        // Always create a new inventory record (for audit trail)
         ShopInventory shopInventory = ShopInventory.builder()
                 .shop(shop)
                 .product(product)
@@ -285,20 +284,13 @@ public class ShopInventoryService {
 
         ShopInventory savedInventory = shopInventoryRepository.save(shopInventory);
 
-        // Create inventory total record
+        // Add to inventory total (cumulative tracking)
         if (initialQuantity > 0) {
-            InventoryTotal inventoryTotal = InventoryTotal.builder()
-                    .shop(shop)
-                    .product(product)
-                    .totalstock(initialQuantity)
-                    .lastUpdated(LocalDateTime.now())
-                    .build();
-            inventoryTotalRepository.save(inventoryTotal);
-
-            log.info("Created shop inventory for shop {} and product {}: initial quantity = {}",
+            addStock(shop.getId(), product.getId(), initialQuantity);
+            log.info("Created shop inventory record for shop {} and product {}: quantity = {}",
                     shop.getCode(), product.getName(), initialQuantity);
         } else {
-            log.info("Created shop inventory for shop {} and product {} with zero initial quantity",
+            log.info("Created shop inventory record for shop {} and product {} with zero quantity",
                     shop.getCode(), product.getName());
         }
 
