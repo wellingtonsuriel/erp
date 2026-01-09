@@ -219,13 +219,7 @@ public class InventoryTransferService {
                             " before transfer. Please create inventory first using createShopInventory().");
                 }
 
-                // 3. Add in-transit quantity to destination shop
-                shopInventoryService.updateInTransitQuantity(
-                        transfer.getToShop().getId(),
-                        item.getProduct().getId(),
-                        item.getRequestedQuantity());
-
-                // 4. Mark as shipped in transfer item
+                // 3. Mark as shipped in transfer item
                 item.setShippedQuantity(item.getRequestedQuantity());
 
                 log.debug("Shipped {} units of {} from shop {} to shop {}",
@@ -284,13 +278,7 @@ public class InventoryTransferService {
             transferItem.receiveQuantity(receivedItem.getReceivedQuantity(), receivedItem.getDamagedQuantity());
 
             try {
-                // 1. Remove in-transit quantity from destination shop
-                shopInventoryService.updateInTransitQuantity(
-                        transfer.getToShop().getId(),
-                        transferItem.getProduct().getId(),
-                        -transferItem.getShippedQuantity());
-
-                // 2. Add received stock to destination shop inventory
+                // 1. Add received stock to destination shop inventory
                 if (receivedItem.getReceivedQuantity() > 0) {
                     shopInventoryService.addStock(
                             transfer.getToShop().getId(),
@@ -303,7 +291,7 @@ public class InventoryTransferService {
                             transfer.getToShop().getName());
                 }
 
-                // 3. Log damaged items (these are not added to inventory)
+                // 2. Log damaged items (these are not added to inventory)
                 if (receivedItem.getDamagedQuantity() != null && receivedItem.getDamagedQuantity() > 0) {
                     log.warn("Received {} damaged units of {} in transfer {} - not added to inventory",
                             receivedItem.getDamagedQuantity(),
@@ -311,7 +299,7 @@ public class InventoryTransferService {
                             transfer.getTransferNumber());
                 }
 
-                // 4. Handle partial receipts (items not received at all)
+                // 3. Handle partial receipts (items not received at all)
                 int unreceivedQuantity = transferItem.getShippedQuantity() - totalReceived;
                 if (unreceivedQuantity > 0) {
                     log.warn("Missing {} units of {} in transfer {} - possible loss or theft",
@@ -366,18 +354,10 @@ public class InventoryTransferService {
                             item.getProduct().getId(),
                             item.getShippedQuantity());
 
-                    // 2. Remove in-transit quantity from destination shop
-                    shopInventoryService.updateInTransitQuantity(
-                            transfer.getToShop().getId(),
-                            item.getProduct().getId(),
-                            -item.getShippedQuantity());
-
-                    log.debug("Reversed inventory for product {} - returned {} units to {}, removed {} in-transit from {}",
+                    log.debug("Reversed inventory for product {} - returned {} units to {}",
                             item.getProduct().getName(),
                             item.getShippedQuantity(),
-                            transfer.getFromShop().getName(),
-                            item.getShippedQuantity(),
-                            transfer.getToShop().getName());
+                            transfer.getFromShop().getName());
 
                 } catch (Exception e) {
                     log.error("Error reversing inventory during cancellation for product {}: {}",
