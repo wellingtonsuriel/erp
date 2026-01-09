@@ -259,13 +259,7 @@ public class ShopInventoryService {
         Currency currency = currencyRepository.findById(request.getCurrencyId())
                 .orElseThrow(() -> new RuntimeException("Currency not found with id: " + request.getCurrencyId()));
 
-        // Check if inventory already exists
-        Optional<ShopInventory> existingInventory = shopInventoryRepository.findByShopAndProduct(shop, product);
-        if (existingInventory.isPresent()) {
-            throw new RuntimeException("Inventory already exists for shop " + shop.getCode() +
-                    " and product " + product.getName() +
-                    ". Use addStock() to increase stock or updateShopInventory() to modify metadata.");
-        }
+
 
         // Initialize quantities
         int initialQuantity = request.getQuantity() != null ? request.getQuantity() : 0;
