@@ -227,10 +227,33 @@ public class ShopInventoryService {
         // Check if inventory already exists
         Optional<ShopInventory> existingInventory = shopInventoryRepository.findByShopAndProduct(shop, product);
         if (existingInventory.isPresent()) {
-            throw new RuntimeException("Inventory already exists for shop " + shop.getCode() +
-                    " and product " + product.getName());
+            // Update existing inventory instead of throwing error
+            ShopInventory inventory = existingInventory.get();
+
+            // Add new quantity to existing totalStock
+            inventory.setTotalStock(inventory.getTotalStock() + request.getQuantity());
+
+            // Update other fields
+            inventory.setSuppliers(supplier);
+            inventory.setCurrency(currency);
+            inventory.setUnitPrice(request.getUnitPrice());
+            inventory.setExpiryDate(request.getExpiryDate());
+            inventory.setReorderLevel(request.getReorderLevel());
+            inventory.setMinStock(request.getMinStock());
+            inventory.setMaxStock(request.getMaxStock());
+
+            if (request.getInTransitQuantity() != null) {
+                inventory.setInTransitQuantity(inventory.getInTransitQuantity() + request.getInTransitQuantity());
+            }
+
+            ShopInventory updatedInventory = shopInventoryRepository.save(inventory);
+            log.info("Updated existing shop inventory for shop {} and product {}. Added {} to totalStock. New totalStock: {}",
+                    shop.getCode(), product.getName(), request.getQuantity(), updatedInventory.getTotalStock());
+
+            return updatedInventory;
         }
 
+        // Create new inventory if it doesn't exist
         ShopInventory shopInventory = ShopInventory.builder()
                 .shop(shop)
                 .product(product)
@@ -247,7 +270,7 @@ public class ShopInventoryService {
                 .build();
 
         ShopInventory savedInventory = shopInventoryRepository.save(shopInventory);
-        log.info("Created shop inventory for shop {} and product {}", shop.getCode(), product.getName());
+        log.info("Created new shop inventory for shop {} and product {}", shop.getCode(), product.getName());
 
         return savedInventory;
     }
