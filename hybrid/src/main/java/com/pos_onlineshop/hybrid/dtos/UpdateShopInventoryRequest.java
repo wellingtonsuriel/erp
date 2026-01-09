@@ -18,9 +18,6 @@ public class UpdateShopInventoryRequest {
 
     private Long currencyId;
 
-    @PositiveOrZero(message = "In-transit quantity must be zero or positive")
-    private Integer inTransitQuantity;
-
     private BigDecimal unitPrice;
 
     private LocalDateTime expiryDate;

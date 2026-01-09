@@ -31,10 +31,6 @@ public class CreateShopInventoryRequest {
     @PositiveOrZero(message = "Quantity must be zero or positive")
     private Integer quantity;
 
-    @PositiveOrZero(message = "In-transit quantity must be zero or positive")
-    @Builder.Default
-    private Integer inTransitQuantity = 0;
-
     @NotNull(message = "Unit price is required")
     private BigDecimal unitPrice;
 
