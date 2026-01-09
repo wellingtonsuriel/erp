@@ -24,7 +24,6 @@ public class ShopInventoryResponse {
     private String supplierName;
     private Integer quantity;
     private Integer totalStock;
-    private Integer inTransitQuantity;
      // Total cumulative stock added (audit trail)
     private Long currencyId;
     private String currencyCode;

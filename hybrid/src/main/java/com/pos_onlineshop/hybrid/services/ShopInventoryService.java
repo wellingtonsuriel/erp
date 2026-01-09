@@ -202,38 +202,6 @@ public class ShopInventoryService {
     }
 
     /**
-     * Update in-transit quantity for inventory transfers
-     * @param shopId the shop ID
-     * @param productId the product ID
-     * @param quantityChange the quantity change (positive to add, negative to subtract)
-     */
-    public ShopInventory updateInTransitQuantity(Long shopId, Long productId, Integer quantityChange) {
-        Optional<ShopInventory> inventoryOpt = shopInventoryRepository.findByShopIdAndProductIdWithLock(shopId, productId);
-
-        if (inventoryOpt.isEmpty()) {
-            throw new RuntimeException("Inventory not found for shop " + shopId + " and product " + productId);
-        }
-
-        ShopInventory inventory = inventoryOpt.get();
-        int newInTransitQuantity = inventory.getInTransitQuantity() + quantityChange;
-
-        if (newInTransitQuantity < 0) {
-            throw new RuntimeException("In-transit quantity cannot be negative. Current: " +
-                    inventory.getInTransitQuantity() + ", Attempting to change by: " + quantityChange);
-        }
-
-        inventory.setInTransitQuantity(newInTransitQuantity);
-
-        log.info("Updated in-transit quantity for shop {} and product {}: {} -> {}",
-                inventory.getShop().getCode(),
-                inventory.getProduct().getName(),
-                inventory.getInTransitQuantity() - quantityChange,
-                newInTransitQuantity);
-
-        return shopInventoryRepository.save(inventory);
-    }
-
-    /**
      * Delete inventory record and inventory total
      */
     public void deleteInventory(Long shopId, Long productId) {
@@ -301,11 +269,10 @@ public class ShopInventoryService {
 
         // Initialize quantities
         int initialQuantity = request.getQuantity() != null ? request.getQuantity() : 0;
-        int initialInTransit = request.getInTransitQuantity() != null ? request.getInTransitQuantity() : 0;
 
         // Validate against maxStock if provided
-        if (request.getMaxStock() != null && (initialQuantity + initialInTransit) > request.getMaxStock()) {
-            throw new IllegalArgumentException("Initial stock (" + (initialQuantity + initialInTransit) +
+        if (request.getMaxStock() != null && initialQuantity > request.getMaxStock()) {
+            throw new IllegalArgumentException("Initial stock (" + initialQuantity +
                     ") exceeds maximum stock limit (" + request.getMaxStock() + ")");
         }
 
@@ -315,7 +282,6 @@ public class ShopInventoryService {
                 .suppliers(supplier)
                 .currency(currency)
                 .quantity(request.getQuantity())
-                .inTransitQuantity(request.getInTransitQuantity() != null ? request.getInTransitQuantity() : 0)
                 .unitPrice(request.getUnitPrice())
                 .expiryDate(request.getExpiryDate())
                 .reorderLevel(request.getReorderLevel())
@@ -373,10 +339,6 @@ public class ShopInventoryService {
         // Note: quantity is immutable (for audit trail) and cannot be updated
         // Use addStock() or reduceStock() methods to change totalStock
 
-        if (request.getInTransitQuantity() != null) {
-            inventory.setInTransitQuantity(request.getInTransitQuantity());
-        }
-
         if (request.getUnitPrice() != null) {
             inventory.setUnitPrice(request.getUnitPrice());
         }
@@ -430,7 +392,6 @@ public class ShopInventoryService {
                 .supplierName(inventory.getSuppliers() != null ? inventory.getSuppliers().getName() : null)
                 .quantity(inventory.getQuantity())
                 .totalStock(totalStock)
-                .inTransitQuantity(inventory.getInTransitQuantity())
                 .currencyId(inventory.getCurrency() != null ? inventory.getCurrency().getId() : null)
                 .currencyCode(inventory.getCurrency() != null ? inventory.getCurrency().getCode() : null)
                 .unitPrice(inventory.getUnitPrice())

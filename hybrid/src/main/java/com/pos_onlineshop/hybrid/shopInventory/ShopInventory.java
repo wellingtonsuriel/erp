@@ -48,12 +48,6 @@ public class ShopInventory {
     @Builder.Default
     private Integer quantity = 0;
 
-
-
-    @Column(name = "in_transit_quantity", nullable = false)
-    @Builder.Default
-    private Integer inTransitQuantity = 0;
-
     /**
      * Total cumulative stock added to this inventory (lifetime tracking)
      * This field only increases with addStock operations and provides audit trail

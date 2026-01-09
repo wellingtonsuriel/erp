@@ -14,7 +14,6 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class InventoryRequest {
     private Integer quantity;
-    private Integer inTransitQuantity;
     private Long supplierId;
     private Long currencyId;
     private BigDecimal unitPrice;

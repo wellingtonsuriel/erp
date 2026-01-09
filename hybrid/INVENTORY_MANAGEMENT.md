@@ -14,7 +14,6 @@ This document describes the enhanced inventory management system with proper sep
 
 ### 2. **Data Integrity**
 - `ShopInventory.quantity`: Configuration field for initial quantity
-- `ShopInventory.inTransitQuantity`: Stock in transit from suppliers
 - `InventoryTotal.totalstock`: **Current available stock** (increases with additions, decreases with reductions)
 - `InventoryTotal.lastUpdated`: Timestamp of last stock operation for audit purposes
 
@@ -44,7 +43,6 @@ Stores inventory metadata and configuration per shop/product.
 | `supplier` | Supplier | Reference to supplier |
 | `currency` | Currency | Price currency |
 | `quantity` | Integer | Initial/configuration quantity |
-| `inTransitQuantity` | Integer | Stock in transit |
 | `unitPrice` | BigDecimal | Unit price |
 | `expiryDate` | DateTime | Product expiry date |
 | `reorderLevel` | Integer | Reorder trigger point |
@@ -78,7 +76,6 @@ Content-Type: application/json
   "supplierId": 5,
   "currencyId": 1,
   "quantity": 50,
-  "inTransitQuantity": 0,
   "unitPrice": 10.50,
   "expiryDate": "2026-12-31T00:00:00",
   "reorderLevel": 10,
@@ -97,7 +94,6 @@ Content-Type: application/json
   "productName": "Product A",
   "quantity": 50,
   "totalStock": 50,  // From InventoryTotal table
-  "inTransitQuantity": 0,
   "maxStock": 500
 }
 ```
@@ -263,7 +259,6 @@ CREATE TABLE shop_inventories (
   currency_id BIGINT NOT NULL,
 
   quantity INT NOT NULL DEFAULT 0,
-  in_transit_quantity INT NOT NULL DEFAULT 0,
 
   unit_price DECIMAL(19,4) NOT NULL,
   expiry_date DATETIME,
