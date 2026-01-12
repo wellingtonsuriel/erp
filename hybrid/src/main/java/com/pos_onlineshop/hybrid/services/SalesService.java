@@ -40,6 +40,7 @@ public class SalesService {
     private final ProductRepository productRepository;
     private final CurrencyRepository currencyRepository;
     private final SaleMapper saleMapper;
+    private final ZimraService zimraService;
 
     /**
      * Create a new sale from DTO
@@ -79,6 +80,22 @@ public class SalesService {
         Sales savedSale = salesRepository.save(sale);
         log.info("Successfully created sale with ID: {}", savedSale.getId());
 
+        // Auto-fiscalise shop sales
+        if (shop != null) {
+            try {
+                com.pos_onlineshop.hybrid.dtos.FiscaliseTransactionRequest fiscalRequest =
+                    com.pos_onlineshop.hybrid.dtos.FiscaliseTransactionRequest.builder()
+                        .saleId(savedSale.getId())
+                        .shopId(shop.getId())
+                        .documentType(com.pos_onlineshop.hybrid.enums.FiscalDocumentType.FISCAL_RECEIPT)
+                        .build();
+                zimraService.fiscaliseSale(savedSale.getId(), fiscalRequest);
+                log.info("Auto-fiscalised sale {}", savedSale.getId());
+            } catch (Exception e) {
+                log.warn("Failed to auto-fiscalise sale {}: {}", savedSale.getId(), e.getMessage());
+            }
+        }
+
         return saleMapper.toResponse(savedSale);
     }
 
@@ -93,6 +110,22 @@ public class SalesService {
 
         Sales savedSale = salesRepository.save(sale);
         log.info("Successfully created sale with ID: {}", savedSale.getId());
+
+        // Auto-fiscalise shop sales
+        if (sale.getShop() != null) {
+            try {
+                com.pos_onlineshop.hybrid.dtos.FiscaliseTransactionRequest fiscalRequest =
+                    com.pos_onlineshop.hybrid.dtos.FiscaliseTransactionRequest.builder()
+                        .saleId(savedSale.getId())
+                        .shopId(sale.getShop().getId())
+                        .documentType(com.pos_onlineshop.hybrid.enums.FiscalDocumentType.FISCAL_RECEIPT)
+                        .build();
+                zimraService.fiscaliseSale(savedSale.getId(), fiscalRequest);
+                log.info("Auto-fiscalised sale {}", savedSale.getId());
+            } catch (Exception e) {
+                log.warn("Failed to auto-fiscalise sale {}: {}", savedSale.getId(), e.getMessage());
+            }
+        }
 
         return savedSale;
     }

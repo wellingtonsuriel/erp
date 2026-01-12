@@ -53,6 +53,7 @@ public class OrderService {
     private final CustomersRepository customersRepository;
     private final OrderMapper orderMapper;
     private final ShopInventoryService shopInventoryService;
+    private final ZimraService zimraService;
 
     @Transactional
     public Order createOrderFromCart(UserAccount user, String shippingAddress,
@@ -170,6 +171,20 @@ public class OrderService {
         Order savedOrder = orderRepository.save(order);
         accountancyService.createOrderAccountingEntries(savedOrder);
         accountancyService.createPaymentAccountingEntries(savedOrder);
+
+        // Auto-fiscalise POS transactions
+        try {
+            com.pos_onlineshop.hybrid.dtos.FiscaliseTransactionRequest fiscalRequest =
+                com.pos_onlineshop.hybrid.dtos.FiscaliseTransactionRequest.builder()
+                    .orderId(savedOrder.getId())
+                    .shopId(shop.getId())
+                    .documentType(com.pos_onlineshop.hybrid.enums.FiscalDocumentType.FISCAL_RECEIPT)
+                    .build();
+            zimraService.fiscaliseOrder(savedOrder.getId(), fiscalRequest);
+            log.info("Auto-fiscalised POS order {}", savedOrder.getId());
+        } catch (Exception e) {
+            log.warn("Failed to auto-fiscalise POS order {}: {}", savedOrder.getId(), e.getMessage());
+        }
 
         log.info("Processed POS sale {} at shop {} in currency {}",
                 savedOrder.getId(), shop.getName(), shopCurrency.getCode());
