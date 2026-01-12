@@ -3,6 +3,7 @@ package com.pos_onlineshop.hybrid.orders;
 import com.pos_onlineshop.hybrid.cashier.Cashier;
 import com.pos_onlineshop.hybrid.cashierSessions.CashierSession;
 import com.pos_onlineshop.hybrid.currency.Currency;
+import com.pos_onlineshop.hybrid.customers.Customers;
 import com.pos_onlineshop.hybrid.enums.OrderStatus;
 import com.pos_onlineshop.hybrid.enums.PaymentMethod;
 import com.pos_onlineshop.hybrid.enums.SalesChannel;
@@ -15,24 +16,29 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+
 @Entity
 @Table(name = "orders")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@EqualsAndHashCode(exclude = {"orderLines"})
-@ToString(exclude = {"orderLines"})
+@EqualsAndHashCode(exclude = {"orderLines", "user", "customer", "currency", "shop", "cashier", "cashierSession"})
+@ToString(exclude = {"orderLines", "user", "customer", "currency", "shop", "cashier", "cashierSession"})
 public class Order {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
     private UserAccount user;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "customer_id")
+    private Customers customer;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "currency_id", nullable = false)
     private Currency currency; // Order currency
 
@@ -73,18 +79,18 @@ public class Order {
     @Builder.Default
     private SalesChannel salesChannel = SalesChannel.ONLINE;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "shop_id")
     private Shop shop;
 
     @Column(name = "store_location")
     private String storeLocation;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cashier_id")
     private Cashier cashier;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cashier_session_id")
     private CashierSession cashierSession;
 
@@ -100,6 +106,19 @@ public class Order {
     @Column(name = "is_pickup")
     @Builder.Default
     private boolean isPickup = false;
+
+    @Column(name = "created_at")
+    @Builder.Default
+    private LocalDateTime createdAt = LocalDateTime.now();
+
+    @Column(name = "updated_at")
+    @Builder.Default
+    private LocalDateTime updatedAt = LocalDateTime.now();
+
+    @PreUpdate
+    public void preUpdate() {
+        this.updatedAt = LocalDateTime.now();
+    }
 
     // Business methods
     public void addOrderLine(OrderLine line) {
