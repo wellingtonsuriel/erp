@@ -1,21 +1,18 @@
 package com.pos_onlineshop.hybrid.controllers;
 
-
 import com.pos_onlineshop.hybrid.currency.Currency;
 import com.pos_onlineshop.hybrid.dtos.CreateOrderRequest;
-import com.pos_onlineshop.hybrid.dtos.DailySummary;
-import com.pos_onlineshop.hybrid.dtos.UpdateStatusRequest;
+import com.pos_onlineshop.hybrid.dtos.OrderResponse;
+import com.pos_onlineshop.hybrid.dtos.UpdateOrderRequest;
 import com.pos_onlineshop.hybrid.enums.OrderStatus;
-import com.pos_onlineshop.hybrid.enums.PaymentMethod;
 import com.pos_onlineshop.hybrid.enums.SalesChannel;
 import com.pos_onlineshop.hybrid.orders.Order;
 import com.pos_onlineshop.hybrid.services.CurrencyService;
 import com.pos_onlineshop.hybrid.services.OrderService;
-import com.pos_onlineshop.hybrid.services.POSService;
 import com.pos_onlineshop.hybrid.services.UserAccountService;
 import com.pos_onlineshop.hybrid.userAccount.UserAccount;
-import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -25,6 +22,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+
+import jakarta.validation.Valid;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -33,13 +32,13 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/orders")
 @RequiredArgsConstructor
+@Slf4j
 @CrossOrigin(origins = "*")
 public class OrderController {
 
     private final OrderService orderService;
     private final UserAccountService userAccountService;
     private final CurrencyService currencyService;
-    private final POSService posService;
 
     @PostMapping
     @PreAuthorize("hasRole('USER')")
@@ -66,26 +65,53 @@ public class OrderController {
         }
     }
 
+    /**
+     * Get all orders
+     */
+    @GetMapping
+    @PreAuthorize("hasRole('ADMIN') or hasRole('CASHIER')")
+    public ResponseEntity<List<OrderResponse>> getAllOrders() {
+        List<OrderResponse> orders = orderService.findAllAsResponses();
+        return ResponseEntity.ok(orders);
+    }
+
+    /**
+     * Get all orders with pagination
+     */
+    @GetMapping("/paginated")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('CASHIER')")
+    public ResponseEntity<Page<OrderResponse>> getAllOrdersPaginated(Pageable pageable) {
+        Page<OrderResponse> orders = orderService.findAllAsResponses(pageable);
+        return ResponseEntity.ok(orders);
+    }
+
+    /**
+     * Get order by ID
+     */
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('USER')")
-    public ResponseEntity<Order> getOrder(
+    public ResponseEntity<OrderResponse> getOrder(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails userDetails) {
-        return orderService.findById(id)
+        return orderService.findByIdAsResponse(id)
                 .filter(order -> canAccessOrder(order, userDetails))
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    /**
+     * Get my orders
+     */
     @GetMapping("/my-orders")
     @PreAuthorize("hasRole('USER')")
-    public Page<Order> getMyOrders(
+    public ResponseEntity<Page<OrderResponse>> getMyOrders(
             @AuthenticationPrincipal UserDetails userDetails,
             Pageable pageable) {
         UserAccount user = userAccountService.findByUsername(userDetails.getUsername())
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        return orderService.findByUser(user, pageable);
+        Page<OrderResponse> orders = orderService.findByUserAsResponses(user, pageable);
+        return ResponseEntity.ok(orders);
     }
 
     @GetMapping("/statistics/revenue")
@@ -116,28 +142,57 @@ public class OrderController {
                 "revenues", revenues
         );
     }
-    // Other existing endpoints remain the same...
+    /**
+     * Get orders by status
+     */
     @GetMapping("/status/{status}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public List<Order> getOrdersByStatus(@PathVariable OrderStatus status) {
-        return orderService.findByStatus(status);
+    @PreAuthorize("hasRole('ADMIN') or hasRole('CASHIER')")
+    public ResponseEntity<List<OrderResponse>> getOrdersByStatus(@PathVariable OrderStatus status) {
+        List<OrderResponse> orders = orderService.findByStatusAsResponses(status);
+        return ResponseEntity.ok(orders);
     }
 
+    /**
+     * Get orders by sales channel
+     */
     @GetMapping("/channel/{channel}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public List<Order> getOrdersByChannel(@PathVariable SalesChannel channel) {
-        return orderService.findBySalesChannel(channel);
+    @PreAuthorize("hasRole('ADMIN') or hasRole('CASHIER')")
+    public ResponseEntity<List<OrderResponse>> getOrdersByChannel(@PathVariable SalesChannel channel) {
+        List<OrderResponse> orders = orderService.findBySalesChannelAsResponses(channel);
+        return ResponseEntity.ok(orders);
     }
 
-    @PutMapping("/{id}/status")
+    /**
+     * Update an existing order
+     */
+    @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Order> updateOrderStatus(
+    public ResponseEntity<OrderResponse> updateOrder(
             @PathVariable Long id,
-            @RequestBody UpdateStatusRequest request) {
+            @Valid @RequestBody UpdateOrderRequest request) {
         try {
-            Order updated = orderService.updateOrderStatus(id, request.getStatus());
+            OrderResponse updated = orderService.updateOrderFromRequest(id, request);
             return ResponseEntity.ok(updated);
+        } catch (IllegalArgumentException e) {
+            log.error("Validation error updating order", e);
+            return ResponseEntity.badRequest().build();
         } catch (RuntimeException e) {
+            log.error("Error updating order", e);
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    /**
+     * Delete an order
+     */
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> deleteOrder(@PathVariable Long id) {
+        try {
+            orderService.deleteOrder(id);
+            return ResponseEntity.noContent().build();
+        } catch (RuntimeException e) {
+            log.error("Error deleting order", e);
             return ResponseEntity.notFound().build();
         }
     }
@@ -166,14 +221,12 @@ public class OrderController {
         return orderService.getMostOrderedProducts();
     }
 
-    private boolean canAccessOrder(Order order, UserDetails userDetails) {
-        if (order.getUser() != null && order.getUser().getUsername().equals(userDetails.getUsername())) {
+    private boolean canAccessOrder(OrderResponse order, UserDetails userDetails) {
+        if (order.getUsername() != null && order.getUsername().equals(userDetails.getUsername())) {
             return true;
         }
         return userDetails.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") ||
                         a.getAuthority().equals("ROLE_CASHIER"));
     }
-
-
 }

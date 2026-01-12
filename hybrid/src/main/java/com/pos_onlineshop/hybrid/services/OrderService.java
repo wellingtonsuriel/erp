@@ -5,10 +5,15 @@ import com.pos_onlineshop.hybrid.cartItem.CartItem;
 import com.pos_onlineshop.hybrid.cashier.Cashier;
 import com.pos_onlineshop.hybrid.cashierSessions.CashierSession;
 import com.pos_onlineshop.hybrid.currency.Currency;
+import com.pos_onlineshop.hybrid.customers.Customers;
+import com.pos_onlineshop.hybrid.customers.CustomersRepository;
+import com.pos_onlineshop.hybrid.dtos.OrderResponse;
 import com.pos_onlineshop.hybrid.dtos.QuickSaleItem;
+import com.pos_onlineshop.hybrid.dtos.UpdateOrderRequest;
 import com.pos_onlineshop.hybrid.enums.OrderStatus;
 import com.pos_onlineshop.hybrid.enums.PaymentMethod;
 import com.pos_onlineshop.hybrid.enums.SalesChannel;
+import com.pos_onlineshop.hybrid.mappers.OrderMapper;
 import com.pos_onlineshop.hybrid.orderLines.OrderLine;
 import com.pos_onlineshop.hybrid.orderLines.OrderLineRepository;
 import com.pos_onlineshop.hybrid.orders.Order;
@@ -45,6 +50,9 @@ public class OrderService {
     private final CurrencyService currencyService;
     private final ProductService productService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final CustomersRepository customersRepository;
+    private final OrderMapper orderMapper;
+    private final ShopInventoryService shopInventoryService;
 
     @Transactional
     public Order createOrderFromCart(UserAccount user, String shippingAddress,
@@ -384,5 +392,131 @@ public class OrderService {
                 ));
     }
 
-    private final ShopInventoryService shopInventoryService;
+    /**
+     * Update an existing order from DTO
+     */
+    public OrderResponse updateOrderFromRequest(Long id, UpdateOrderRequest request) {
+        return orderRepository.findById(id)
+                .map(order -> {
+                    // Update status if provided
+                    if (request.getStatus() != null) {
+                        // Use the existing updateOrderStatus method for status changes
+                        // as it contains business logic for inventory management
+                        order = updateOrderStatus(id, request.getStatus());
+                    }
+
+                    // Update payment method if provided
+                    if (request.getPaymentMethod() != null) {
+                        order.setPaymentMethod(request.getPaymentMethod());
+                    }
+
+                    // Update shipping address if provided
+                    if (request.getShippingAddress() != null) {
+                        order.setShippingAddress(request.getShippingAddress());
+                    }
+
+                    // Update customer if provided
+                    if (request.getCustomerId() != null) {
+                        Customers customer = customersRepository.findById(request.getCustomerId())
+                                .orElseThrow(() -> new IllegalArgumentException("Customer not found: " + request.getCustomerId()));
+                        order.setCustomer(customer);
+                    }
+
+                    // Update cash given if provided (for POS orders)
+                    if (request.getCashGiven() != null && order.getPaymentMethod() == PaymentMethod.CASH) {
+                        order.setCashGiven(request.getCashGiven());
+                        order.setChangeAmount(request.getCashGiven().subtract(order.getTotalAmount()));
+                    }
+
+                    Order updated = orderRepository.save(order);
+                    log.info("Updated order with ID: {}", updated.getId());
+                    return orderMapper.toResponse(updated);
+                })
+                .orElseThrow(() -> new RuntimeException("Order not found: " + id));
+    }
+
+    /**
+     * Delete an order
+     */
+    public void deleteOrder(Long id) {
+        Optional<Order> orderOpt = orderRepository.findById(id);
+        if (orderOpt.isPresent()) {
+            Order order = orderOpt.get();
+
+            // Restore inventory before deletion
+            if (order.getStatus() != OrderStatus.CANCELLED) {
+                for (OrderLine line : order.getOrderLines()) {
+                    if (order.getSalesChannel() == SalesChannel.ONLINE && order.getStatus() == OrderStatus.PENDING) {
+                        inventoryService.releaseReservation(line.getProduct().getId(), line.getQuantity());
+                    } else if (order.getShop() != null) {
+                        shopInventoryService.addStock(order.getShop().getId(), line.getProduct().getId(), line.getQuantity());
+                    } else {
+                        inventoryService.addStock(line.getProduct().getId(), line.getQuantity());
+                    }
+                }
+            }
+
+            orderRepository.deleteById(id);
+            log.info("Deleted order with ID: {}", id);
+        } else {
+            throw new RuntimeException("Order not found: " + id);
+        }
+    }
+
+    /**
+     * Get order by ID as DTO
+     */
+    @Transactional(readOnly = true)
+    public Optional<OrderResponse> findByIdAsResponse(Long id) {
+        return orderRepository.findByIdWithOrderLines(id)
+                .map(orderMapper::toResponse);
+    }
+
+    /**
+     * Get all orders as DTOs
+     */
+    @Transactional(readOnly = true)
+    public List<OrderResponse> findAllAsResponses() {
+        return orderRepository.findAll().stream()
+                .map(orderMapper::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Get all orders as DTOs with pagination
+     */
+    @Transactional(readOnly = true)
+    public Page<OrderResponse> findAllAsResponses(Pageable pageable) {
+        return orderRepository.findAll(pageable)
+                .map(orderMapper::toResponse);
+    }
+
+    /**
+     * Get orders by user as DTOs
+     */
+    @Transactional(readOnly = true)
+    public Page<OrderResponse> findByUserAsResponses(UserAccount user, Pageable pageable) {
+        return orderRepository.findByUser(user, pageable)
+                .map(orderMapper::toResponse);
+    }
+
+    /**
+     * Get orders by status as DTOs
+     */
+    @Transactional(readOnly = true)
+    public List<OrderResponse> findByStatusAsResponses(OrderStatus status) {
+        return orderRepository.findByStatus(status).stream()
+                .map(orderMapper::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Get orders by sales channel as DTOs
+     */
+    @Transactional(readOnly = true)
+    public List<OrderResponse> findBySalesChannelAsResponses(SalesChannel channel) {
+        return orderRepository.findBySalesChannel(channel).stream()
+                .map(orderMapper::toResponse)
+                .collect(Collectors.toList());
+    }
 }
