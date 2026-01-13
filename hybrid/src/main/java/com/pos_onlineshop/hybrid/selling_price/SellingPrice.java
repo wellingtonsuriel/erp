@@ -5,10 +5,13 @@ import com.pos_onlineshop.hybrid.currency.Currency;
 import com.pos_onlineshop.hybrid.products.Product;
 import com.pos_onlineshop.hybrid.shop.Shop;
 import com.pos_onlineshop.hybrid.enums.PriceType;
+import com.pos_onlineshop.hybrid.enums.TaxNature;
 import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Entity representing selling prices for products in different shops.
@@ -53,7 +56,16 @@ public class SellingPrice {
     @Column(name = "selling_price", nullable = false, precision = 19, scale = 4)
     private BigDecimal sellingPrice;
 
+    @Column(name = "base_price", precision = 19, scale = 4)
+    private BigDecimal basePrice;
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "selling_price_tax_natures",
+                    joinColumns = @JoinColumn(name = "selling_price_id"))
+    @Column(name = "tax_nature")
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    private List<TaxNature> taxNature = new ArrayList<>();
 
     @Column(name = "discount_percentage", precision = 5, scale = 2)
     @Builder.Default
