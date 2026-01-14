@@ -13,6 +13,7 @@ import com.pos_onlineshop.hybrid.orderLines.OrderLine;
 import com.pos_onlineshop.hybrid.orders.Order;
 import com.pos_onlineshop.hybrid.orders.OrderRepository;
 import com.pos_onlineshop.hybrid.products.Product;
+import com.pos_onlineshop.hybrid.selling_price.SellingPrice;
 import com.pos_onlineshop.hybrid.shop.Shop;
 import com.pos_onlineshop.hybrid.userAccount.UserAccount;
 import lombok.Data;
@@ -37,6 +38,7 @@ public class POSService {
     private final OrderRepository orderRepository;
     private final ShopInventoryService shopInventoryService;
     private final AccountancyService accountancyService;
+    private final SellingPriceService sellingPriceService;
 
     @Transactional
     public Order processQuickSale(List<QuickSaleItem> items, PaymentMethod paymentMethod,
@@ -68,14 +70,17 @@ public class POSService {
                 throw new RuntimeException("Insufficient stock in shop for: " + product.getName());
             }
 
+            // Get the selling price for this product in this shop
+            SellingPrice sellingPrice = sellingPriceService.getCurrentPrice(product, shop)
+                    .orElseThrow(() -> new RuntimeException("No selling price found for product: " + product.getName() + " in shop: " + shop.getName()));
+
             OrderLine orderLine = OrderLine.builder()
                     .quantity(item.getQuantity())
                     .cashier(cashier) // Set the cashier who processed this line
                     .cashierSession(session) // Set the session
                     .build();
 
-            // Pass the currency parameter that copyProductDetails expects
-            orderLine.copyProductDetails(product, shopCurrency);
+            orderLine.copyProductDetails(sellingPrice, shopCurrency);
 
             order.addOrderLine(orderLine);
 

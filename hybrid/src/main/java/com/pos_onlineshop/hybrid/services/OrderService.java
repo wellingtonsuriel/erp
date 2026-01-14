@@ -19,6 +19,7 @@ import com.pos_onlineshop.hybrid.orderLines.OrderLineRepository;
 import com.pos_onlineshop.hybrid.orders.Order;
 import com.pos_onlineshop.hybrid.orders.OrderRepository;
 import com.pos_onlineshop.hybrid.products.Product;
+import com.pos_onlineshop.hybrid.selling_price.SellingPrice;
 import com.pos_onlineshop.hybrid.shop.Shop;
 import com.pos_onlineshop.hybrid.userAccount.UserAccount;
 import lombok.RequiredArgsConstructor;
@@ -54,6 +55,8 @@ public class OrderService {
     private final OrderMapper orderMapper;
     private final ShopInventoryService shopInventoryService;
     private final ZimraService zimraService;
+    private final SellingPriceService sellingPriceService;
+    private final ShopService shopService;
 
     @Transactional
     public Order createOrderFromCart(UserAccount user, String shippingAddress,
@@ -91,13 +94,20 @@ public class OrderService {
                 throw new RuntimeException("Insufficient stock for product: " + product.getName());
             }
 
-            // Get product price in order currency
+            // Get default shop for online orders (warehouse or first active shop)
+            Shop fulfillmentShop = shopService.findWarehouse()
+                    .or(() -> shopService.findActiveShops().stream().findFirst())
+                    .orElseThrow(() -> new RuntimeException("No active shop available for order fulfillment"));
 
+            // Get the selling price for this product in the fulfillment shop
+            SellingPrice sellingPrice = sellingPriceService.getCurrentPrice(product, fulfillmentShop)
+                    .orElseThrow(() -> new RuntimeException("No selling price found for product: " + product.getName() +
+                            " in shop: " + fulfillmentShop.getName()));
 
             OrderLine orderLine = OrderLine.builder()
                     .quantity(cartItem.getQuantity())
                     .build();
-            orderLine.copyProductDetails(product, orderCurrency);
+            orderLine.copyProductDetails(sellingPrice, orderCurrency);
 
             order.addOrderLine(orderLine);
 
@@ -150,12 +160,14 @@ public class OrderService {
                 throw new RuntimeException("Insufficient stock in shop for: " + product.getName());
             }
 
-
+            // Get the selling price for this product in this shop
+            SellingPrice sellingPrice = sellingPriceService.getCurrentPrice(product, shop)
+                    .orElseThrow(() -> new RuntimeException("No selling price found for product: " + product.getName() + " in shop: " + shop.getName()));
 
             OrderLine orderLine = OrderLine.builder()
                     .quantity(item.getQuantity())
                     .build();
-            orderLine.copyProductDetails(product, shopCurrency);
+            orderLine.copyProductDetails(sellingPrice, shopCurrency);
 
             order.addOrderLine(orderLine);
 

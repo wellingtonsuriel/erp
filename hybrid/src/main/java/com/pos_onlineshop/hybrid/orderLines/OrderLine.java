@@ -96,16 +96,29 @@ public class OrderLine {
     }
 
     /**
-     * Copy product details and set unit price from product
+     * Copy product details and set unit price from selling price
      */
-    public void copyProductDetails(SellingPrice product, Currency currency) {
-        this.product = product;
-        this.productName = product.getName();
-        this.productDescription = product.getDescription();
+    public void copyProductDetails(SellingPrice sellingPrice, Currency currency) {
+        this.product = sellingPrice.getProduct();
+        this.productName = sellingPrice.getProduct().getName();
+        this.productDescription = sellingPrice.getProduct().getDescription();
         this.currency = currency;
 
         // Set unit price from product's selling price
         // Note: In a real scenario, you might need to convert price to the order's currency
-        this.unitPrice = product.getSellingPrice();
+        this.unitPrice = sellingPrice.getSellingPrice();
+    }
+
+    /**
+     * Copy product details - overloaded method for cases where SellingPrice is not available
+     * This is a temporary method for backward compatibility with online orders
+     * that don't have shop-specific pricing yet.
+     */
+    public void copyProductDetails(Product product, Currency currency, BigDecimal unitPrice) {
+        this.product = product;
+        this.productName = product.getName();
+        this.productDescription = product.getDescription();
+        this.currency = currency;
+        this.unitPrice = unitPrice;
     }
 }
