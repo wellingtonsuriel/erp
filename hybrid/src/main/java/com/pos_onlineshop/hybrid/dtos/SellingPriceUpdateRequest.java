@@ -5,11 +5,14 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 public class SellingPriceUpdateRequest {
     private PriceType priceType;
     private BigDecimal sellingPrice;
+    private BigDecimal basePrice;
+    private List<Long> taxIds;
     private BigDecimal discountPercentage;
     private BigDecimal minSellingPrice;
     private BigDecimal maxSellingPrice;

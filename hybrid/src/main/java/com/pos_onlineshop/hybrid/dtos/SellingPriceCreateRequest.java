@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 public  class SellingPriceCreateRequest {
@@ -13,6 +14,8 @@ public  class SellingPriceCreateRequest {
     private Long currencyId;
     private PriceType priceType;
     private BigDecimal sellingPrice;
+    private BigDecimal basePrice;
+    private List<Long> taxIds;
     private BigDecimal costPrice;
     private BigDecimal markupPercentage;
     private BigDecimal discountPercentage;
