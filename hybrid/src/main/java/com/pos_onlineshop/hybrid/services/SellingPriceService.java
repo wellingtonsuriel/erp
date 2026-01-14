@@ -5,12 +5,16 @@ package com.pos_onlineshop.hybrid.services;
 import com.pos_onlineshop.hybrid.currency.Currency;
 import com.pos_onlineshop.hybrid.dtos.SellingPriceResponse;
 import com.pos_onlineshop.hybrid.dtos.SellingPriceSummaryResponse;
+import com.pos_onlineshop.hybrid.dtos.TaxResponse;
 import com.pos_onlineshop.hybrid.enums.PriceType;
 import com.pos_onlineshop.hybrid.products.Product;
 
 import com.pos_onlineshop.hybrid.selling_price.SellingPrice;
 import com.pos_onlineshop.hybrid.selling_price.SellingPriceRepository;
 import com.pos_onlineshop.hybrid.shop.Shop;
+import com.pos_onlineshop.hybrid.tax.Tax;
+import com.pos_onlineshop.hybrid.tax.TaxRepository;
+import com.pos_onlineshop.hybrid.mappers.TaxMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -19,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -30,6 +35,8 @@ import java.util.stream.Collectors;
 public class SellingPriceService {
 
     private final SellingPriceRepository sellingPriceRepository;
+    private final TaxRepository taxRepository;
+    private final TaxMapper taxMapper;
 
     /**
      * Create or update a selling price
@@ -324,6 +331,12 @@ public class SellingPriceService {
         if (updates.getSellingPrice() != null) {
             existingPrice.setSellingPrice(updates.getSellingPrice());
         }
+        if (updates.getBasePrice() != null) {
+            existingPrice.setBasePrice(updates.getBasePrice());
+        }
+        if (updates.getTaxes() != null) {
+            existingPrice.setTaxes(updates.getTaxes());
+        }
         if (updates.getDiscountPercentage() != null) {
             existingPrice.setDiscountPercentage(updates.getDiscountPercentage());
         }
@@ -399,6 +412,13 @@ public class SellingPriceService {
      * Convert SellingPrice entity to SellingPriceResponse DTO
      */
     public SellingPriceResponse toResponse(SellingPrice sellingPrice) {
+        List<TaxResponse> taxResponses = new ArrayList<>();
+        if (sellingPrice.getTaxes() != null) {
+            taxResponses = sellingPrice.getTaxes().stream()
+                    .map(taxMapper::toResponse)
+                    .collect(Collectors.toList());
+        }
+
         return SellingPriceResponse.builder()
                 .id(sellingPrice.getId())
                 .productId(sellingPrice.getProduct().getId())
@@ -409,6 +429,8 @@ public class SellingPriceService {
                 .currencyCode(sellingPrice.getCurrency().getCode())
                 .priceType(sellingPrice.getPriceType())
                 .sellingPrice(sellingPrice.getSellingPrice())
+                .basePrice(sellingPrice.getBasePrice())
+                .taxes(taxResponses)
                 .discountPercentage(sellingPrice.getDiscountPercentage())
                 .finalPrice(sellingPrice.getFinalPrice())
                 .minSellingPrice(sellingPrice.getMinSellingPrice())

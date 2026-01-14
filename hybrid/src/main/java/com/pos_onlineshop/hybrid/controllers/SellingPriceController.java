@@ -10,6 +10,8 @@ import com.pos_onlineshop.hybrid.selling_price.SellingPrice;
 import com.pos_onlineshop.hybrid.services.SellingPriceService;
 import com.pos_onlineshop.hybrid.shop.Shop;
 import com.pos_onlineshop.hybrid.shop.ShopRepository;
+import com.pos_onlineshop.hybrid.tax.Tax;
+import com.pos_onlineshop.hybrid.tax.TaxRepository;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,6 +21,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -32,6 +35,7 @@ public class SellingPriceController {
     private final ProductRepository productRepository;
     private final ShopRepository shopRepository;
     private final CurrencyRepository currencyRepository;
+    private final TaxRepository taxRepository;
 
     /**
      * Create or update a selling price
@@ -47,6 +51,16 @@ public class SellingPriceController {
                 return ResponseEntity.notFound().build();
             }
 
+            // Fetch taxes if taxIds are provided
+            List<Tax> taxes = new ArrayList<>();
+            if (request.getTaxIds() != null && !request.getTaxIds().isEmpty()) {
+                taxes = taxRepository.findAllById(request.getTaxIds());
+                if (taxes.size() != request.getTaxIds().size()) {
+                    log.error("Some tax IDs were not found");
+                    return ResponseEntity.badRequest().build();
+                }
+            }
+
             // Note: SellingPrice entity does not have costPrice and markupPercentage fields
             SellingPrice sellingPrice = SellingPrice.builder()
                     .product(product.get())
@@ -54,6 +68,8 @@ public class SellingPriceController {
                     .currency(currency.get())
                     .priceType(request.getPriceType())
                     .sellingPrice(request.getSellingPrice())
+                    .basePrice(request.getBasePrice())
+                    .taxes(taxes)
                     .discountPercentage(request.getDiscountPercentage())
                     .minSellingPrice(request.getMinSellingPrice())
                     .maxSellingPrice(request.getMaxSellingPrice())
@@ -85,9 +101,25 @@ public class SellingPriceController {
             @PathVariable Long priceId,
             @RequestBody SellingPriceUpdateRequest request) {
         try {
+            // Fetch taxes if taxIds are provided
+            List<Tax> taxes = null;
+            if (request.getTaxIds() != null) {
+                if (!request.getTaxIds().isEmpty()) {
+                    taxes = taxRepository.findAllById(request.getTaxIds());
+                    if (taxes.size() != request.getTaxIds().size()) {
+                        log.error("Some tax IDs were not found");
+                        return ResponseEntity.badRequest().build();
+                    }
+                } else {
+                    taxes = new ArrayList<>(); // Clear taxes if empty list provided
+                }
+            }
+
             SellingPrice updates = SellingPrice.builder()
                     .priceType(request.getPriceType())
                     .sellingPrice(request.getSellingPrice())
+                    .basePrice(request.getBasePrice())
+                    .taxes(taxes)
                     .discountPercentage(request.getDiscountPercentage())
                     .minSellingPrice(request.getMinSellingPrice())
                     .maxSellingPrice(request.getMaxSellingPrice())

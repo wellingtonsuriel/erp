@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -23,6 +24,8 @@ public class SellingPriceResponse {
     private String currencyCode;
     private PriceType priceType;
     private BigDecimal sellingPrice;
+    private BigDecimal basePrice;
+    private List<TaxResponse> taxes;
     private BigDecimal discountPercentage;
     private BigDecimal finalPrice;
     private BigDecimal minSellingPrice;

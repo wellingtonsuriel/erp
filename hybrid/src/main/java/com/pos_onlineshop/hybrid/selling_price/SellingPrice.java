@@ -4,11 +4,12 @@ package com.pos_onlineshop.hybrid.selling_price;
 import com.pos_onlineshop.hybrid.currency.Currency;
 import com.pos_onlineshop.hybrid.products.Product;
 import com.pos_onlineshop.hybrid.shop.Shop;
+import com.pos_onlineshop.hybrid.tax.Tax;
 import com.pos_onlineshop.hybrid.enums.PriceType;
-import com.pos_onlineshop.hybrid.enums.TaxNature;
 import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -59,13 +60,14 @@ public class SellingPrice {
     @Column(name = "base_price", precision = 19, scale = 4)
     private BigDecimal basePrice;
 
-    @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(name = "selling_price_tax_natures",
-                    joinColumns = @JoinColumn(name = "selling_price_id"))
-    @Column(name = "tax_nature")
-    @Enumerated(EnumType.STRING)
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(
+            name = "selling_price_taxes",
+            joinColumns = @JoinColumn(name = "selling_price_id"),
+            inverseJoinColumns = @JoinColumn(name = "tax_id")
+    )
     @Builder.Default
-    private List<TaxNature> taxNature = new ArrayList<>();
+    private List<Tax> taxes = new ArrayList<>();
 
     @Column(name = "discount_percentage", precision = 5, scale = 2)
     @Builder.Default
@@ -115,9 +117,34 @@ public class SellingPrice {
     @Column(name = "notes")
     private String notes;
 
+    @PrePersist
+    public void prePersist() {
+        calculateSellingPriceFromBaseAndTaxes();
+    }
+
     @PreUpdate
     public void preUpdate() {
         this.updatedAt = LocalDateTime.now();
+        calculateSellingPriceFromBaseAndTaxes();
+    }
+
+    /**
+     * Calculate selling price from base price and associated taxes
+     */
+    private void calculateSellingPriceFromBaseAndTaxes() {
+        if (basePrice != null && taxes != null && !taxes.isEmpty()) {
+            BigDecimal taxAmount = BigDecimal.ZERO;
+
+            // Calculate total tax amount from all associated taxes
+            for (Tax tax : taxes) {
+                if (tax != null && tax.getActive()) {
+                    taxAmount = taxAmount.add(tax.calculateTaxAmount(basePrice));
+                }
+            }
+
+            // Set selling price as base price + total tax amount
+            this.sellingPrice = basePrice.add(taxAmount).setScale(4, RoundingMode.HALF_UP);
+        }
     }
 
     /**
