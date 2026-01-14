@@ -3,9 +3,10 @@ package com.pos_onlineshop.hybrid.controllers;
 import com.pos_onlineshop.hybrid.dtos.FiscalisationResponse;
 import com.pos_onlineshop.hybrid.dtos.FiscalDeviceResponse;
 import com.pos_onlineshop.hybrid.dtos.FiscaliseTransactionRequest;
-import com.pos_onlineshop.hybrid.repositories.ShopRepository;
+
 import com.pos_onlineshop.hybrid.services.ZimraService;
 import com.pos_onlineshop.hybrid.shop.Shop;
+import com.pos_onlineshop.hybrid.shop.ShopRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;

@@ -8,11 +8,12 @@ import com.pos_onlineshop.hybrid.enums.FiscalStatus;
 import com.pos_onlineshop.hybrid.fiscalDevice.FiscalDevice;
 import com.pos_onlineshop.hybrid.mappers.FiscalisationMapper;
 import com.pos_onlineshop.hybrid.orders.Order;
+import com.pos_onlineshop.hybrid.orders.OrderRepository;
 import com.pos_onlineshop.hybrid.repositories.FiscalDeviceRepository;
-import com.pos_onlineshop.hybrid.repositories.OrderRepository;
-import com.pos_onlineshop.hybrid.repositories.SalesRepository;
+
 import com.pos_onlineshop.hybrid.repositories.ZimraFiscalisationRepository;
 import com.pos_onlineshop.hybrid.sales.Sales;
+import com.pos_onlineshop.hybrid.sales.SalesRepository;
 import com.pos_onlineshop.hybrid.shop.Shop;
 import com.pos_onlineshop.hybrid.zimra.ZimraFiscalisation;
 import lombok.RequiredArgsConstructor;

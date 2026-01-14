@@ -5,6 +5,7 @@ import com.pos_onlineshop.hybrid.cashierSessions.CashierSession;
 import com.pos_onlineshop.hybrid.currency.Currency;
 import com.pos_onlineshop.hybrid.orders.Order;
 import com.pos_onlineshop.hybrid.products.Product;
+import com.pos_onlineshop.hybrid.selling_price.SellingPrice;
 import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
@@ -97,7 +98,7 @@ public class OrderLine {
     /**
      * Copy product details and set unit price from product
      */
-    public void copyProductDetails(Product product, Currency currency) {
+    public void copyProductDetails(SellingPrice product, Currency currency) {
         this.product = product;
         this.productName = product.getName();
         this.productDescription = product.getDescription();
