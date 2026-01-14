@@ -129,22 +129,31 @@ public class SellingPrice {
     }
 
     /**
-     * Calculate selling price from base price and associated taxes
+     * Calculate selling price from base price and associated taxes.
+     * Supports three tax calculation types:
+     * - FIXED: Flat tax amount added to base price
+     * - PERCENTAGE: Percentage of base price (e.g., 15% VAT)
+     * - TIERED: Progressive tax brackets (requires tier configuration in Tax entity)
      */
     private void calculateSellingPriceFromBaseAndTaxes() {
-        if (basePrice != null && taxes != null && !taxes.isEmpty()) {
-            BigDecimal taxAmount = BigDecimal.ZERO;
-
-            // Calculate total tax amount from all associated taxes
-            for (Tax tax : taxes) {
-                if (tax != null && tax.getActive()) {
-                    taxAmount = taxAmount.add(tax.calculateTaxAmount(basePrice));
-                }
-            }
-
-            // Set selling price as base price + total tax amount
-            this.sellingPrice = basePrice.add(taxAmount).setScale(4, RoundingMode.HALF_UP);
+        // Validate inputs
+        if (basePrice == null || taxes == null || taxes.isEmpty()) {
+            return;
         }
+
+        BigDecimal totalTaxAmount = BigDecimal.ZERO;
+
+        // Calculate total tax amount from all associated taxes
+        // Each tax's calculation method (FIXED/PERCENTAGE/TIERED) is handled by Tax.calculateTaxAmount()
+        for (Tax tax : taxes) {
+            if (tax != null && tax.getActive()) {
+                BigDecimal individualTaxAmount = tax.calculateTaxAmount(basePrice);
+                totalTaxAmount = totalTaxAmount.add(individualTaxAmount);
+            }
+        }
+
+        // Set selling price as base price + total tax amount
+        this.sellingPrice = basePrice.add(totalTaxAmount).setScale(4, RoundingMode.HALF_UP);
     }
 
     /**
