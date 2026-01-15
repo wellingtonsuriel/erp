@@ -109,4 +109,16 @@ public class OrderLine {
         // Note: In a real scenario, you might need to convert price to the order's currency
         this.unitPrice = sellingPrice.getSellingPrice();
     }
+
+    /**
+     * Copy product details with a specified unit price
+     * Overloaded method for cases where SellingPrice is not available
+     */
+    public void copyProductDetails(Product product, Currency currency, BigDecimal unitPrice) {
+        this.product = product;
+        this.productName = product.getName();
+        this.productDescription = product.getDescription();
+        this.currency = currency;
+        this.unitPrice = unitPrice;
+    }
 }
