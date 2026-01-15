@@ -96,9 +96,10 @@ public class OrderLine {
     }
 
     /**
-     * Copy product details and set unit price from product
+     * Copy product details and set unit price from selling price
      */
-    public void copyProductDetails(SellingPrice product, Currency currency) {
+    public void copyProductDetails(SellingPrice sellingPrice, Currency currency) {
+        Product product = sellingPrice.getProduct();
         this.product = product;
         this.productName = product.getName();
         this.productDescription = product.getDescription();
@@ -106,6 +107,6 @@ public class OrderLine {
 
         // Set unit price from product's selling price
         // Note: In a real scenario, you might need to convert price to the order's currency
-        this.unitPrice = product.getSellingPrice();
+        this.unitPrice = sellingPrice.getSellingPrice();
     }
 }
