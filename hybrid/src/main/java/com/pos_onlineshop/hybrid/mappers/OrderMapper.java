@@ -32,7 +32,7 @@ public class OrderMapper {
                 .shopId(order.getShop() != null ? order.getShop().getId() : null)
                 .shopName(order.getShop() != null ? order.getShop().getName() : null)
                 .cashierId(order.getCashier() != null ? order.getCashier().getId() : null)
-                .cashierName(order.getCashier() != null ? order.getCashier().getUser().getUsername() : null)
+                .cashierName(order.getCashier() != null ? order.getCashier().getUsername() : null)
                 .currencyId(order.getCurrency() != null ? order.getCurrency().getId() : null)
                 .currencyCode(order.getCurrency() != null ? order.getCurrency().getCode() : null)
                 .currencySymbol(order.getCurrency() != null ? order.getCurrency().getSymbol() : null)
