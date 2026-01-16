@@ -65,6 +65,61 @@ public class ShopInventoryService {
     }
 
     /**
+     * Get all inventory items for a shop from InventoryTotal table
+     * This is the primary method for retrieving current inventory levels
+     */
+    @Transactional(readOnly = true)
+    public List<ShopInventoryResponse> getShopInventoryFromTotal(Long shopId) {
+        // Query InventoryTotal first as source of truth for stock levels
+        List<InventoryTotal> inventoryTotals = inventoryTotalRepository.findByShopId(shopId);
+
+        return inventoryTotals.stream()
+                .map(inventoryTotal -> {
+                    // Try to find corresponding ShopInventory for additional details
+                    Optional<ShopInventory> shopInventoryOpt = shopInventoryRepository.findByShopAndProduct(
+                            inventoryTotal.getShop(), inventoryTotal.getProduct());
+
+                    if (shopInventoryOpt.isPresent()) {
+                        // If ShopInventory exists, use it to build full response
+                        ShopInventory shopInventory = shopInventoryOpt.get();
+                        return ShopInventoryResponse.builder()
+                                .id(shopInventory.getId())
+                                .shopId(inventoryTotal.getShop().getId())
+                                .shopCode(inventoryTotal.getShop().getCode())
+                                .shopName(inventoryTotal.getShop().getName())
+                                .productId(inventoryTotal.getProduct().getId())
+                                .productName(inventoryTotal.getProduct().getName())
+                                .productBarcode(inventoryTotal.getProduct().getBarcode())
+                                .supplierId(shopInventory.getSuppliers() != null ? shopInventory.getSuppliers().getId() : null)
+                                .supplierName(shopInventory.getSuppliers() != null ? shopInventory.getSuppliers().getName() : null)
+                                .quantity(shopInventory.getQuantity())
+                                .totalStock(inventoryTotal.getTotalstock())
+                                .currencyId(shopInventory.getCurrency() != null ? shopInventory.getCurrency().getId() : null)
+                                .currencyCode(shopInventory.getCurrency() != null ? shopInventory.getCurrency().getCode() : null)
+                                .unitPrice(shopInventory.getUnitPrice())
+                                .expiryDate(shopInventory.getExpiryDate())
+                                .reorderLevel(shopInventory.getReorderLevel())
+                                .minStock(shopInventory.getMinStock())
+                                .maxStock(shopInventory.getMaxStock())
+                                .addedAt(shopInventory.getAddedAt())
+                                .build();
+                    } else {
+                        // If no ShopInventory exists, return minimal response from InventoryTotal only
+                        return ShopInventoryResponse.builder()
+                                .shopId(inventoryTotal.getShop().getId())
+                                .shopCode(inventoryTotal.getShop().getCode())
+                                .shopName(inventoryTotal.getShop().getName())
+                                .productId(inventoryTotal.getProduct().getId())
+                                .productName(inventoryTotal.getProduct().getName())
+                                .productBarcode(inventoryTotal.getProduct().getBarcode())
+                                .totalStock(inventoryTotal.getTotalstock())
+                                .build();
+                    }
+                })
+                .collect(Collectors.toList());
+    }
+
+    /**
      * Get all inventory items for a product across all shops
      */
     @Transactional(readOnly = true)
