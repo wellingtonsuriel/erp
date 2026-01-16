@@ -50,7 +50,7 @@ public class ShopInventoryController {
     }
 
     /**
-     * Get all inventory items for a shop
+     * Get all inventory items for a shop from InventoryTotal table
      */
     @GetMapping("/shop/{shopId}")
     public ResponseEntity<List<ShopInventoryResponse>> getShopInventory(@PathVariable Long shopId) {
@@ -60,8 +60,7 @@ public class ShopInventoryController {
             return ResponseEntity.notFound().build();
         }
 
-        List<ShopInventory> inventories = shopInventoryService.getShopInventory(shop.get());
-        List<ShopInventoryResponse> responses = shopInventoryService.toResponseList(inventories);
+        List<ShopInventoryResponse> responses = shopInventoryService.getShopInventoryFromTotal(shopId);
         return ResponseEntity.ok(responses);
     }
 
