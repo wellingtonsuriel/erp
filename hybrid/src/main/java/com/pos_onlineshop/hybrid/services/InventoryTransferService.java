@@ -209,17 +209,9 @@ public class InventoryTransferService {
                         item.getProduct().getId(),
                         item.getRequestedQuantity());
 
-                // 2. Check that destination shop has inventory record
-                Optional<ShopInventory> destinationInventory = shopInventoryService.getInventory(
-                        transfer.getToShop(), item.getProduct());
 
-                if (destinationInventory.isEmpty()) {
-                    throw new RuntimeException("Destination shop " + transfer.getToShop().getName() +
-                            " must have inventory record for product " + item.getProduct().getName() +
-                            " before transfer. Please create inventory first using createShopInventory().");
-                }
 
-                // 3. Mark as shipped in transfer item
+                // 2. Mark as shipped in transfer item
                 item.setShippedQuantity(item.getRequestedQuantity());
 
                 log.debug("Shipped {} units of {} from shop {} to shop {}",
