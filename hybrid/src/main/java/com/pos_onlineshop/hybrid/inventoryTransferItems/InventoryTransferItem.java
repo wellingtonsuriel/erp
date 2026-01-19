@@ -14,8 +14,7 @@ import java.util.List;
 
 /**
  * InventoryTransferItem entity representing individual items in a transfer.
- * Tracks quantities requested, shipped, and received for multiple products.
- * Note: Quantities apply collectively to all products in this item.
+ * Tracks quantities requested, shipped, and received for a product.
  */
 @Entity
 @Table(name = "inventory_transfer_items")
@@ -23,8 +22,8 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@EqualsAndHashCode(exclude = {"transfer", "products"})
-@ToString(exclude = {"transfer", "products"})
+@EqualsAndHashCode(exclude = {"transfer", "product"})
+@ToString(exclude = {"transfer", "product"})
 public class InventoryTransferItem {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -34,14 +33,9 @@ public class InventoryTransferItem {
     @JoinColumn(name = "transfer_id", nullable = false)
     private InventoryTransfer transfer;
 
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(
-        name = "transfer_item_products",
-        joinColumns = @JoinColumn(name = "transfer_item_id"),
-        inverseJoinColumns = @JoinColumn(name = "product_id")
-    )
-    @Builder.Default
-    private List<Product> products = new ArrayList<>();
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "product_id", nullable = false)
+    private Product product;
 
     @Column(name = "requested_quantity", nullable = false)
     private Integer requestedQuantity;
