@@ -74,9 +74,9 @@ public class InventoryTransferService {
     }
 
     /**
-     * Add item to transfer
+     * Add item to transfer with multiple products
      */
-    public InventoryTransfer addItemToTransfer(Long transferId, Long productId, Integer quantity,
+    public InventoryTransfer addItemToTransfer(Long transferId, List<Long> productIds, Integer quantity,
                                                BigDecimal unitCost, String notes) {
 
         InventoryTransfer transfer = transferRepository.findById(transferId)
@@ -86,38 +86,53 @@ public class InventoryTransferService {
             throw new IllegalStateException("Cannot add items to transfer in status: " + transfer.getStatus());
         }
 
-        Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new ResourceNotFoundException("Product", productId));
+        // Validate product IDs
+        if (productIds == null || productIds.isEmpty()) {
+            throw new IllegalArgumentException("Product IDs cannot be empty");
+        }
 
         // Validate quantity
         if (quantity == null || quantity <= 0) {
             throw new IllegalArgumentException("Quantity must be greater than zero");
         }
 
-        // Check if item already exists in transfer
-        boolean itemExists = transfer.getTransferItems().stream()
-                .anyMatch(item -> item.getProduct().getId().equals(productId));
-
-        if (itemExists) {
-            throw new IllegalArgumentException("Product already exists in this transfer");
+        // Fetch all products
+        List<Product> products = new ArrayList<>();
+        for (Long productId : productIds) {
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Product", productId));
+            products.add(product);
         }
 
-        // Check if source shop has sufficient inventory
-        if (!shopInventoryService.isInStock(transfer.getFromShop().getId(), productId, quantity)) {
-            // Get actual available quantity for better error message
-            Optional<ShopInventory> inventory = shopInventoryService.getInventory(transfer.getFromShop(), product);
-            int availableQuantity = inventory.map(ShopInventory::getQuantity).orElse(0);
+        // Check if any product already exists in transfer
+        for (Product product : products) {
+            boolean itemExists = transfer.getTransferItems().stream()
+                    .anyMatch(item -> item.getProducts().stream()
+                            .anyMatch(p -> p.getId().equals(product.getId())));
 
-            throw new InsufficientInventoryException(
-                    String.format("Insufficient inventory in source shop %s. Requested: %d, Available: %d for product %s",
-                            transfer.getFromShop().getName(),
-                            quantity,
-                            availableQuantity,
-                            product.getName()));
+            if (itemExists) {
+                throw new IllegalArgumentException("Product " + product.getName() + " already exists in this transfer");
+            }
+        }
+
+        // Check if source shop has sufficient inventory for all products
+        for (Product product : products) {
+            if (!shopInventoryService.isInStock(transfer.getFromShop().getId(), product.getId(), quantity)) {
+                // Get actual available quantity for better error message
+                Optional<ShopInventory> inventory = shopInventoryService.getInventory(transfer.getFromShop(), product);
+                int availableQuantity = inventory.map(ShopInventory::getQuantity).orElse(0);
+
+                throw new InsufficientInventoryException(
+                        String.format("Insufficient inventory in source shop %s. Requested: %d, Available: %d for product %s",
+                                transfer.getFromShop().getName(),
+                                quantity,
+                                availableQuantity,
+                                product.getName()));
+            }
         }
 
         InventoryTransferItem transferItem = InventoryTransferItem.builder()
-                .product(product)
+                .products(products)
                 .requestedQuantity(quantity)
                 .unitCost(unitCost)
                 .notes(notes)
@@ -126,8 +141,14 @@ public class InventoryTransferService {
         transfer.addTransferItem(transferItem);
 
         InventoryTransfer savedTransfer = transferRepository.save(transfer);
-        log.info("Added product {} (quantity: {}) to transfer {} - Total items: {}, Total value: {}",
-                product.getName(),
+
+        String productNames = products.stream()
+                .map(Product::getName)
+                .reduce((a, b) -> a + ", " + b)
+                .orElse("");
+
+        log.info("Added products {} (quantity: {} each) to transfer {} - Total items: {}, Total value: {}",
+                productNames,
                 quantity,
                 transfer.getTransferNumber(),
                 transfer.getTotalItems(),
@@ -137,9 +158,9 @@ public class InventoryTransferService {
     }
 
     /**
-     * Remove item from transfer
+     * Remove item from transfer by item ID
      */
-    public InventoryTransfer removeItemFromTransfer(Long transferId, Long productId) {
+    public InventoryTransfer removeItemFromTransfer(Long transferId, Long itemId) {
         InventoryTransfer transfer = transferRepository.findById(transferId)
                 .orElseThrow(() -> new ResourceNotFoundException("Transfer", transferId));
 
@@ -147,7 +168,7 @@ public class InventoryTransferService {
             throw new IllegalStateException("Cannot remove items from transfer in status: " + transfer.getStatus());
         }
 
-        transfer.getTransferItems().removeIf(item -> item.getProduct().getId().equals(productId));
+        transfer.getTransferItems().removeIf(item -> item.getId().equals(itemId));
 
         return transferRepository.save(transfer);
     }
@@ -165,11 +186,13 @@ public class InventoryTransferService {
 
         // Validate inventory availability again
         for (InventoryTransferItem item : transfer.getTransferItems()) {
-            if (!shopInventoryService.isInStock(
-                    transfer.getFromShop().getId(),
-                    item.getProduct().getId(),
-                    item.getRequestedQuantity())) {
-                throw new InsufficientInventoryException("Insufficient inventory for product: " + item.getProduct().getName());
+            for (Product product : item.getProducts()) {
+                if (!shopInventoryService.isInStock(
+                        transfer.getFromShop().getId(),
+                        product.getId(),
+                        item.getRequestedQuantity())) {
+                    throw new InsufficientInventoryException("Insufficient inventory for product: " + product.getName());
+                }
             }
         }
 
@@ -190,11 +213,13 @@ public class InventoryTransferService {
 
         // Validate inventory availability before shipping
         for (InventoryTransferItem item : transfer.getTransferItems()) {
-            if (!shopInventoryService.isInStock(
-                    transfer.getFromShop().getId(),
-                    item.getProduct().getId(),
-                    item.getRequestedQuantity())) {
-                throw new InsufficientInventoryException("Insufficient inventory for product: " + item.getProduct().getName());
+            for (Product product : item.getProducts()) {
+                if (!shopInventoryService.isInStock(
+                        transfer.getFromShop().getId(),
+                        product.getId(),
+                        item.getRequestedQuantity())) {
+                    throw new InsufficientInventoryException("Insufficient inventory for product: " + product.getName());
+                }
             }
         }
 
@@ -202,28 +227,28 @@ public class InventoryTransferService {
 
         // Update inventory in both shops
         for (InventoryTransferItem item : transfer.getTransferItems()) {
-            try {
-                // 1. Remove stock from source shop
-                shopInventoryService.reduceStock(
-                        transfer.getFromShop().getId(),
-                        item.getProduct().getId(),
-                        item.getRequestedQuantity());
+            for (Product product : item.getProducts()) {
+                try {
+                    // 1. Remove stock from source shop
+                    shopInventoryService.reduceStock(
+                            transfer.getFromShop().getId(),
+                            product.getId(),
+                            item.getRequestedQuantity());
 
+                    // 2. Mark as shipped in transfer item
+                    item.setShippedQuantity(item.getRequestedQuantity());
 
+                    log.debug("Shipped {} units of {} from shop {} to shop {}",
+                            item.getRequestedQuantity(),
+                            product.getName(),
+                            transfer.getFromShop().getName(),
+                            transfer.getToShop().getName());
 
-                // 2. Mark as shipped in transfer item
-                item.setShippedQuantity(item.getRequestedQuantity());
-
-                log.debug("Shipped {} units of {} from shop {} to shop {}",
-                        item.getRequestedQuantity(),
-                        item.getProduct().getName(),
-                        transfer.getFromShop().getName(),
-                        transfer.getToShop().getName());
-
-            } catch (Exception e) {
-                log.error("Error updating inventory during shipping for product {}: {}",
-                        item.getProduct().getName(), e.getMessage());
-                throw new RuntimeException("Failed to update inventory during shipping", e);
+                } catch (Exception e) {
+                    log.error("Error updating inventory during shipping for product {}: {}",
+                            product.getName(), e.getMessage());
+                    throw new RuntimeException("Failed to update inventory during shipping", e);
+                }
             }
         }
 
@@ -250,9 +275,16 @@ public class InventoryTransferService {
         // Update received quantities for each item
         for (ReceiveItemDto receivedItem : receivedItems) {
             InventoryTransferItem transferItem = transfer.getTransferItems().stream()
-                    .filter(item -> item.getProduct().getId().equals(receivedItem.getProductId()))
+                    .filter(item -> item.getProducts().stream()
+                            .anyMatch(p -> p.getId().equals(receivedItem.getProductId())))
                     .findFirst()
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found in transfer with id: " + receivedItem.getProductId()));
+
+            // Find the specific product in the item
+            Product product = transferItem.getProducts().stream()
+                    .filter(p -> p.getId().equals(receivedItem.getProductId()))
+                    .findFirst()
+                    .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + receivedItem.getProductId()));
 
             // Validate received quantities
             int totalReceived = receivedItem.getReceivedQuantity() +
@@ -261,7 +293,7 @@ public class InventoryTransferService {
             if (totalReceived > transferItem.getShippedQuantity()) {
                 throw new IllegalArgumentException(
                         String.format("Cannot receive more than shipped quantity for product %s. Shipped: %d, Attempting to receive: %d",
-                                transferItem.getProduct().getName(),
+                                product.getName(),
                                 transferItem.getShippedQuantity(),
                                 totalReceived));
             }
@@ -274,12 +306,12 @@ public class InventoryTransferService {
                 if (receivedItem.getReceivedQuantity() > 0) {
                     shopInventoryService.addStock(
                             transfer.getToShop().getId(),
-                            transferItem.getProduct().getId(),
+                            product.getId(),
                             receivedItem.getReceivedQuantity());
 
                     log.debug("Added {} units of {} to shop {} inventory",
                             receivedItem.getReceivedQuantity(),
-                            transferItem.getProduct().getName(),
+                            product.getName(),
                             transfer.getToShop().getName());
                 }
 
@@ -287,7 +319,7 @@ public class InventoryTransferService {
                 if (receivedItem.getDamagedQuantity() != null && receivedItem.getDamagedQuantity() > 0) {
                     log.warn("Received {} damaged units of {} in transfer {} - not added to inventory",
                             receivedItem.getDamagedQuantity(),
-                            transferItem.getProduct().getName(),
+                            product.getName(),
                             transfer.getTransferNumber());
                 }
 
@@ -296,13 +328,13 @@ public class InventoryTransferService {
                 if (unreceivedQuantity > 0) {
                     log.warn("Missing {} units of {} in transfer {} - possible loss or theft",
                             unreceivedQuantity,
-                            transferItem.getProduct().getName(),
+                            product.getName(),
                             transfer.getTransferNumber());
                 }
 
             } catch (Exception e) {
                 log.error("Error updating inventory during receiving for product {}: {}",
-                        transferItem.getProduct().getName(), e.getMessage());
+                        product.getName(), e.getMessage());
                 throw new RuntimeException("Failed to update inventory during receiving", e);
             }
         }
@@ -339,22 +371,24 @@ public class InventoryTransferService {
         // If transfer was shipped, need to reverse inventory changes
         if (transfer.getStatus() == TransferStatus.IN_TRANSIT) {
             for (InventoryTransferItem item : transfer.getTransferItems()) {
-                try {
-                    // 1. Return stock to source shop (add back what was removed)
-                    shopInventoryService.addStock(
-                            transfer.getFromShop().getId(),
-                            item.getProduct().getId(),
-                            item.getShippedQuantity());
+                for (Product product : item.getProducts()) {
+                    try {
+                        // 1. Return stock to source shop (add back what was removed)
+                        shopInventoryService.addStock(
+                                transfer.getFromShop().getId(),
+                                product.getId(),
+                                item.getShippedQuantity());
 
-                    log.debug("Reversed inventory for product {} - returned {} units to {}",
-                            item.getProduct().getName(),
-                            item.getShippedQuantity(),
-                            transfer.getFromShop().getName());
+                        log.debug("Reversed inventory for product {} - returned {} units to {}",
+                                product.getName(),
+                                item.getShippedQuantity(),
+                                transfer.getFromShop().getName());
 
-                } catch (Exception e) {
-                    log.error("Error reversing inventory during cancellation for product {}: {}",
-                            item.getProduct().getName(), e.getMessage());
-                    // Log error but don't fail the entire cancellation
+                    } catch (Exception e) {
+                        log.error("Error reversing inventory during cancellation for product {}: {}",
+                                product.getName(), e.getMessage());
+                        // Log error but don't fail the entire cancellation
+                    }
                 }
             }
 

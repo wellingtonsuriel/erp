@@ -167,17 +167,23 @@ public class InventoryTransferController {
                             "Quantity must be greater than zero", "/api/inventory-transfers/" + transferId + "/items"));
             }
 
+            if (request.getProductIds() == null || request.getProductIds().isEmpty()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), "Bad Request",
+                            "Product IDs cannot be empty", "/api/inventory-transfers/" + transferId + "/items"));
+            }
+
             InventoryTransfer transfer = transferService.addItemToTransfer(
                     transferId,
-                    request.getProductId(),
+                    request.getProductIds(),
                     request.getQuantity(),
                     request.getUnitCost(),
                     request.getNotes()
             );
 
-            log.info("Successfully added item to transfer {} - Product: {}, Quantity: {}, Total items: {}",
+            log.info("Successfully added item to transfer {} - Products: {}, Quantity: {}, Total items: {}",
                     transfer.getTransferNumber(),
-                    request.getProductId(),
+                    request.getProductIds(),
                     request.getQuantity(),
                     transfer.getTotalItems());
 
@@ -206,31 +212,31 @@ public class InventoryTransferController {
     }
 
     /**
-     * Remove item from transfer
+     * Remove item from transfer by item ID
      */
-    @DeleteMapping("/{transferId}/items/{productId}")
+    @DeleteMapping("/{transferId}/items/{itemId}")
     public ResponseEntity<?> removeItemFromTransfer(
             @PathVariable Long transferId,
-            @PathVariable Long productId) {
+            @PathVariable Long itemId) {
 
         try {
-            InventoryTransfer transfer = transferService.removeItemFromTransfer(transferId, productId);
+            InventoryTransfer transfer = transferService.removeItemFromTransfer(transferId, itemId);
             return ResponseEntity.ok(transfer);
         } catch (ResourceNotFoundException e) {
             log.error("Resource not found: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(ErrorResponse.of(HttpStatus.NOT_FOUND.value(), "Not Found", e.getMessage(),
-                        "/api/inventory-transfers/" + transferId + "/items/" + productId));
+                        "/api/inventory-transfers/" + transferId + "/items/" + itemId));
         } catch (IllegalStateException e) {
             log.error("Invalid operation: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), "Bad Request", e.getMessage(),
-                        "/api/inventory-transfers/" + transferId + "/items/" + productId));
+                        "/api/inventory-transfers/" + transferId + "/items/" + itemId));
         } catch (Exception e) {
             log.error("Error removing item from transfer", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ErrorResponse.of(HttpStatus.INTERNAL_SERVER_ERROR.value(), "Internal Server Error",
-                        "Failed to remove item from transfer", "/api/inventory-transfers/" + transferId + "/items/" + productId));
+                        "Failed to remove item from transfer", "/api/inventory-transfers/" + transferId + "/items/" + itemId));
         }
     }
 
