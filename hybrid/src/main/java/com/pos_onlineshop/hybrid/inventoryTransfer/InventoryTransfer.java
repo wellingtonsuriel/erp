@@ -1,6 +1,7 @@
 package com.pos_onlineshop.hybrid.inventoryTransfer;
 
 import com.pos_onlineshop.hybrid.cashier.Cashier;
+import com.pos_onlineshop.hybrid.damagedStockReceived.DamagedStockReceived;
 import com.pos_onlineshop.hybrid.enums.TransferPriority;
 import com.pos_onlineshop.hybrid.enums.TransferStatus;
 import com.pos_onlineshop.hybrid.enums.TransferType;
@@ -23,8 +24,8 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@EqualsAndHashCode(exclude = {"transferItems"})
-@ToString(exclude = {"transferItems"})
+@EqualsAndHashCode(exclude = {"transferItems", "damagedItems"})
+@ToString(exclude = {"transferItems", "damagedItems"})
 public class InventoryTransfer {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -41,6 +42,10 @@ public class InventoryTransfer {
     @OneToMany(mappedBy = "transfer", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private List<InventoryTransferItem> transferItems = new ArrayList<>();
+
+    @OneToMany(mappedBy = "transfer", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<DamagedStockReceived> damagedItems = new ArrayList<>();
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -268,5 +273,44 @@ public class InventoryTransfer {
     // Helper method to check if transfer is urgent
     public boolean isUrgent() {
         return priority == TransferPriority.URGENT || priority == TransferPriority.CRITICAL;
+    }
+
+    // Damaged items management methods
+    public void addDamagedItem(DamagedStockReceived damagedItem) {
+        damagedItems.add(damagedItem);
+        damagedItem.setTransfer(this);
+    }
+
+    public void removeDamagedItem(DamagedStockReceived damagedItem) {
+        damagedItems.remove(damagedItem);
+        damagedItem.setTransfer(null);
+    }
+
+    public int getTotalDamagedItemsCount() {
+        return damagedItems.stream()
+                .mapToInt(DamagedStockReceived::getDamagedQuantity)
+                .sum();
+    }
+
+    public BigDecimal getTotalDamagedStockValue() {
+        return damagedItems.stream()
+                .map(DamagedStockReceived::getTotalDamageValue)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    public boolean hasDamagedItems() {
+        return !damagedItems.isEmpty();
+    }
+
+    public long getDamagedItemsWithInsuranceClaims() {
+        return damagedItems.stream()
+                .filter(DamagedStockReceived::getInsuranceClaimed)
+                .count();
+    }
+
+    public long getRepairableDamagedItemsCount() {
+        return damagedItems.stream()
+                .filter(DamagedStockReceived::getRepairable)
+                .count();
     }
 }
