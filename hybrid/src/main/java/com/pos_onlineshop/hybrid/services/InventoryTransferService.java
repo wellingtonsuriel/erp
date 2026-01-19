@@ -75,9 +75,9 @@ public class InventoryTransferService {
     }
 
     /**
-     * Add item to transfer
+     * Add items to transfer - supports multiple products
      */
-    public InventoryTransfer addItemToTransfer(Long transferId, Long productId, Integer quantity,
+    public InventoryTransfer addItemToTransfer(Long transferId, List<Long> productIds, Integer quantity,
                                                BigDecimal unitCost, String notes) {
 
         InventoryTransfer transfer = transferRepository.findById(transferId)
@@ -87,50 +87,67 @@ public class InventoryTransferService {
             throw new IllegalStateException("Cannot add items to transfer in status: " + transfer.getStatus());
         }
 
-        Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new ResourceNotFoundException("Product", productId));
-
         // Validate quantity
         if (quantity == null || quantity <= 0) {
             throw new IllegalArgumentException("Quantity must be greater than zero");
         }
 
-        // Check if item already exists in transfer
-        boolean itemExists = transfer.getTransferItems().stream()
-                .anyMatch(item -> item.getProduct().getId().equals(productId));
-
-        if (itemExists) {
-            throw new IllegalArgumentException("Product already exists in this transfer");
+        // Validate product IDs list
+        if (productIds == null || productIds.isEmpty()) {
+            throw new IllegalArgumentException("Product IDs list cannot be empty");
         }
 
-        // Check if source shop has sufficient inventory
-        if (!shopInventoryService.isInStock(transfer.getFromShop().getId(), productId, quantity)) {
-            // Get actual available quantity for better error message
-            Optional<ShopInventory> inventory = shopInventoryService.getInventory(transfer.getFromShop(), product);
-            int availableQuantity = inventory.map(ShopInventory::getQuantity).orElse(0);
+        // Track successfully added products
+        List<String> addedProducts = new ArrayList<>();
 
-            throw new InsufficientInventoryException(
-                    String.format("Insufficient inventory in source shop %s. Requested: %d, Available: %d for product %s",
-                            transfer.getFromShop().getName(),
-                            quantity,
-                            availableQuantity,
-                            product.getName()));
+        // Add each product to the transfer
+        for (Long productId : productIds) {
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Product", productId));
+
+            // Check if item already exists in transfer
+            boolean itemExists = transfer.getTransferItems().stream()
+                    .anyMatch(item -> item.getProduct().getId().equals(productId));
+
+            if (itemExists) {
+                throw new IllegalArgumentException("Product " + product.getName() + " already exists in this transfer");
+            }
+
+            // Check if source shop has sufficient inventory
+            if (!shopInventoryService.isInStock(transfer.getFromShop().getId(), productId, quantity)) {
+                // Get actual available quantity for better error message
+                Optional<ShopInventory> inventory = shopInventoryService.getInventory(transfer.getFromShop(), product);
+                int availableQuantity = inventory.map(ShopInventory::getQuantity).orElse(0);
+
+                throw new InsufficientInventoryException(
+                        String.format("Insufficient inventory in source shop %s. Requested: %d, Available: %d for product %s",
+                                transfer.getFromShop().getName(),
+                                quantity,
+                                availableQuantity,
+                                product.getName()));
+            }
+
+            InventoryTransferItem transferItem = InventoryTransferItem.builder()
+                    .product(product)
+                    .requestedQuantity(quantity)
+                    .unitCost(unitCost)
+                    .notes(notes)
+                    .build();
+
+            transfer.addTransferItem(transferItem);
+            addedProducts.add(product.getName());
+
+            log.debug("Added product {} (quantity: {}) to transfer {}",
+                    product.getName(),
+                    quantity,
+                    transfer.getTransferNumber());
         }
-
-        InventoryTransferItem transferItem = InventoryTransferItem.builder()
-                .product(product)
-                .requestedQuantity(quantity)
-                .unitCost(unitCost)
-                .notes(notes)
-                .build();
-
-        transfer.addTransferItem(transferItem);
 
         InventoryTransfer savedTransfer = transferRepository.save(transfer);
-        log.info("Added product {} (quantity: {}) to transfer {} - Total items: {}, Total value: {}",
-                product.getName(),
-                quantity,
+        log.info("Added {} product(s) to transfer {}: {} - Total items: {}, Total value: {}",
+                addedProducts.size(),
                 transfer.getTransferNumber(),
+                String.join(", ", addedProducts),
                 transfer.getTotalItems(),
                 transfer.getTotalValue());
 
