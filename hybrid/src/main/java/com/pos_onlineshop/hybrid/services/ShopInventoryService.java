@@ -45,7 +45,7 @@ public class ShopInventoryService {
      */
     @Transactional(readOnly = true)
     public Optional<ShopInventory> getInventory(Shop shop, Product product) {
-        return shopInventoryRepository.findByShopAndProduct(shop, product);
+        return shopInventoryRepository.findFirstByShopAndProductOrderByIdDesc(shop, product);
     }
 
     /**
@@ -76,7 +76,7 @@ public class ShopInventoryService {
         return inventoryTotals.stream()
                 .map(inventoryTotal -> {
                     // Try to find corresponding ShopInventory for additional details
-                    Optional<ShopInventory> shopInventoryOpt = shopInventoryRepository.findByShopAndProduct(
+                    Optional<ShopInventory> shopInventoryOpt = shopInventoryRepository.findFirstByShopAndProductOrderByIdDesc(
                             inventoryTotal.getShop(), inventoryTotal.getProduct());
 
                     if (shopInventoryOpt.isPresent()) {
@@ -277,7 +277,7 @@ public class ShopInventoryService {
         }
 
         // Delete shop inventory if it exists
-        Optional<ShopInventory> inventoryOpt = shopInventoryRepository.findByShopAndProduct(shop, product);
+        Optional<ShopInventory> inventoryOpt = shopInventoryRepository.findFirstByShopAndProductOrderByIdDesc(shop, product);
         if (inventoryOpt.isPresent()) {
             shopInventoryRepository.delete(inventoryOpt.get());
         }

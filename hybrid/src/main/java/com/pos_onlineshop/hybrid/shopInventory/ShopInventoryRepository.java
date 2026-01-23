@@ -15,10 +15,12 @@ import java.util.Optional;
 @Repository
 public interface ShopInventoryRepository extends JpaRepository<ShopInventory, Long> {
 
-    Optional<ShopInventory> findByShopAndProduct(Shop shop, Product product);
+    // Get the most recent shop inventory record for a shop-product combination
+    // This handles cases where multiple records exist (for audit trail purposes)
+    Optional<ShopInventory> findFirstByShopAndProductOrderByIdDesc(Shop shop, Product product);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT si FROM ShopInventory si WHERE si.shop.id = :shopId AND si.product.id = :productId")
+    @Query("SELECT si FROM ShopInventory si WHERE si.shop.id = :shopId AND si.product.id = :productId ORDER BY si.id DESC")
     Optional<ShopInventory> findByShopIdAndProductIdWithLock(
             @Param("shopId") Long shopId,
             @Param("productId") Long productId);
@@ -30,7 +32,7 @@ public interface ShopInventoryRepository extends JpaRepository<ShopInventory, Lo
 
 
     @Query("SELECT si FROM ShopInventory si WHERE si.shop.type = 'WAREHOUSE' " +
-            "AND si.product.id = :productId")
+            "AND si.product.id = :productId ORDER BY si.id DESC")
     Optional<ShopInventory> findWarehouseInventory(@Param("productId") Long productId);
 
     @Query("SELECT si.product FROM ShopInventory si WHERE si.shop.id = :shopId")
