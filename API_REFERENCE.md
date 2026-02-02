@@ -1,47 +1,188 @@
 # API Reference Guide
 
 ## Table of Contents
+- [Overview](#overview)
 - [Authentication](#authentication)
+- [User Account Management](#user-account-management)
 - [POS Operations](#pos-operations)
 - [Order Management](#order-management)
+- [Sales Management](#sales-management)
 - [Product Management](#product-management)
 - [Inventory Management](#inventory-management)
+- [Shop Inventory Management](#shop-inventory-management)
+- [Inventory Transfers](#inventory-transfers)
 - [Cashier Management](#cashier-management)
 - [Customer Management](#customer-management)
+- [Supplier Management](#supplier-management)
 - [Shop Management](#shop-management)
 - [Currency Management](#currency-management)
 - [Pricing Management](#pricing-management)
 - [Tax Management](#tax-management)
-- [Inventory Transfers](#inventory-transfers)
-- [Financial Operations](#financial-operations)
+- [Cart Management](#cart-management)
+- [File Storage](#file-storage)
+- [Analytics](#analytics)
+- [Accountancy](#accountancy)
+- [ZIMRA Fiscalisation](#zimra-fiscalisation)
+- [Enums Reference](#enums-reference)
 - [Error Responses](#error-responses)
 
-## Base URL
+---
+
+## Overview
+
+### Base URL
 
 ```
 http://localhost:9090/api
 ```
 
-For Swagger UI documentation:
+### Swagger UI Documentation
+
 ```
 http://localhost:9090/swagger-ui.html
 ```
 
+### Technology Stack
+- **Framework**: Spring Boot 3.5.3
+- **Language**: Java 17
+- **Database**: MySQL
+- **ORM**: Hibernate/JPA
+- **Port**: 9090
+
+---
+
 ## Authentication
 
-The system uses Spring Security for authentication. Include authentication headers with your requests.
+The system uses Spring Security with JWT Bearer token authentication.
+
+### Headers
 
 ```http
 Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+### Roles
+
+| Role | Description |
+|------|-------------|
+| `USER` | Online shop customers |
+| `ADMIN` | System administrators |
+| `CASHIER` | POS staff members |
+
+---
+
+## User Account Management
+
+Base path: `/api/users`
+
+### Register User
+
+Creates a new user account.
+
+**Endpoint**: `POST /api/users/register`
+
+**Request Body**:
+```json
+{
+  "username": "john_doe",
+  "password": "securePassword123",
+  "email": "john.doe@example.com"
+}
+```
+
+**Response** (201 Created):
+```json
+{
+  "id": 1,
+  "username": "john_doe",
+  "email": "john.doe@example.com",
+  "roles": ["USER"],
+  "enabled": true,
+  "createdAt": "2026-01-15T10:00:00"
+}
+```
+
+### Get Current User
+
+**Endpoint**: `GET /api/users/me`
+**Authorization**: `USER` role required
+
+### Update Current User
+
+**Endpoint**: `PUT /api/users/me`
+**Authorization**: `USER` role required
+
+### Get All Users
+
+**Endpoint**: `GET /api/users`
+**Authorization**: `ADMIN` role required
+
+### Get User by ID
+
+**Endpoint**: `GET /api/users/{id}`
+**Authorization**: `ADMIN` role required
+
+### Get Users by Role
+
+**Endpoint**: `GET /api/users/role/{role}`
+**Authorization**: `ADMIN` role required
+
+**Path Parameters**:
+- `role`: `USER`, `ADMIN`, or `CASHIER`
+
+### Get User by Email
+
+**Endpoint**: `GET /api/users/email/{email}`
+**Authorization**: `ADMIN` role required
+
+### Enable/Disable User
+
+**Endpoint**: `PUT /api/users/{id}/enable?enabled={boolean}`
+**Authorization**: `ADMIN` role required
+
+### Add Role to User
+
+**Endpoint**: `POST /api/users/{id}/roles`
+**Authorization**: `ADMIN` role required
+
+**Request Body**:
+```json
+{
+  "role": "ADMIN"
+}
+```
+
+### Remove Role from User
+
+**Endpoint**: `DELETE /api/users/{id}/roles/{role}`
+**Authorization**: `ADMIN` role required
+
+### Get User Statistics
+
+**Endpoint**: `GET /api/users/statistics`
+**Authorization**: `ADMIN` role required
+
+**Response**:
+```json
+{
+  "totalUsers": 150,
+  "activeUsers": 142,
+  "adminCount": 5,
+  "cashierCount": 20,
+  "customerCount": 125
+}
 ```
 
 ---
 
 ## POS Operations
 
+Base path: `/api/pos`
+
 ### Quick Sale
 
-Creates a quick sale transaction for POS operations.
+Processes a quick sale transaction at the POS terminal.
 
 **Endpoint**: `POST /api/pos/quick-sale`
 
@@ -49,386 +190,464 @@ Creates a quick sale transaction for POS operations.
 ```json
 {
   "cashierId": 1,
-  "shopId": 1,
   "items": [
     {
       "productId": 100,
       "quantity": 2,
       "unitPrice": 15.50
-    },
-    {
-      "productId": 101,
-      "quantity": 1,
-      "unitPrice": 25.00
     }
   ],
   "paymentMethod": "CASH",
-  "currencyId": 1,
-  "amountTendered": 60.00,
-  "customerTin": "12345678" // Optional for ZIMRA
+  "cashGiven": 50.00
 }
 ```
 
-**Response** (201 Created):
-```json
-{
-  "saleId": 450,
-  "orderNumber": "POS-2026-001450",
-  "shopId": 1,
-  "cashierId": 1,
-  "totalAmount": 56.00,
-  "taxAmount": 8.40,
-  "grandTotal": 64.40,
-  "amountTendered": 60.00,
-  "change": -4.40,
-  "paymentMethod": "CASH",
-  "timestamp": "2026-01-15T14:30:00",
-  "receiptNumber": "REC-450",
-  "fiscalReceipt": {
-    "verified": true,
-    "fiscalCode": "ZIMRA-450-2026"
-  }
-}
-```
+**Response** (200 OK): Returns the created `Order` object.
 
-### Get Daily Summary
+### Barcode Scan
 
-Retrieves sales summary for a cashier session.
+Retrieves product information by barcode.
 
-**Endpoint**: `GET /api/pos/daily-summary`
-
-**Query Parameters**:
-- `cashierId` (required): Cashier ID
-- `date` (optional): Date in format YYYY-MM-DD (defaults to today)
-
-**Example Request**:
-```http
-GET /api/pos/daily-summary?cashierId=1&date=2026-01-15
-```
-
-**Response** (200 OK):
-```json
-{
-  "cashierId": 1,
-  "cashierName": "John Doe",
-  "date": "2026-01-15",
-  "totalSales": 5450.00,
-  "totalTransactions": 45,
-  "averageTransactionValue": 121.11,
-  "paymentMethodBreakdown": {
-    "CASH": 3200.00,
-    "CARD": 2250.00
-  },
-  "taxCollected": 817.50,
-  "openingCash": 500.00,
-  "closingCash": 3700.00,
-  "expectedCash": 3700.00,
-  "variance": 0.00
-}
-```
-
-### Void Transaction
-
-Cancels a completed transaction.
-
-**Endpoint**: `POST /api/pos/void-transaction`
+**Endpoint**: `POST /api/pos/barcode-scan`
 
 **Request Body**:
 ```json
 {
-  "transactionId": 450,
-  "reason": "Customer request",
-  "managerApprovalCode": "MGR-123"
+  "barcode": "1234567890123"
 }
 ```
+
+**Response** (200 OK): Returns the `Product` object.
+
+### Get Daily Summary
+
+**Endpoint**: `GET /api/pos/daily-summary`
+
+**Query Parameters**:
+- `date` (optional): Date in YYYY-MM-DD format (defaults to today)
+- `shopId` (optional): Filter by shop
 
 **Response** (200 OK):
 ```json
 {
-  "success": true,
-  "transactionId": 450,
-  "voidedAt": "2026-01-15T15:00:00",
-  "message": "Transaction voided successfully",
-  "refundAmount": 64.40
+  "totalSales": 5450.00,
+  "totalTransactions": 45,
+  "cashSales": 3200.00,
+  "cardSales": 2250.00,
+  "averageTransactionValue": 121.11
 }
 ```
+
+### Open Cash Drawer
+
+**Endpoint**: `POST /api/pos/open-cash-drawer`
+
+**Request Body**:
+```json
+{
+  "cashierId": 1
+}
+```
+
+**Note**: Requires `OPEN_CASH_DRAWER` permission.
+
+### Get Receipt
+
+**Endpoint**: `GET /api/pos/receipt/{orderId}`
+
+### Void Transaction
+
+**Endpoint**: `POST /api/pos/void-transaction/{orderId}`
+
+**Request Body**:
+```json
+{
+  "cashierId": 1,
+  "reason": "Customer request"
+}
+```
+
+**Note**: Requires `VOID_TRANSACTION` permission.
 
 ---
 
 ## Order Management
 
+Base path: `/api/orders`
+
 ### Create Order
 
-Creates a new order (online or POS).
+Creates an order from the user's cart.
 
 **Endpoint**: `POST /api/orders`
+**Authorization**: `USER` role required
 
 **Request Body**:
 ```json
 {
-  "shopId": 1,
-  "customerId": 25,
-  "currencyId": 1,
+  "shippingAddress": "123 Main St, Harare, Zimbabwe",
+  "paymentMethod": "CREDIT_CARD",
   "salesChannel": "ONLINE",
-  "paymentMethod": "CARD",
-  "orderLines": [
-    {
-      "productId": 100,
-      "quantity": 3,
-      "unitPrice": 15.50,
-      "discountPercent": 10.0
-    },
-    {
-      "productId": 105,
-      "quantity": 1,
-      "unitPrice": 89.99
-    }
-  ],
-  "shippingAddress": {
-    "street": "123 Main St",
-    "city": "Harare",
-    "postalCode": "00263",
-    "country": "Zimbabwe"
-  },
-  "notes": "Please deliver after 2 PM"
+  "currencyCode": "USD"
 }
 ```
 
-**Response** (201 Created):
-```json
-{
-  "id": 890,
-  "orderNumber": "ORD-2026-000890",
-  "shopId": 1,
-  "customerId": 25,
-  "customerName": "Jane Smith",
-  "status": "PENDING",
-  "salesChannel": "ONLINE",
-  "currencyCode": "USD",
-  "subtotal": 131.94,
-  "discountAmount": 4.65,
-  "taxAmount": 19.09,
-  "shippingFee": 5.00,
-  "totalAmount": 151.38,
-  "paymentMethod": "CARD",
-  "paymentStatus": "PENDING",
-  "createdAt": "2026-01-15T10:30:00",
-  "orderLines": [
-    {
-      "id": 1450,
-      "productId": 100,
-      "productName": "Product A",
-      "quantity": 3,
-      "unitPrice": 15.50,
-      "discountAmount": 4.65,
-      "taxAmount": 6.28,
-      "lineTotal": 41.85
-    },
-    {
-      "id": 1451,
-      "productId": 105,
-      "productName": "Product B",
-      "quantity": 1,
-      "unitPrice": 89.99,
-      "discountAmount": 0.00,
-      "taxAmount": 13.50,
-      "lineTotal": 103.49
-    }
-  ]
-}
-```
+**Response** (201 Created): Returns the created `Order` object.
 
-### List Orders
-
-Retrieves paginated list of orders with optional filtering.
+### Get All Orders
 
 **Endpoint**: `GET /api/orders`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Get Orders (Paginated)
+
+**Endpoint**: `GET /api/orders/paginated`
+**Authorization**: `ADMIN` or `CASHIER` role required
 
 **Query Parameters**:
-- `page` (optional, default: 0): Page number
-- `size` (optional, default: 20): Page size
-- `status` (optional): Filter by OrderStatus
-- `shopId` (optional): Filter by shop
-- `customerId` (optional): Filter by customer
-- `fromDate` (optional): Start date (YYYY-MM-DD)
-- `toDate` (optional): End date (YYYY-MM-DD)
-- `salesChannel` (optional): Filter by channel
+- `page` (default: 0)
+- `size` (default: 20)
+- `sort` (e.g., `createdAt,desc`)
 
-**Example Request**:
-```http
-GET /api/orders?page=0&size=10&status=PENDING&shopId=1
-```
+### Get Order by ID
 
-**Response** (200 OK):
-```json
-{
-  "content": [
-    {
-      "id": 890,
-      "orderNumber": "ORD-2026-000890",
-      "customerName": "Jane Smith",
-      "status": "PENDING",
-      "totalAmount": 151.38,
-      "createdAt": "2026-01-15T10:30:00"
-    }
-  ],
-  "pageable": {
-    "pageNumber": 0,
-    "pageSize": 10,
-    "totalElements": 1,
-    "totalPages": 1
-  }
-}
-```
+**Endpoint**: `GET /api/orders/{id}`
+**Authorization**: `USER` role required (own orders or ADMIN/CASHIER for any)
 
-### Update Order Status
+### Get My Orders
 
-Updates the status of an order.
+**Endpoint**: `GET /api/orders/my-orders`
+**Authorization**: `USER` role required
 
-**Endpoint**: `PATCH /api/orders/{id}/status`
+**Query Parameters**: Standard pagination
 
-**Request Body**:
-```json
-{
-  "status": "PROCESSING",
-  "notes": "Order confirmed and being prepared"
-}
-```
+### Get Orders by Status
 
-**Response** (200 OK):
-```json
-{
-  "id": 890,
-  "orderNumber": "ORD-2026-000890",
-  "status": "PROCESSING",
-  "updatedAt": "2026-01-15T11:00:00",
-  "statusHistory": [
-    {
-      "status": "PENDING",
-      "timestamp": "2026-01-15T10:30:00"
-    },
-    {
-      "status": "PROCESSING",
-      "timestamp": "2026-01-15T11:00:00"
-    }
-  ]
-}
-```
+**Endpoint**: `GET /api/orders/status/{status}`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+**Path Parameters**:
+- `status`: `PENDING`, `CONFIRMED`, `PROCESSING`, `SHIPPED`, `DELIVERED`, `CANCELLED`, `COMPLETED`
+
+### Get Orders by Channel
+
+**Endpoint**: `GET /api/orders/channel/{channel}`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+**Path Parameters**:
+- `channel`: `ONLINE`, `POS`, `PHONE`
+
+### Update Order
+
+**Endpoint**: `PUT /api/orders/{id}`
+**Authorization**: `ADMIN` role required
+
+### Delete Order
+
+**Endpoint**: `DELETE /api/orders/{id}`
+**Authorization**: `ADMIN` role required
+
+### Order Statistics
+
+**Get Revenue Statistics**:
+`GET /api/orders/statistics/revenue?currencyCode={code}`
+**Authorization**: `ADMIN` role required
+
+**Get Recent Order Stats**:
+`GET /api/orders/statistics/recent`
+**Authorization**: `ADMIN` role required
+
+**Get Channel Statistics**:
+`GET /api/orders/statistics/channels?startDate={datetime}&endDate={datetime}`
+**Authorization**: `ADMIN` role required
+
+**Get Top Products**:
+`GET /api/orders/statistics/top-products`
+**Authorization**: `ADMIN` role required
+
+---
+
+## Sales Management
+
+Base path: `/api/sales`
+
+### Get All Sales
+
+**Endpoint**: `GET /api/sales`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Get Sales (Paginated)
+
+**Endpoint**: `GET /api/sales/paginated`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Get Sale by ID
+
+**Endpoint**: `GET /api/sales/{id}`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Get Sales by Shop
+
+**Endpoint**: `GET /api/sales/shop/{shopId}`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Get Sales by Customer
+
+**Endpoint**: `GET /api/sales/customer/{customerId}`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Get Sales by Product
+
+**Endpoint**: `GET /api/sales/product/{productId}`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Get Sales by Type
+
+**Endpoint**: `GET /api/sales/type/{saleType}`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+**Path Parameters**:
+- `saleType`: `CASH`, `CREDIT`
+
+### Get Sales by Payment Method
+
+**Endpoint**: `GET /api/sales/payment-method/{paymentMethod}`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Get Sales by Date Range
+
+**Endpoint**: `GET /api/sales/date-range?startDate={datetime}&endDate={datetime}`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Get Shop Sales by Date Range
+
+**Endpoint**: `GET /api/sales/shop/{shopId}/date-range?startDate={datetime}&endDate={datetime}`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Get Recent Sales by Shop
+
+**Endpoint**: `GET /api/sales/shop/{shopId}/recent`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Get Total Sales by Shop
+
+**Endpoint**: `GET /api/sales/shop/{shopId}/total`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Get Total Sales by Shop and Date Range
+
+**Endpoint**: `GET /api/sales/shop/{shopId}/total/date-range?startDate={datetime}&endDate={datetime}`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Get Today's Sales by Shop
+
+**Endpoint**: `GET /api/sales/shop/{shopId}/today`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Get Total Sales by Customer
+
+**Endpoint**: `GET /api/sales/customer/{customerId}/total`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Create Sale
+
+**Endpoint**: `POST /api/sales`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Update Sale
+
+**Endpoint**: `PUT /api/sales/{id}`
+**Authorization**: `ADMIN` role required
+
+### Delete Sale
+
+**Endpoint**: `DELETE /api/sales/{id}`
+**Authorization**: `ADMIN` role required
 
 ---
 
 ## Product Management
 
+Base path: `/api/products`
+
+### Get All Products
+
+**Endpoint**: `GET /api/products`
+
+### Get Product by ID
+
+**Endpoint**: `GET /api/products/{id}`
+
 ### Create Product
 
-Creates a new product in the catalog.
-
 **Endpoint**: `POST /api/products`
+**Authorization**: `ADMIN` role required
 
 **Request Body**:
 ```json
 {
-  "sku": "PROD-A-001",
-  "barcode": "1234567890123",
   "name": "Premium Widget",
-  "description": "High-quality widget for professional use",
+  "description": "High-quality widget",
   "category": "Electronics",
-  "weight": 1.5,
+  "barcode": "1234567890123",
+  "sku": "PROD-A-001",
+  "weighable": false,
   "minStock": 10,
   "maxStock": 1000,
-  "attributes": {
-    "color": "Blue",
-    "size": "Medium",
-    "warranty": "2 years"
-  }
+  "weight": 1.5,
+  "unitOfMeasure": "piece",
+  "actualMeasure": 1,
+  "imageUrl": "https://example.com/image.jpg"
 }
 ```
 
-**Response** (201 Created):
-```json
-{
-  "id": 150,
-  "sku": "PROD-A-001",
-  "barcode": "1234567890123",
-  "name": "Premium Widget",
-  "description": "High-quality widget for professional use",
-  "category": "Electronics",
-  "weight": 1.5,
-  "minStock": 10,
-  "maxStock": 1000,
-  "isActive": true,
-  "createdAt": "2026-01-15T09:00:00",
-  "updatedAt": "2026-01-15T09:00:00"
-}
-```
+### Update Product
 
-### Search Product by Barcode
+**Endpoint**: `PUT /api/products/{id}`
+**Authorization**: `ADMIN` role required
 
-Retrieves product by barcode (useful for POS scanning).
+### Delete Product
+
+**Endpoint**: `DELETE /api/products/{id}`
+**Authorization**: `ADMIN` role required
+
+### Get Product by Barcode
 
 **Endpoint**: `GET /api/products/barcode/{barcode}`
 
-**Example Request**:
-```http
-GET /api/products/barcode/1234567890123
-```
+### Get Product by SKU
 
-**Response** (200 OK):
-```json
-{
-  "id": 150,
-  "sku": "PROD-A-001",
-  "barcode": "1234567890123",
-  "name": "Premium Widget",
-  "category": "Electronics",
-  "availableStock": 450,
-  "currentPrice": 15.50,
-  "taxIncluded": false
-}
-```
+**Endpoint**: `GET /api/products/sku/{sku}`
 
-### Check Product Availability
+### Get Products by Category
 
-Checks stock availability across shops.
+**Endpoint**: `GET /api/products/category/{category}`
 
-**Endpoint**: `GET /api/products/{id}/availability`
+### Search Products
 
-**Query Parameters**:
-- `shopId` (optional): Specific shop, omit for all shops
+**Endpoint**: `GET /api/products/search?name={searchTerm}`
 
-**Example Request**:
-```http
-GET /api/products/150/availability?shopId=1
-```
+### Get All Categories
 
-**Response** (200 OK):
-```json
-{
-  "productId": 150,
-  "productName": "Premium Widget",
-  "availability": [
-    {
-      "shopId": 1,
-      "shopName": "Main Store",
-      "availableStock": 450,
-      "reorderLevel": 100,
-      "isLowStock": false,
-      "lastUpdated": "2026-01-15T08:00:00"
-    }
-  ],
-  "totalAvailableStock": 450
-}
-```
+**Endpoint**: `GET /api/products/categories`
 
 ---
 
 ## Inventory Management
 
-See [INVENTORY_MANAGEMENT.md](hybrid/INVENTORY_MANAGEMENT.md) for comprehensive documentation.
+Base path: `/api/inventory`
 
-### Create Inventory Record
+**Note**: All endpoints require `ADMIN` role.
 
-Creates a new inventory record for a product in a shop.
+### Get Inventory by Product
+
+**Endpoint**: `GET /api/inventory/product/{productId}`
+
+### Get Product Availability
+
+**Endpoint**: `GET /api/inventory/product/{productId}/availability`
+
+**Response**:
+```json
+{
+  "online": 100,
+  "pos": 50,
+  "reserved": 10
+}
+```
+
+### Add Stock
+
+**Endpoint**: `POST /api/inventory/product/{productId}/add`
+
+**Request Body**:
+```json
+{
+  "quantity": 50
+}
+```
+
+### Remove Stock
+
+**Endpoint**: `POST /api/inventory/product/{productId}/remove`
+
+**Request Body**:
+```json
+{
+  "quantity": 25
+}
+```
+
+### Reserve Stock
+
+**Endpoint**: `POST /api/inventory/product/{productId}/reserve`
+
+**Request Body**:
+```json
+{
+  "quantity": 10
+}
+```
+
+### Release Reservation
+
+**Endpoint**: `POST /api/inventory/product/{productId}/release`
+
+**Request Body**:
+```json
+{
+  "quantity": 10
+}
+```
+
+### Check Stock
+
+**Endpoint**: `GET /api/inventory/check/{productId}?quantity={quantity}`
+
+**Response**: `true` or `false`
+
+### Get Low Stock Items
+
+**Endpoint**: `GET /api/inventory/low-stock`
+
+### Get Total Inventory Value
+
+**Endpoint**: `GET /api/inventory/total-value`
+
+### Update Reorder Level
+
+**Endpoint**: `PUT /api/inventory/product/{productId}/reorder-level`
+
+**Request Body**:
+```json
+{
+  "reorderLevel": 20
+}
+```
+
+---
+
+## Shop Inventory Management
+
+Base path: `/api/shop-inventory`
+
+### Get Shop Inventory for Product
+
+**Endpoint**: `GET /api/shop-inventory/shop/{shopId}/product/{productId}`
+
+### Get All Shop Inventory
+
+**Endpoint**: `GET /api/shop-inventory/shop/{shopId}`
+
+### Get Product Inventory Across Shops
+
+**Endpoint**: `GET /api/shop-inventory/product/{productId}`
+
+### Get Warehouse Inventory
+
+**Endpoint**: `GET /api/shop-inventory/warehouse/product/{productId}`
+
+### Create Shop Inventory
 
 **Endpoint**: `POST /api/shop-inventory`
 
@@ -436,7 +655,7 @@ Creates a new inventory record for a product in a shop.
 ```json
 {
   "shopId": 1,
-  "productId": 150,
+  "productId": 100,
   "supplierId": 5,
   "currencyId": 1,
   "quantity": 100,
@@ -448,96 +667,7 @@ Creates a new inventory record for a product in a shop.
 }
 ```
 
-**Response** (201 Created):
-```json
-{
-  "id": 245,
-  "shopId": 1,
-  "shopCode": "MAIN-001",
-  "productId": 150,
-  "productName": "Premium Widget",
-  "supplierId": 5,
-  "supplierName": "Acme Suppliers",
-  "currencyCode": "USD",
-  "quantity": 100,
-  "totalStock": 100,
-  "unitPrice": 12.50,
-  "expiryDate": "2027-12-31T00:00:00",
-  "reorderLevel": 20,
-  "minStock": 10,
-  "maxStock": 500,
-  "createdAt": "2026-01-15T10:00:00"
-}
-```
-
-### Add Stock
-
-Adds stock to existing inventory (creates audit trail).
-
-**Endpoint**: `POST /api/shop-inventory/shop/{shopId}/product/{productId}/add-stock`
-
-**Request Body**:
-```json
-{
-  "quantity": 50,
-  "notes": "Received from Purchase Order #12345"
-}
-```
-
-**Response** (200 OK):
-```json
-{
-  "id": 78,
-  "shopId": 1,
-  "productId": 150,
-  "totalstock": 150,
-  "previousStock": 100,
-  "addedQuantity": 50,
-  "lastUpdated": "2026-01-15T11:30:00"
-}
-```
-
-### Reduce Stock
-
-Reduces stock (for sales, damages, etc.).
-
-**Endpoint**: `POST /api/shop-inventory/shop/{shopId}/product/{productId}/reduce-stock`
-
-**Request Body**:
-```json
-{
-  "quantity": 25,
-  "reason": "SALE",
-  "notes": "Sold via Order #890"
-}
-```
-
-**Response** (200 OK):
-```json
-{
-  "id": 78,
-  "shopId": 1,
-  "productId": 150,
-  "totalstock": 125,
-  "previousStock": 150,
-  "reducedQuantity": 25,
-  "lastUpdated": "2026-01-15T12:00:00"
-}
-```
-
-**Error Response** (400 Bad Request):
-```json
-{
-  "error": "INSUFFICIENT_STOCK",
-  "message": "Cannot reduce stock by 200. Available stock: 125",
-  "availableStock": 125,
-  "requestedQuantity": 200
-}
-```
-
-### Update Inventory Metadata
-
-Updates inventory metadata (prices, thresholds) without affecting stock.
+### Update Shop Inventory
 
 **Endpoint**: `PATCH /api/shop-inventory/shop/{shopId}/product/{productId}`
 
@@ -550,484 +680,36 @@ Updates inventory metadata (prices, thresholds) without affecting stock.
 }
 ```
 
-**Response** (200 OK):
-```json
-{
-  "id": 245,
-  "shopId": 1,
-  "productId": 150,
-  "unitPrice": 13.50,
-  "maxStock": 600,
-  "reorderLevel": 25,
-  "updatedAt": "2026-01-15T13:00:00"
-}
-```
+### Delete Shop Inventory
 
----
+**Endpoint**: `DELETE /api/shop-inventory/shop/{shopId}/product/{productId}`
 
-## Cashier Management
+### Check In-Stock Status
 
-### Create Cashier
+**Endpoint**: `GET /api/shop-inventory/shop/{shopId}/product/{productId}/in-stock?quantity={quantity}`
 
-Creates a new cashier account.
+### Reduce Stock
 
-**Endpoint**: `POST /api/cashiers`
+**Endpoint**: `POST /api/shop-inventory/shop/{shopId}/product/{productId}/reduce-stock`
 
 **Request Body**:
 ```json
 {
-  "employeeId": "EMP-001",
-  "name": "John Doe",
-  "email": "john.doe@example.com",
-  "phone": "+263771234567",
-  "role": "CASHIER",
-  "shopId": 1,
-  "pin": "1234"
+  "quantity": 25
 }
 ```
 
-**Response** (201 Created):
-```json
-{
-  "id": 10,
-  "employeeId": "EMP-001",
-  "name": "John Doe",
-  "email": "john.doe@example.com",
-  "role": "CASHIER",
-  "shopId": 1,
-  "shopName": "Main Store",
-  "isActive": true,
-  "createdAt": "2026-01-15T08:00:00"
-}
-```
+### Get Products by Shop
 
-### Cashier Login
-
-Authenticates cashier and starts a session.
-
-**Endpoint**: `POST /api/cashiers/login`
-
-**Request Body**:
-```json
-{
-  "employeeId": "EMP-001",
-  "pin": "1234",
-  "shopId": 1,
-  "openingCash": 500.00
-}
-```
-
-**Response** (200 OK):
-```json
-{
-  "success": true,
-  "sessionId": 450,
-  "cashierId": 10,
-  "cashierName": "John Doe",
-  "shopId": 1,
-  "sessionStart": "2026-01-15T08:00:00",
-  "openingCash": 500.00,
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-}
-```
-
-### Cashier Logout
-
-Ends cashier session with cash reconciliation.
-
-**Endpoint**: `POST /api/cashiers/logout`
-
-**Request Body**:
-```json
-{
-  "sessionId": 450,
-  "closingCash": 3750.00,
-  "notes": "End of shift"
-}
-```
-
-**Response** (200 OK):
-```json
-{
-  "success": true,
-  "sessionId": 450,
-  "sessionEnd": "2026-01-15T18:00:00",
-  "openingCash": 500.00,
-  "closingCash": 3750.00,
-  "expectedCash": 3700.00,
-  "variance": 50.00,
-  "totalSales": 3200.00,
-  "transactionCount": 32
-}
-```
-
----
-
-## Customer Management
-
-### Create Customer
-
-Creates a new customer record.
-
-**Endpoint**: `POST /api/customers`
-
-**Request Body**:
-```json
-{
-  "name": "Jane Smith",
-  "email": "jane.smith@example.com",
-  "phone": "+263771234567",
-  "taxId": "TIN-12345678",
-  "address": {
-    "street": "123 Main St",
-    "city": "Harare",
-    "postalCode": "00263",
-    "country": "Zimbabwe"
-  },
-  "creditLimit": 10000.00,
-  "loyaltyTier": "GOLD"
-}
-```
-
-**Response** (201 Created):
-```json
-{
-  "id": 125,
-  "customerId": "CUST-000125",
-  "name": "Jane Smith",
-  "email": "jane.smith@example.com",
-  "phone": "+263771234567",
-  "taxId": "TIN-12345678",
-  "loyaltyPoints": 0,
-  "loyaltyTier": "GOLD",
-  "creditLimit": 10000.00,
-  "currentBalance": 0.00,
-  "createdAt": "2026-01-15T09:00:00"
-}
-```
-
-### Get Customer Loyalty Points
-
-Retrieves customer loyalty information.
-
-**Endpoint**: `GET /api/customers/{id}/loyalty`
-
-**Example Request**:
-```http
-GET /api/customers/125/loyalty
-```
-
-**Response** (200 OK):
-```json
-{
-  "customerId": 125,
-  "customerName": "Jane Smith",
-  "loyaltyPoints": 1250,
-  "loyaltyTier": "GOLD",
-  "tierBenefits": {
-    "discountPercent": 10.0,
-    "pointsMultiplier": 2.0,
-    "freeShipping": true
-  },
-  "pointsToNextTier": 2750,
-  "nextTier": "PLATINUM",
-  "pointsHistory": [
-    {
-      "date": "2026-01-10",
-      "points": 500,
-      "reason": "Purchase - Order #850"
-    },
-    {
-      "date": "2026-01-12",
-      "points": 750,
-      "reason": "Purchase - Order #870"
-    }
-  ]
-}
-```
-
----
-
-## Shop Management
-
-### Create Shop
-
-Creates a new shop/warehouse location.
-
-**Endpoint**: `POST /api/shops`
-
-**Request Body**:
-```json
-{
-  "code": "BRANCH-02",
-  "name": "Downtown Branch",
-  "address": "456 Commerce Ave, Harare, Zimbabwe",
-  "phone": "+263771111111",
-  "email": "downtown@example.com",
-  "managerId": 5,
-  "defaultCurrencyId": 1,
-  "shopType": "RETAIL",
-  "operatingHours": {
-    "monday": "08:00-18:00",
-    "tuesday": "08:00-18:00",
-    "wednesday": "08:00-18:00",
-    "thursday": "08:00-18:00",
-    "friday": "08:00-20:00",
-    "saturday": "09:00-17:00",
-    "sunday": "Closed"
-  }
-}
-```
-
-**Response** (201 Created):
-```json
-{
-  "id": 5,
-  "code": "BRANCH-02",
-  "name": "Downtown Branch",
-  "address": "456 Commerce Ave, Harare, Zimbabwe",
-  "phone": "+263771111111",
-  "email": "downtown@example.com",
-  "managerId": 5,
-  "managerName": "Mike Manager",
-  "defaultCurrencyCode": "USD",
-  "shopType": "RETAIL",
-  "isActive": true,
-  "createdAt": "2026-01-15T10:00:00"
-}
-```
-
----
-
-## Currency Management
-
-### Create Currency
-
-Adds a new currency to the system.
-
-**Endpoint**: `POST /api/currencies`
-
-**Request Body**:
-```json
-{
-  "code": "ZWL",
-  "name": "Zimbabwean Dollar",
-  "symbol": "Z$",
-  "isBaseCurrency": false,
-  "decimalPlaces": 2
-}
-```
-
-**Response** (201 Created):
-```json
-{
-  "id": 5,
-  "code": "ZWL",
-  "name": "Zimbabwean Dollar",
-  "symbol": "Z$",
-  "isBaseCurrency": false,
-  "decimalPlaces": 2,
-  "isActive": true,
-  "createdAt": "2026-01-15T09:00:00"
-}
-```
-
-### Add Exchange Rate
-
-Sets exchange rate between currencies.
-
-**Endpoint**: `POST /api/exchange-rates`
-
-**Request Body**:
-```json
-{
-  "fromCurrencyId": 1,
-  "toCurrencyId": 5,
-  "rate": 350.50,
-  "effectiveDate": "2026-01-15T00:00:00"
-}
-```
-
-**Response** (201 Created):
-```json
-{
-  "id": 45,
-  "fromCurrency": "USD",
-  "toCurrency": "ZWL",
-  "rate": 350.50,
-  "effectiveDate": "2026-01-15T00:00:00",
-  "createdAt": "2026-01-15T09:00:00"
-}
-```
-
-### Convert Currency
-
-Converts amount between currencies.
-
-**Endpoint**: `GET /api/exchange-rates/convert`
-
-**Query Parameters**:
-- `amount`: Amount to convert
-- `from`: Source currency code
-- `to`: Target currency code
-- `date` (optional): Date for historical rate
-
-**Example Request**:
-```http
-GET /api/exchange-rates/convert?amount=100&from=USD&to=ZWL
-```
-
-**Response** (200 OK):
-```json
-{
-  "originalAmount": 100.00,
-  "originalCurrency": "USD",
-  "convertedAmount": 35050.00,
-  "convertedCurrency": "ZWL",
-  "exchangeRate": 350.50,
-  "effectiveDate": "2026-01-15T00:00:00"
-}
-```
-
----
-
-## Pricing Management
-
-### Create Selling Price
-
-Creates a price for a product.
-
-**Endpoint**: `POST /api/selling-prices`
-
-**Request Body**:
-```json
-{
-  "productId": 150,
-  "shopId": 1,
-  "currencyId": 1,
-  "priceType": "RETAIL",
-  "unitPrice": 15.50,
-  "discountPercent": 0.0,
-  "minQuantity": 1,
-  "maxQuantity": null,
-  "effectiveFrom": "2026-01-15T00:00:00",
-  "effectiveTo": null,
-  "taxIncluded": false
-}
-```
-
-**Response** (201 Created):
-```json
-{
-  "id": 89,
-  "productId": 150,
-  "productName": "Premium Widget",
-  "shopId": 1,
-  "priceType": "RETAIL",
-  "currencyCode": "USD",
-  "unitPrice": 15.50,
-  "discountPercent": 0.0,
-  "finalPrice": 15.50,
-  "minQuantity": 1,
-  "maxQuantity": null,
-  "effectiveFrom": "2026-01-15T00:00:00",
-  "effectiveTo": null,
-  "taxIncluded": false,
-  "isActive": true
-}
-```
-
-### Get Product Prices
-
-Retrieves all prices for a product.
-
-**Endpoint**: `GET /api/selling-prices/product/{productId}`
-
-**Query Parameters**:
-- `shopId` (optional): Filter by shop
-- `priceType` (optional): Filter by price type
-
-**Example Request**:
-```http
-GET /api/selling-prices/product/150?shopId=1
-```
-
-**Response** (200 OK):
-```json
-{
-  "productId": 150,
-  "productName": "Premium Widget",
-  "prices": [
-    {
-      "id": 89,
-      "priceType": "RETAIL",
-      "unitPrice": 15.50,
-      "discountPercent": 0.0,
-      "finalPrice": 15.50,
-      "minQuantity": 1
-    },
-    {
-      "id": 90,
-      "priceType": "WHOLESALE",
-      "unitPrice": 12.50,
-      "discountPercent": 5.0,
-      "finalPrice": 11.88,
-      "minQuantity": 10
-    },
-    {
-      "id": 91,
-      "priceType": "BULK",
-      "unitPrice": 11.00,
-      "discountPercent": 10.0,
-      "finalPrice": 9.90,
-      "minQuantity": 50
-    }
-  ]
-}
-```
-
----
-
-## Tax Management
-
-### Create Tax Rule
-
-Creates a new tax configuration.
-
-**Endpoint**: `POST /api/taxes`
-
-**Request Body**:
-```json
-{
-  "name": "Standard VAT",
-  "taxNature": "VAT",
-  "calculationType": "PERCENTAGE",
-  "rate": 15.0,
-  "isActive": true,
-  "appliesTo": ["RETAIL", "WHOLESALE"]
-}
-```
-
-**Response** (201 Created):
-```json
-{
-  "id": 5,
-  "name": "Standard VAT",
-  "taxNature": "VAT",
-  "calculationType": "PERCENTAGE",
-  "rate": 15.0,
-  "isActive": true,
-  "createdAt": "2026-01-15T09:00:00"
-}
-```
+**Endpoint**: `GET /api/shop-inventory/shop/{shopId}/products`
 
 ---
 
 ## Inventory Transfers
 
-### Create Transfer Request
+Base path: `/api/inventory-transfers`
 
-Initiates a stock transfer between shops.
+### Create Transfer
 
 **Endpoint**: `POST /api/inventory-transfers`
 
@@ -1035,271 +717,1477 @@ Initiates a stock transfer between shops.
 ```json
 {
   "fromShopId": 1,
-  "toShopId": 5,
+  "toShopId": 2,
+  "initiatorId": 10,
   "transferType": "REPLENISHMENT",
   "priority": "HIGH",
-  "requestedBy": 10,
-  "notes": "Urgent restock for downtown branch",
-  "items": [
-    {
-      "productId": 150,
-      "quantity": 50
-    },
-    {
-      "productId": 151,
-      "quantity": 30
-    }
-  ]
+  "notes": "Urgent restock for downtown branch"
 }
 ```
 
-**Response** (201 Created):
-```json
-{
-  "id": 245,
-  "transferNumber": "TRF-2026-000245",
-  "fromShopId": 1,
-  "fromShopName": "Main Store",
-  "toShopId": 5,
-  "toShopName": "Downtown Branch",
-  "transferType": "REPLENISHMENT",
-  "status": "PENDING",
-  "priority": "HIGH",
-  "requestedBy": 10,
-  "requestedByName": "John Doe",
-  "createdAt": "2026-01-15T10:00:00",
-  "items": [
-    {
-      "id": 890,
-      "productId": 150,
-      "productName": "Premium Widget",
-      "quantity": 50
-    },
-    {
-      "id": 891,
-      "productId": 151,
-      "productName": "Standard Widget",
-      "quantity": 30
-    }
-  ]
-}
-```
+### Get Transfer by ID
 
-### Approve Transfer
+**Endpoint**: `GET /api/inventory-transfers/{transferId}`
 
-Approves a pending transfer request.
+### Get Transfer by Number
 
-**Endpoint**: `PATCH /api/inventory-transfers/{id}/approve`
+**Endpoint**: `GET /api/inventory-transfers/number/{transferNumber}`
+
+### Get Transfers for Shop
+
+**Endpoint**: `GET /api/inventory-transfers/shop/{shopId}`
+
+**Query Parameters**: Standard pagination
+
+### Get Outgoing Transfers
+
+**Endpoint**: `GET /api/inventory-transfers/shop/{shopId}/outgoing`
+
+### Get Incoming Transfers
+
+**Endpoint**: `GET /api/inventory-transfers/shop/{shopId}/incoming`
+
+### Get Transfers by Status
+
+**Endpoint**: `GET /api/inventory-transfers/status/{status}`
+
+**Path Parameters**:
+- `status`: `PENDING`, `APPROVED`, `IN_TRANSIT`, `RECEIVED`, `COMPLETED`, `CANCELLED`
+
+### Get Overdue Transfers
+
+**Endpoint**: `GET /api/inventory-transfers/overdue`
+
+### Get Transfers by Date Range
+
+**Endpoint**: `GET /api/inventory-transfers/date-range?startDate={datetime}&endDate={datetime}`
+
+### Add Items to Transfer
+
+**Endpoint**: `POST /api/inventory-transfers/{transferId}/items`
 
 **Request Body**:
 ```json
 {
-  "approvedBy": 5,
-  "notes": "Approved - stock available"
+  "productIds": [100, 101, 102],
+  "quantity": 50,
+  "unitCost": 12.50,
+  "notes": "Handle with care"
 }
 ```
 
-**Response** (200 OK):
+### Remove Item from Transfer
+
+**Endpoint**: `DELETE /api/inventory-transfers/{transferId}/items/{itemId}`
+
+### Approve Transfer
+
+**Endpoint**: `POST /api/inventory-transfers/{transferId}/approve`
+
+**Request Body**:
 ```json
 {
-  "id": 245,
-  "transferNumber": "TRF-2026-000245",
-  "status": "APPROVED",
-  "approvedBy": 5,
-  "approvedByName": "Mike Manager",
-  "approvedAt": "2026-01-15T10:30:00"
+  "approverId": 5
 }
 ```
 
 ### Ship Transfer
 
-Marks transfer as shipped.
-
-**Endpoint**: `PATCH /api/inventory-transfers/{id}/ship`
+**Endpoint**: `POST /api/inventory-transfers/{transferId}/ship`
 
 **Request Body**:
 ```json
 {
-  "shippedBy": 10,
-  "trackingNumber": "TRACK-12345",
-  "shippingMethod": "Courier",
-  "notes": "Shipped via Express Delivery"
-}
-```
-
-**Response** (200 OK):
-```json
-{
-  "id": 245,
-  "transferNumber": "TRF-2026-000245",
-  "status": "SHIPPED",
-  "shippedBy": 10,
-  "shippedAt": "2026-01-15T11:00:00",
-  "trackingNumber": "TRACK-12345",
-  "estimatedArrival": "2026-01-16T11:00:00"
+  "shipperId": 10
 }
 ```
 
 ### Receive Transfer
 
-Confirms receipt and updates inventory.
-
-**Endpoint**: `PATCH /api/inventory-transfers/{id}/receive`
+**Endpoint**: `POST /api/inventory-transfers/{transferId}/receive`
 
 **Request Body**:
 ```json
 {
-  "receivedBy": 15,
-  "receivedQuantities": [
+  "receiverId": 15,
+  "receivedItems": [
     {
       "itemId": 890,
-      "quantityReceived": 50,
-      "condition": "GOOD"
+      "receivedQuantity": 50,
+      "damagedQuantity": 0,
+      "notes": "All items in good condition"
     },
     {
       "itemId": 891,
-      "quantityReceived": 28,
-      "condition": "GOOD",
-      "notes": "2 items damaged in transit"
-    }
-  ],
-  "notes": "Received and inspected"
-}
-```
-
-**Response** (200 OK):
-```json
-{
-  "id": 245,
-  "transferNumber": "TRF-2026-000245",
-  "status": "RECEIVED",
-  "receivedBy": 15,
-  "receivedAt": "2026-01-16T09:00:00",
-  "discrepancies": [
-    {
-      "itemId": 891,
-      "expectedQuantity": 30,
       "receivedQuantity": 28,
-      "variance": -2
-    }
-  ],
-  "inventoryUpdated": true
-}
-```
-
----
-
-## Financial Operations
-
-### Create Accounting Entry
-
-Creates a double-entry accounting record.
-
-**Endpoint**: `POST /api/accountancy/entries`
-
-**Request Body**:
-```json
-{
-  "date": "2026-01-15T10:00:00",
-  "description": "Sale - Order #890",
-  "entries": [
-    {
-      "accountCode": "1100",
-      "accountName": "Cash",
-      "entryType": "DEBIT",
-      "amount": 151.38,
-      "currencyId": 1
-    },
-    {
-      "accountCode": "4100",
-      "accountName": "Sales Revenue",
-      "entryType": "CREDIT",
-      "amount": 131.94,
-      "currencyId": 1
-    },
-    {
-      "accountCode": "2200",
-      "accountName": "VAT Payable",
-      "entryType": "CREDIT",
-      "amount": 19.44,
-      "currencyId": 1
+      "damagedQuantity": 2,
+      "notes": "2 items damaged in transit"
     }
   ]
 }
 ```
 
-**Response** (201 Created):
-```json
-{
-  "id": 1450,
-  "entryNumber": "ACC-2026-001450",
-  "date": "2026-01-15T10:00:00",
-  "description": "Sale - Order #890",
-  "totalDebit": 151.38,
-  "totalCredit": 151.38,
-  "isBalanced": true,
-  "entries": [
-    {
-      "accountCode": "1100",
-      "accountName": "Cash",
-      "entryType": "DEBIT",
-      "amount": 151.38
-    },
-    {
-      "accountCode": "4100",
-      "accountName": "Sales Revenue",
-      "entryType": "CREDIT",
-      "amount": 131.94
-    },
-    {
-      "accountCode": "2200",
-      "accountName": "VAT Payable",
-      "entryType": "CREDIT",
-      "amount": 19.44
-    }
-  ],
-  "createdAt": "2026-01-15T10:00:00"
-}
-```
+### Cancel Transfer
 
-### Submit to ZIMRA
-
-Submits fiscal data to Zimbabwe Revenue Authority.
-
-**Endpoint**: `POST /api/zimra/submit`
+**Endpoint**: `POST /api/inventory-transfers/{transferId}/cancel`
 
 **Request Body**:
 ```json
 {
-  "fiscalPeriod": "2026-01",
-  "businessTin": "12345678",
-  "transactions": [450, 451, 452],
-  "totalSales": 5450.00,
-  "totalTax": 817.50
+  "reason": "Items no longer needed"
 }
 ```
 
-**Response** (200 OK):
+### Complete Transfer
+
+**Endpoint**: `POST /api/inventory-transfers/{transferId}/complete`
+
+### Get Transfer Inventory Impact
+
+**Endpoint**: `GET /api/inventory-transfers/{transferId}/inventory-impact`
+
+### Get Transfer History
+
+**Endpoint**: `GET /api/inventory-transfers/{transferId}/history`
+
+---
+
+## Cashier Management
+
+Base path: `/api/cashiers`
+
+### Register Cashier
+
+**Endpoint**: `POST /api/cashiers/register`
+**Authorization**: `ADMIN` role required
+
+**Request Body**:
 ```json
 {
-  "submissionId": "ZIMRA-2026-001",
-  "status": "ACCEPTED",
-  "fiscalPeriod": "2026-01",
-  "submittedAt": "2026-01-15T18:00:00",
-  "verificationCode": "ZIM-VER-12345",
-  "totalSales": 5450.00,
-  "totalTax": 817.50,
-  "receiptUrl": "https://zimra.gov.zw/receipts/ZIMRA-2026-001"
+  "employeeId": "EMP-001",
+  "username": "john_cashier",
+  "password": "securePassword",
+  "firstName": "John",
+  "lastName": "Doe",
+  "email": "john.doe@example.com",
+  "phoneNumber": "+263771234567",
+  "role": "CASHIER",
+  "pinCode": "1234"
+}
+```
+
+### Get All Cashiers
+
+**Endpoint**: `GET /api/cashiers`
+**Authorization**: `ADMIN` or `MANAGER` role required
+
+### Get Cashier by ID
+
+**Endpoint**: `GET /api/cashiers/{id}`
+**Authorization**: `ADMIN` or `MANAGER` role required
+
+### Get Cashier by Username
+
+**Endpoint**: `GET /api/cashiers/username/{username}`
+**Authorization**: `ADMIN` or `MANAGER` role required
+
+### Get Cashier by Employee ID
+
+**Endpoint**: `GET /api/cashiers/employee/{employeeId}`
+**Authorization**: `ADMIN` or `MANAGER` role required
+
+### Get Cashiers by Shop
+
+**Endpoint**: `GET /api/cashiers/shop/{shopId}`
+**Authorization**: `ADMIN` or `MANAGER` role required
+
+### Update Cashier
+
+**Endpoint**: `PUT /api/cashiers/{id}`
+**Authorization**: `ADMIN` or `MANAGER` role required
+
+### Deactivate Cashier
+
+**Endpoint**: `PUT /api/cashiers/{id}/deactivate`
+**Authorization**: `ADMIN` role required
+
+### Assign Cashier to Shop
+
+**Endpoint**: `POST /api/cashiers/{id}/assign-shop`
+**Authorization**: `ADMIN` or `MANAGER` role required
+
+**Request Body**:
+```json
+{
+  "shopId": 1
+}
+```
+
+### Session Management
+
+**Start Session**:
+`POST /api/cashiers/sessions/start`
+
+**Request Body**:
+```json
+{
+  "cashierId": 10,
+  "shopId": 1,
+  "terminalId": "TERM-001",
+  "openingCash": 500.00
+}
+```
+
+**End Session**:
+`POST /api/cashiers/sessions/{sessionId}/end`
+
+**Request Body**:
+```json
+{
+  "closingCash": 3750.00,
+  "notes": "End of shift"
+}
+```
+
+**Get Active Sessions**:
+`GET /api/cashiers/sessions/active`
+
+**Get Session History**:
+`GET /api/cashiers/sessions/history/{cashierId}?startDate={datetime}&endDate={datetime}`
+
+**Get Cashier's Active Session**:
+`GET /api/cashiers/{cashierId}/sessions/active`
+
+### Permission Management
+
+**Grant Permission**:
+`POST /api/cashiers/{id}/permissions`
+
+**Request Body**:
+```json
+{
+  "permission": "VOID_TRANSACTION"
+}
+```
+
+**Get Permissions**:
+`GET /api/cashiers/{id}/permissions`
+
+**Check Permission**:
+`GET /api/cashiers/{id}/permissions/check?permission={permission}`
+
+### Authentication
+
+**Authenticate by Username/Password**:
+`POST /api/cashiers/authenticate`
+
+**Request Body**:
+```json
+{
+  "username": "john_cashier",
+  "password": "securePassword"
+}
+```
+
+**Authenticate by PIN**:
+`POST /api/cashiers/authenticate/pin`
+
+**Request Body**:
+```json
+{
+  "employeeId": "EMP-001",
+  "pin": "1234"
+}
+```
+
+### Shop-specific Queries
+
+**Get Active Cashiers by Shop**:
+`GET /api/cashiers/shop/{shopId}/active`
+
+**Get Cashiers by Shop and Role**:
+`GET /api/cashiers/shop/{shopId}/role/{role}`
+
+**Get Managers by Shop**:
+`GET /api/cashiers/shop/{shopId}/managers`
+
+**Get Cashier Count by Shop**:
+`GET /api/cashiers/shop/{shopId}/count`
+
+**Check Cashier Capacity**:
+`GET /api/cashiers/shop/{shopId}/capacity-available?maxCashiers={max}`
+
+---
+
+## Customer Management
+
+Base path: `/api/customers`
+
+### Get All Customers
+
+**Endpoint**: `GET /api/customers`
+
+### Get Customers (Paginated)
+
+**Endpoint**: `GET /api/customers/paginated`
+
+### Get Customer by ID
+
+**Endpoint**: `GET /api/customers/{id}`
+
+### Get Customer by Code
+
+**Endpoint**: `GET /api/customers/code/{code}`
+
+### Get Customer by Email
+
+**Endpoint**: `GET /api/customers/email/{email}`
+
+### Get Customer by Tax ID
+
+**Endpoint**: `GET /api/customers/tax-id/{taxId}`
+
+### Get Active Customers
+
+**Endpoint**: `GET /api/customers/active`
+
+### Get Verified Customers
+
+**Endpoint**: `GET /api/customers/verified`
+
+### Get Active and Verified Customers
+
+**Endpoint**: `GET /api/customers/active-verified`
+
+### Get Active Customers (Ordered)
+
+**Endpoint**: `GET /api/customers/active/ordered`
+
+### Get Active and Verified Customers (Ordered)
+
+**Endpoint**: `GET /api/customers/active-verified/ordered`
+
+### Search Customers
+
+**Endpoint**: `GET /api/customers/search?term={searchTerm}`
+
+### Get Customers by Country
+
+**Endpoint**: `GET /api/customers/country/{country}`
+
+### Get Customers by City
+
+**Endpoint**: `GET /api/customers/city/{city}`
+
+### Get Customers by Minimum Loyalty Points
+
+**Endpoint**: `GET /api/customers/loyalty-points?minPoints={points}`
+
+### Create Customer
+
+**Endpoint**: `POST /api/customers`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+**Request Body**:
+```json
+{
+  "code": "CUST-001",
+  "name": "Jane Smith",
+  "email": "jane@example.com",
+  "phoneNumber": "+263771234567",
+  "address": "123 Main St",
+  "city": "Harare",
+  "country": "Zimbabwe",
+  "taxId": "TIN-12345678",
+  "active": true,
+  "verified": false,
+  "loyaltyPoints": 0
+}
+```
+
+### Update Customer
+
+**Endpoint**: `PUT /api/customers/{id}`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Delete Customer
+
+**Endpoint**: `DELETE /api/customers/{id}`
+**Authorization**: `ADMIN` role required
+
+### Activate Customer
+
+**Endpoint**: `POST /api/customers/{id}/activate`
+**Authorization**: `ADMIN` role required
+
+### Deactivate Customer
+
+**Endpoint**: `POST /api/customers/{id}/deactivate`
+**Authorization**: `ADMIN` role required
+
+### Verify Customer
+
+**Endpoint**: `POST /api/customers/{id}/verify`
+**Authorization**: `ADMIN` role required
+
+### Unverify Customer
+
+**Endpoint**: `POST /api/customers/{id}/unverify`
+**Authorization**: `ADMIN` role required
+
+### Add Loyalty Points
+
+**Endpoint**: `POST /api/customers/{id}/loyalty-points/add`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+**Request Body**:
+```json
+{
+  "points": 100
+}
+```
+
+### Redeem Loyalty Points
+
+**Endpoint**: `POST /api/customers/{id}/loyalty-points/redeem`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+**Request Body**:
+```json
+{
+  "points": 50
+}
+```
+
+### Bulk Activate Customers
+
+**Endpoint**: `POST /api/customers/bulk-activate`
+**Authorization**: `ADMIN` role required
+
+**Request Body**:
+```json
+{
+  "customerIds": [1, 2, 3, 4, 5]
+}
+```
+
+### Bulk Deactivate Customers
+
+**Endpoint**: `POST /api/customers/bulk-deactivate`
+**Authorization**: `ADMIN` role required
+
+### Check Customer Exists
+
+**By Code**: `GET /api/customers/exists/code/{code}`
+**By Tax ID**: `GET /api/customers/exists/tax-id/{taxId}`
+**By Email**: `GET /api/customers/exists/email/{email}`
+
+---
+
+## Supplier Management
+
+Base path: `/api/suppliers`
+
+### Get All Suppliers
+
+**Endpoint**: `GET /api/suppliers`
+
+### Get Suppliers (Paginated)
+
+**Endpoint**: `GET /api/suppliers/paginated`
+
+### Get Supplier by ID
+
+**Endpoint**: `GET /api/suppliers/{id}`
+
+### Get Supplier by Code
+
+**Endpoint**: `GET /api/suppliers/code/{code}`
+
+### Get Supplier by Tax ID
+
+**Endpoint**: `GET /api/suppliers/tax-id/{taxId}`
+
+### Get Active Suppliers
+
+**Endpoint**: `GET /api/suppliers/active`
+
+### Get Verified Suppliers
+
+**Endpoint**: `GET /api/suppliers/verified`
+
+### Get Active and Verified Suppliers
+
+**Endpoint**: `GET /api/suppliers/active-verified`
+
+### Get Active Suppliers (Ordered)
+
+**Endpoint**: `GET /api/suppliers/active/ordered`
+
+### Get Active and Verified Suppliers (Ordered)
+
+**Endpoint**: `GET /api/suppliers/active-verified/ordered`
+
+### Search Suppliers
+
+**Endpoint**: `GET /api/suppliers/search?term={searchTerm}`
+
+### Get Suppliers by Country
+
+**Endpoint**: `GET /api/suppliers/country/{country}`
+
+### Get Suppliers by City
+
+**Endpoint**: `GET /api/suppliers/city/{city}`
+
+### Get Suppliers by Minimum Rating
+
+**Endpoint**: `GET /api/suppliers/rating?minRating={rating}`
+
+### Create Supplier
+
+**Endpoint**: `POST /api/suppliers`
+**Authorization**: `ADMIN` role required
+
+**Request Body**:
+```json
+{
+  "code": "SUP-001",
+  "name": "Acme Suppliers",
+  "contactPerson": "John Contact",
+  "email": "contact@acme.com",
+  "phoneNumber": "+263771234567",
+  "mobileNumber": "+263771234568",
+  "faxNumber": "+263771234569",
+  "address": "456 Industrial Ave",
+  "city": "Harare",
+  "state": "Harare",
+  "country": "Zimbabwe",
+  "postalCode": "00263",
+  "taxId": "TIN-87654321",
+  "registrationNumber": "REG-12345",
+  "paymentTerms": "Net 30",
+  "creditLimit": 50000.00,
+  "website": "https://acme.com",
+  "notes": "Premium supplier",
+  "active": true,
+  "verified": true,
+  "rating": 5,
+  "leadTimeDays": 7,
+  "minimumOrderAmount": 100.00
+}
+```
+
+### Update Supplier
+
+**Endpoint**: `PUT /api/suppliers/{id}`
+**Authorization**: `ADMIN` role required
+
+### Delete Supplier
+
+**Endpoint**: `DELETE /api/suppliers/{id}`
+**Authorization**: `ADMIN` role required
+
+### Activate Supplier
+
+**Endpoint**: `POST /api/suppliers/{id}/activate`
+**Authorization**: `ADMIN` role required
+
+### Deactivate Supplier
+
+**Endpoint**: `POST /api/suppliers/{id}/deactivate`
+**Authorization**: `ADMIN` role required
+
+### Verify Supplier
+
+**Endpoint**: `POST /api/suppliers/{id}/verify`
+**Authorization**: `ADMIN` role required
+
+### Unverify Supplier
+
+**Endpoint**: `POST /api/suppliers/{id}/unverify`
+**Authorization**: `ADMIN` role required
+
+### Update Supplier Rating
+
+**Endpoint**: `PUT /api/suppliers/{id}/rating`
+**Authorization**: `ADMIN` role required
+
+**Request Body**:
+```json
+{
+  "rating": 4
+}
+```
+
+### Bulk Activate Suppliers
+
+**Endpoint**: `POST /api/suppliers/bulk-activate`
+**Authorization**: `ADMIN` role required
+
+**Request Body**:
+```json
+{
+  "supplierIds": [1, 2, 3]
+}
+```
+
+### Bulk Deactivate Suppliers
+
+**Endpoint**: `POST /api/suppliers/bulk-deactivate`
+**Authorization**: `ADMIN` role required
+
+### Check Supplier Exists
+
+**By Code**: `GET /api/suppliers/exists/code/{code}`
+**By Tax ID**: `GET /api/suppliers/exists/tax-id/{taxId}`
+
+---
+
+## Shop Management
+
+Base path: `/api/shops`
+
+### Create Shop
+
+**Endpoint**: `POST /api/shops`
+
+**Request Body**:
+```json
+{
+  "name": "Downtown Branch",
+  "code": "BRANCH-02",
+  "address": "456 Commerce Ave, Harare, Zimbabwe",
+  "phoneNumber": "+263771111111",
+  "email": "downtown@example.com",
+  "openingTime": "08:00",
+  "closingTime": "18:00",
+  "type": "RETAIL",
+  "active": true,
+  "maxCashiers": 10,
+  "storageCapacity": 1000,
+  "defaultCurrencyId": 1
+}
+```
+
+### Get Shop by ID
+
+**Endpoint**: `GET /api/shops/{id}`
+
+### Get Shop by Code
+
+**Endpoint**: `GET /api/shops/code/{code}`
+
+### Get All Shops
+
+**Endpoint**: `GET /api/shops`
+
+### Get Active Shops
+
+**Endpoint**: `GET /api/shops/active`
+
+### Get Shops by Type
+
+**Endpoint**: `GET /api/shops/type/{type}`
+
+**Path Parameters**:
+- `type`: `WAREHOUSE`, `RETAIL`, `OUTLET`, `ONLINE`
+
+### Get Warehouse
+
+**Endpoint**: `GET /api/shops/warehouse`
+
+### Get Shops Managed by Cashier
+
+**Endpoint**: `GET /api/shops/managed-by/{cashierId}`
+
+### Update Shop
+
+**Endpoint**: `PUT /api/shops/{id}`
+
+### Assign Cashier to Shop
+
+**Endpoint**: `POST /api/shops/{shopId}/assign-cashier/{cashierId}`
+
+### Remove Cashier from Shop
+
+**Endpoint**: `POST /api/shops/remove-cashier/{cashierId}`
+
+### Set Shop Manager
+
+**Endpoint**: `POST /api/shops/{shopId}/set-manager/{managerId}`
+
+### Add Shop Manager
+
+**Endpoint**: `POST /api/shops/{shopId}/add-manager/{managerId}`
+
+### Remove Shop Manager
+
+**Endpoint**: `POST /api/shops/{shopId}/remove-manager/{managerId}`
+
+### Deactivate Shop
+
+**Endpoint**: `POST /api/shops/{shopId}/deactivate`
+
+### Get Active Shops Count by Type
+
+**Endpoint**: `GET /api/shops/count/type/{type}`
+
+---
+
+## Currency Management
+
+Base path: `/api/currencies`
+
+### Get All Active Currencies
+
+**Endpoint**: `GET /api/currencies`
+
+### Get Currency by Code
+
+**Endpoint**: `GET /api/currencies/{code}`
+
+### Get Base Currency
+
+**Endpoint**: `GET /api/currencies/base`
+
+### Create Currency
+
+**Endpoint**: `POST /api/currencies`
+**Authorization**: `ADMIN` role required
+
+**Request Body**:
+```json
+{
+  "code": "ZWL",
+  "name": "Zimbabwean Dollar",
+  "symbol": "Z$",
+  "decimalPlaces": 2,
+  "baseCurrency": false,
+  "displayOrder": 2
+}
+```
+
+### Update Currency
+
+**Endpoint**: `PUT /api/currencies/{id}`
+**Authorization**: `ADMIN` role required
+
+### Get Exchange Rate
+
+**Endpoint**: `GET /api/currencies/exchange-rate?from={code}&to={code}`
+
+### Create Exchange Rate
+
+**Endpoint**: `POST /api/currencies/exchange-rates`
+**Authorization**: `ADMIN` role required
+
+**Request Body**:
+```json
+{
+  "fromCurrencyCode": "USD",
+  "toCurrencyCode": "ZWL",
+  "rate": 350.50,
+  "effectiveDate": "2026-01-15T00:00:00",
+  "expiryDate": "2026-12-31T23:59:59"
+}
+```
+
+### Convert Currency
+
+**Endpoint**: `GET /api/currencies/convert?amount={amount}&from={code}&to={code}`
+
+**Response**:
+```json
+{
+  "originalAmount": 100.00,
+  "fromCurrency": "USD",
+  "toCurrency": "ZWL",
+  "convertedAmount": 35050.00,
+  "exchangeRate": 350.50
 }
 ```
 
 ---
 
+## Pricing Management
+
+Base path: `/api/selling-prices`
+
+### Create Selling Price
+
+**Endpoint**: `POST /api/selling-prices`
+
+**Request Body**:
+```json
+{
+  "productId": 100,
+  "shopId": 1,
+  "currencyId": 1,
+  "priceType": "REGULAR",
+  "sellingPrice": 15.50,
+  "basePrice": 12.00,
+  "taxIds": [1, 2],
+  "discountPercentage": 0.0,
+  "minSellingPrice": 14.00,
+  "maxSellingPrice": 20.00,
+  "quantityBreak": null,
+  "bulkPrice": null,
+  "effectiveFrom": "2026-01-15T00:00:00",
+  "effectiveTo": null,
+  "priority": 1,
+  "createdBy": "admin",
+  "notes": "Standard retail price"
+}
+```
+
+### Update Selling Price
+
+**Endpoint**: `PUT /api/selling-prices/{priceId}`
+
+### Get Selling Price by ID
+
+**Endpoint**: `GET /api/selling-prices/{priceId}`
+
+### Get Current Price
+
+**Endpoint**: `GET /api/selling-prices/shop/{shopId}/product/{productId}/current`
+
+### Get Active Prices
+
+**Endpoint**: `GET /api/selling-prices/shop/{shopId}/product/{productId}`
+
+### Get Price by Type
+
+**Endpoint**: `GET /api/selling-prices/shop/{shopId}/product/{productId}/type/{priceType}`
+
+**Path Parameters**:
+- `priceType`: `SALE`, `REGULAR`, `PROMOTIONAL`, `CLEARANCE`, `BULK`, `MEMBER`, `WHOLESALE`, `RETAIL`, `ONLINE`, `SEASONAL`, `FLASH_SALE`
+
+### Get Product Prices
+
+**Endpoint**: `GET /api/selling-prices/product/{productId}`
+
+### Get Shop Prices
+
+**Endpoint**: `GET /api/selling-prices/shop/{shopId}`
+
+### Set Promotional Price
+
+**Endpoint**: `POST /api/selling-prices/shop/{shopId}/product/{productId}/promotional`
+
+**Request Body**:
+```json
+{
+  "currencyId": 1,
+  "promotionalPrice": 12.00,
+  "expiryDate": "2026-02-28T23:59:59",
+  "createdBy": "admin"
+}
+```
+
+### Set Bulk Price
+
+**Endpoint**: `POST /api/selling-prices/shop/{shopId}/product/{productId}/bulk`
+
+**Request Body**:
+```json
+{
+  "currencyId": 1,
+  "regularPrice": 15.50,
+  "bulkPrice": 12.00,
+  "quantityBreak": 50,
+  "createdBy": "admin"
+}
+```
+
+### Update Price with Cost Calculation
+
+**Endpoint**: `PUT /api/selling-prices/{priceId}/cost-based`
+
+**Request Body**:
+```json
+{
+  "costPrice": 10.00,
+  "markupPercentage": 55.0
+}
+```
+
+### Calculate Selling Price from Markup
+
+**Endpoint**: `POST /api/selling-prices/calculate-from-markup`
+
+**Request Body**:
+```json
+{
+  "costPrice": 10.00,
+  "markupPercentage": 55.0
+}
+```
+
+### Calculate Markup
+
+**Endpoint**: `POST /api/selling-prices/calculate-markup`
+
+**Request Body**:
+```json
+{
+  "costPrice": 10.00,
+  "sellingPrice": 15.50
+}
+```
+
+### Deactivate Price
+
+**Endpoint**: `POST /api/selling-prices/{priceId}/deactivate`
+
+### Get Prices in Range
+
+**Endpoint**: `GET /api/selling-prices/price-range?minPrice={min}&maxPrice={max}`
+
+### Get Products Without Prices
+
+**Endpoint**: `GET /api/selling-prices/shop/{shopId}/products-without-prices`
+
+### Get Low Markup Prices
+
+**Endpoint**: `GET /api/selling-prices/low-markup?threshold={percentage}`
+
+### Find Duplicate Prices
+
+**Endpoint**: `GET /api/selling-prices/duplicates`
+
+### Bulk Update Prices
+
+**Endpoint**: `POST /api/selling-prices/shop/{shopId}/bulk-update`
+
+**Request Body**:
+```json
+{
+  "priceType": "REGULAR",
+  "percentage": 5.0,
+  "updatedBy": "admin"
+}
+```
+
+### Copy Prices Between Shops
+
+**Endpoint**: `POST /api/selling-prices/copy-prices`
+
+**Request Body**:
+```json
+{
+  "sourceShopId": 1,
+  "targetShopId": 2,
+  "createdBy": "admin"
+}
+```
+
+### Expire Promotional Prices
+
+**Endpoint**: `POST /api/selling-prices/expire-promotions`
+
+---
+
+## Tax Management
+
+Base path: `/api/taxes`
+
+### Create Tax
+
+**Endpoint**: `POST /api/taxes`
+**Authorization**: `ADMIN` role required
+
+**Request Body**:
+```json
+{
+  "taxName": "Standard VAT",
+  "taxNature": "VAT",
+  "calculationType": "PERCENTAGE",
+  "rate": 15.0,
+  "active": true
+}
+```
+
+### Update Tax
+
+**Endpoint**: `PUT /api/taxes/{taxId}`
+**Authorization**: `ADMIN` role required
+
+### Delete Tax
+
+**Endpoint**: `DELETE /api/taxes/{taxId}`
+**Authorization**: `ADMIN` role required
+
+### Get Tax by ID
+
+**Endpoint**: `GET /api/taxes/{taxId}`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Get All Taxes
+
+**Endpoint**: `GET /api/taxes`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Get All Taxes (Paginated)
+
+**Endpoint**: `GET /api/taxes/paginated`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Get Active Taxes
+
+**Endpoint**: `GET /api/taxes/active`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Get Taxes by Nature
+
+**Endpoint**: `GET /api/taxes/nature/{taxNature}`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+**Path Parameters**:
+- `taxNature`: `VAT`, `FAST_FOOD_TAX`, `EXCISE_DUTY`, `ENVIRONMENTAL_LEVY`, `CUSTOMS_DUTY`, `SURTAX`, `OTHER`
+
+### Get Active Taxes by Nature
+
+**Endpoint**: `GET /api/taxes/nature/{taxNature}/active`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Get Taxes by Calculation Type
+
+**Endpoint**: `GET /api/taxes/calculation-type/{calculationType}`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+**Path Parameters**:
+- `calculationType`: `FIXED`, `PERCENTAGE`, `TIERED`
+
+### Get Active Taxes by Calculation Type
+
+**Endpoint**: `GET /api/taxes/calculation-type/{calculationType}/active`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+### Search Taxes by Name
+
+**Endpoint**: `GET /api/taxes/search?name={searchTerm}`
+**Authorization**: `ADMIN` or `CASHIER` role required
+
+---
+
+## Cart Management
+
+Base path: `/api/cart`
+
+**Note**: All endpoints require `USER` role.
+
+### Get Cart
+
+**Endpoint**: `GET /api/cart`
+
+### Add Item to Cart
+
+**Endpoint**: `POST /api/cart/items`
+
+**Request Body**:
+```json
+{
+  "productId": 100,
+  "quantity": 2
+}
+```
+
+### Update Cart Item
+
+**Endpoint**: `PUT /api/cart/items/{itemId}`
+
+**Request Body**:
+```json
+{
+  "quantity": 5
+}
+```
+
+### Remove Item from Cart
+
+**Endpoint**: `DELETE /api/cart/items/{itemId}`
+
+### Clear Cart
+
+**Endpoint**: `DELETE /api/cart`
+
+### Get Cart Summary
+
+**Endpoint**: `GET /api/cart/summary`
+
+**Response**:
+```json
+{
+  "totalItems": 10,
+  "itemCount": 3
+}
+```
+
+### Get Abandoned Carts
+
+**Endpoint**: `GET /api/cart/abandoned?hours={hours}`
+**Authorization**: `ADMIN` role required
+
+**Query Parameters**:
+- `hours` (default: 24): Hours since last activity
+
+---
+
+## File Storage
+
+Base path: `/api/files`
+
+### Upload File
+
+**Endpoint**: `POST /api/files/upload`
+**Authorization**: `USER` role required
+**Content-Type**: `multipart/form-data`
+
+**Form Parameters**:
+- `file`: The file to upload
+- `referenceType` (optional): Type of entity this file relates to
+- `referenceId` (optional): ID of the related entity
+
+### Download File
+
+**Endpoint**: `GET /api/files/{id}`
+
+### Get My Files
+
+**Endpoint**: `GET /api/files/my-files`
+**Authorization**: `USER` role required
+
+### Get Files by Reference
+
+**Endpoint**: `GET /api/files/reference/{referenceType}/{referenceId}`
+**Authorization**: `USER` role required
+
+### Delete File
+
+**Endpoint**: `DELETE /api/files/{id}`
+**Authorization**: `USER` role required (owner or ADMIN)
+
+### Get Storage Usage
+
+**Endpoint**: `GET /api/files/storage-usage`
+**Authorization**: `USER` role required
+
+**Response**: Returns bytes used by the user.
+
+---
+
+## Analytics
+
+Base path: `/api/analytics`
+
+**Note**: All endpoints require `ADMIN` role.
+
+### Get Dashboard Data
+
+**Endpoint**: `GET /api/analytics/dashboard`
+
+**Query Parameters**:
+- `currencyCode` (default: "USD")
+- `shopId` (optional)
+
+**Response**:
+```json
+{
+  "todayOrders": 45,
+  "weekOrders": 312,
+  "monthOrders": 1250,
+  "todayRevenue": 5450.00,
+  "pendingRevenue": 1200.00,
+  "totalRevenue": 45000.00,
+  "totalInventoryValue": 150000.00,
+  "lowStockCount": 15,
+  "totalUsers": 500,
+  "activeUsers": 480,
+  "currency": {
+    "code": "USD",
+    "symbol": "$",
+    "name": "US Dollar"
+  },
+  "averageOrderValue": 36.00,
+  "conversionRate": 75.5
+}
+```
+
+### Get Sales Trend
+
+**Endpoint**: `GET /api/analytics/sales-trend`
+
+**Query Parameters**:
+- `startDate`: Start date (YYYY-MM-DD)
+- `endDate`: End date (YYYY-MM-DD)
+- `currencyCode` (default: "USD")
+
+### Get Performance Metrics
+
+**Endpoint**: `GET /api/analytics/performance`
+
+**Query Parameters**:
+- `currencyCode` (default: "USD")
+- `shopId` (optional)
+
+### Get Revenue Data
+
+**Endpoint**: `GET /api/analytics/revenue`
+
+**Query Parameters**:
+- `currencyCode` (default: "USD")
+- `days` (default: 30)
+- `shopId` (optional)
+
+### Get Inventory Analytics
+
+**Endpoint**: `GET /api/analytics/inventory`
+
+**Query Parameters**:
+- `shopId` (optional)
+
+---
+
+## Accountancy
+
+Base path: `/api/accountancy`
+
+### Get Entries by Date Range
+
+**Endpoint**: `GET /api/accountancy/entries?startDate={datetime}&endDate={datetime}`
+**Authorization**: `ADMIN` role required
+
+### Get My Entries
+
+**Endpoint**: `GET /api/accountancy/my-entries`
+**Authorization**: `USER` role required
+
+**Query Parameters**: Standard pagination
+
+### Get Periodic Summary
+
+**Endpoint**: `GET /api/accountancy/summary/periodic`
+**Authorization**: `ADMIN` role required
+
+### Get Balance for Period
+
+**Endpoint**: `GET /api/accountancy/balance/{period}`
+**Authorization**: `ADMIN` role required
+
+### Get Summary by Type
+
+**Endpoint**: `GET /api/accountancy/summary/by-type`
+**Authorization**: `ADMIN` role required
+
+**Response**:
+```json
+{
+  "debit": [...],
+  "credit": [...]
+}
+```
+
+### Create Entry
+
+**Endpoint**: `POST /api/accountancy/entries`
+**Authorization**: `ADMIN` role required
+
+**Request Body**:
+```json
+{
+  "type": "DEBIT",
+  "amount": 151.38,
+  "currency": {...},
+  "description": "Sale - Order #890",
+  "userId": 1,
+  "referenceType": "ORDER",
+  "referenceId": 890
+}
+```
+
+---
+
+## ZIMRA Fiscalisation
+
+Base path: `/api/zimra`
+
+### Fiscalise Order
+
+**Endpoint**: `POST /api/zimra/fiscalise/order/{orderId}`
+
+**Request Body**:
+```json
+{
+  "deviceId": 1,
+  "operatorId": "OP001"
+}
+```
+
+### Fiscalise Sale
+
+**Endpoint**: `POST /api/zimra/fiscalise/sale/{saleId}`
+
+### Get by Fiscal Code
+
+**Endpoint**: `GET /api/zimra/fiscal-code/{fiscalCode}`
+
+### Verify by Code
+
+**Endpoint**: `GET /api/zimra/verification/{verificationCode}`
+
+### Get Shop Fiscalisations
+
+**Endpoint**: `GET /api/zimra/shop/{shopId}?page={page}&size={size}`
+
+### Get Fiscalisations by Date Range
+
+**Endpoint**: `GET /api/zimra/shop/{shopId}/date-range?startDate={datetime}&endDate={datetime}`
+
+### Get Total Fiscalised Amount
+
+**Endpoint**: `GET /api/zimra/shop/{shopId}/total`
+
+### Retry Failed Fiscalisations
+
+**Endpoint**: `POST /api/zimra/retry-failed`
+
+### Get Fiscal Device
+
+**Endpoint**: `GET /api/zimra/devices/{deviceId}`
+
+### Get Shop Devices
+
+**Endpoint**: `GET /api/zimra/devices/shop/{shopId}`
+
+---
+
+## Enums Reference
+
+### OrderStatus
+- `PENDING` - Order created, awaiting confirmation
+- `CONFIRMED` - Order confirmed
+- `PROCESSING` - Order being processed
+- `SHIPPED` - Order shipped
+- `DELIVERED` - Order delivered
+- `CANCELLED` - Order cancelled
+- `COMPLETED` - Order completed
+
+### PaymentMethod
+- `ECOCASH` - EcoCash mobile money
+- `SWIPE` - Card swipe
+- `ONEMONEY` - OneMoney mobile money
+- `CASH` - Cash payment
+- `CREDIT_CARD` - Credit card
+- `DEBIT_CARD` - Debit card
+- `CHEQUE` - Cheque payment
+- `ONLINE_PAYMENT` - Online payment
+
+### SalesChannel
+- `ONLINE` - Online shop
+- `POS` - Point of sale
+- `PHONE` - Phone order
+
+### ShopType
+- `WAREHOUSE` - Warehouse/distribution center
+- `RETAIL` - Retail store
+- `OUTLET` - Outlet store
+- `ONLINE` - Online-only shop
+
+### PriceType
+- `SALE` - Sale price
+- `REGULAR` - Regular price
+- `PROMOTIONAL` - Promotional price
+- `CLEARANCE` - Clearance price
+- `BULK` - Bulk price
+- `MEMBER` - Member price
+- `WHOLESALE` - Wholesale price
+- `RETAIL` - Retail price
+- `ONLINE` - Online price
+- `SEASONAL` - Seasonal price
+- `FLASH_SALE` - Flash sale price
+
+### TransferStatus
+- `PENDING` - Pending approval
+- `APPROVED` - Approved
+- `IN_TRANSIT` - In transit
+- `RECEIVED` - Received
+- `COMPLETED` - Completed
+- `CANCELLED` - Cancelled
+
+### TransferType
+- `REPLENISHMENT` - Stock replenishment
+- `REBALANCING` - Inventory rebalancing
+- `EMERGENCY` - Emergency transfer
+- `RETURN` - Product return
+- `EXPIRED` - Expired product transfer
+- `DAMAGED` - Damaged product transfer
+- `SEASONAL` - Seasonal transfer
+- `PROMOTION` - Promotional transfer
+
+### TransferPriority
+- `LOW` - Low priority
+- `NORMAL` - Normal priority
+- `HIGH` - High priority
+- `URGENT` - Urgent
+- `CRITICAL` - Critical
+
+### CashierRole
+- `CASHIER` - Regular cashier
+- `SUPERVISOR` - Shift supervisor
+- `MANAGER` - Shop manager
+- `ADMIN` - Administrator
+
+### Role (User Accounts)
+- `USER` - Regular user
+- `ADMIN` - Administrator
+- `CASHIER` - Cashier
+
+### Permission
+- `PROCESS_SALE` - Process sales
+- `PROCESS_RETURN` - Process returns
+- `APPLY_DISCOUNT` - Apply discounts
+- `OPEN_CASH_DRAWER` - Open cash drawer
+- `PERFORM_CASH_COUNT` - Perform cash count
+- `ADJUST_CASH` - Adjust cash
+- `VIEW_INVENTORY` - View inventory
+- `TRANSFER_INVENTORY` - Transfer inventory
+- `ADJUST_INVENTORY` - Adjust inventory
+- `VIEW_REPORTS` - View reports
+- `MANAGE_CASHIERS` - Manage cashiers
+- `OVERRIDE_PRICE` - Override price
+- `VOID_TRANSACTION` - Void transaction
+- `ACCESS_BACK_OFFICE` - Access back office
+- `MODIFY_SETTINGS` - Modify settings
+
+### TaxNature
+- `VAT` - Value Added Tax
+- `FAST_FOOD_TAX` - Fast food levy
+- `EXCISE_DUTY` - Excise duty
+- `ENVIRONMENTAL_LEVY` - Environmental levy
+- `CUSTOMS_DUTY` - Customs duty
+- `SURTAX` - Surtax
+- `OTHER` - Other taxes
+
+### TaxCalculationType
+- `FIXED` - Fixed amount per item
+- `PERCENTAGE` - Percentage of price
+- `TIERED` - Tiered/bracketed calculation
+
+### SaleType
+- `CASH` - Cash sale
+- `CREDIT` - Credit sale
+
+### EntryType (Accountancy)
+- `DEBIT` - Debit entry
+- `CREDIT` - Credit entry
+
+---
+
 ## Error Responses
 
-### Standard Error Response Format
-
-All errors follow this structure:
+### Standard Error Format
 
 ```json
 {
@@ -1307,107 +2195,110 @@ All errors follow this structure:
   "status": 400,
   "error": "Bad Request",
   "message": "Detailed error message",
-  "path": "/api/orders",
-  "errors": [
-    {
-      "field": "orderLines",
-      "message": "Order must have at least one line item"
-    }
-  ]
+  "path": "/api/endpoint"
 }
 ```
 
-### Common HTTP Status Codes
+### HTTP Status Codes
 
 | Status | Meaning | Usage |
 |--------|---------|-------|
-| 200 | OK | Successful GET, PATCH, DELETE |
-| 201 | Created | Successful POST |
-| 204 | No Content | Successful DELETE with no response body |
-| 400 | Bad Request | Validation errors, business rule violations |
+| 200 | OK | Successful GET, PUT, POST |
+| 201 | Created | Successful resource creation |
+| 204 | No Content | Successful DELETE |
+| 400 | Bad Request | Validation errors, invalid input |
 | 401 | Unauthorized | Missing or invalid authentication |
 | 403 | Forbidden | Insufficient permissions |
 | 404 | Not Found | Resource doesn't exist |
-| 409 | Conflict | Duplicate resource, concurrent modification |
-| 422 | Unprocessable Entity | Invalid state transition |
+| 409 | Conflict | Duplicate resource, insufficient inventory |
 | 500 | Internal Server Error | Server-side error |
 
-### Common Error Codes
+### Common Error Scenarios
 
+**Insufficient Stock**:
 ```json
 {
-  "error": "INSUFFICIENT_STOCK",
-  "message": "Cannot reduce stock by 200. Available stock: 125"
+  "status": 409,
+  "error": "Insufficient Inventory",
+  "message": "Cannot transfer 200 units. Available: 125"
 }
 ```
 
+**Resource Not Found**:
 ```json
 {
-  "error": "INVENTORY_ALREADY_EXISTS",
-  "message": "Inventory already exists for shop 1 and product 150"
+  "status": 404,
+  "error": "Not Found",
+  "message": "Shop not found with ID: 999"
 }
 ```
 
+**Validation Error**:
 ```json
 {
-  "error": "EXCEEDS_MAX_STOCK",
-  "message": "Adding 400 would exceed maximum stock of 500"
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Quantity must be greater than zero"
 }
 ```
 
+**Permission Denied**:
 ```json
 {
-  "error": "INVALID_ORDER_STATUS",
-  "message": "Cannot change status from COMPLETED to PENDING"
-}
-```
-
-```json
-{
-  "error": "CASHIER_SESSION_CLOSED",
-  "message": "Cannot process sale. Cashier session is closed"
+  "status": 403,
+  "error": "Forbidden",
+  "message": "Access Denied"
 }
 ```
 
 ---
 
-## Rate Limiting
-
-API endpoints are rate-limited to prevent abuse:
-- **Default**: 100 requests per minute per IP
-- **Authentication**: 10 login attempts per minute per IP
-- **Reports**: 20 requests per minute per user
-
-Rate limit headers:
-```http
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 87
-X-RateLimit-Reset: 1705322400
-```
-
 ## Pagination
 
 List endpoints support pagination with these parameters:
-- `page`: Page number (0-indexed)
-- `size`: Items per page (max 100)
-- `sort`: Sort field and direction (e.g., `createdAt,desc`)
 
-Response includes pagination metadata:
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `page` | Page number (0-indexed) | 0 |
+| `size` | Items per page | 20 |
+| `sort` | Sort field and direction | varies |
+
+**Example Request**:
+```http
+GET /api/orders/paginated?page=0&size=10&sort=createdAt,desc
+```
+
+**Response Structure**:
 ```json
 {
   "content": [...],
   "pageable": {
     "pageNumber": 0,
-    "pageSize": 20,
-    "totalElements": 150,
-    "totalPages": 8
-  }
+    "pageSize": 10,
+    "sort": {
+      "sorted": true,
+      "direction": "DESC"
+    }
+  },
+  "totalElements": 150,
+  "totalPages": 15,
+  "first": true,
+  "last": false
 }
 ```
 
 ---
 
-**Version**: 1.0
-**Last Updated**: 2026-01-15
+## Date/Time Formats
+
+All date/time parameters use ISO 8601 format:
+
+- **Date**: `YYYY-MM-DD` (e.g., `2026-01-15`)
+- **DateTime**: `YYYY-MM-DDTHH:mm:ss` (e.g., `2026-01-15T10:30:00`)
+
+---
+
+**Version**: 2.0
+**Last Updated**: 2026-02-02
 
 For interactive API testing, visit: `http://localhost:9090/swagger-ui.html`
