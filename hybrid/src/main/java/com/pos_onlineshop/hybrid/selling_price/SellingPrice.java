@@ -135,7 +135,7 @@ public class SellingPrice {
      * - PERCENTAGE: Percentage of base price (e.g., 15% VAT)
      * - TIERED: Progressive tax brackets (requires tier configuration in Tax entity)
      */
-    private void calculateSellingPriceFromBaseAndTaxes() {
+    public void calculateSellingPriceFromBaseAndTaxes() {
         // Validate inputs
         if (basePrice == null || taxes == null || taxes.isEmpty()) {
             return;

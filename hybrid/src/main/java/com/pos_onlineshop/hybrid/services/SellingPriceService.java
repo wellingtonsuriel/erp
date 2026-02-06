@@ -43,6 +43,10 @@ public class SellingPriceService {
      * Note: SellingPrice entity does not have costPrice and markupPercentage fields.
      */
     public SellingPrice createOrUpdatePrice(SellingPrice sellingPrice) {
+        // Calculate selling price from base price + taxes before validation
+        // so that sellingPrice is correctly derived when basePrice and taxes are provided
+        sellingPrice.calculateSellingPriceFromBaseAndTaxes();
+
         validateSellingPrice(sellingPrice);
 
         // Set default effective date if not provided
@@ -366,6 +370,10 @@ public class SellingPriceService {
         }
 
         existingPrice.setUpdatedBy(updatedBy);
+
+        // Recalculate selling price from base price + taxes before validation
+        // so that updated basePrice or taxes are reflected in the sellingPrice
+        existingPrice.calculateSellingPriceFromBaseAndTaxes();
 
         validateSellingPrice(existingPrice);
 
