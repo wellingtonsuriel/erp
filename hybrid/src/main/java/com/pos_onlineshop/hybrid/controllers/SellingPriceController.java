@@ -41,7 +41,7 @@ public class SellingPriceController {
      * Create or update a selling price
      */
     @PostMapping
-    public ResponseEntity<SellingPrice> createSellingPrice(@RequestBody SellingPriceCreateRequest request) {
+    public ResponseEntity<SellingPriceResponse> createSellingPrice(@RequestBody SellingPriceCreateRequest request) {
         try {
             Optional<Product> product = productRepository.findById(request.getProductId());
             Optional<Shop> shop = shopRepository.findById(request.getShopId());
@@ -83,7 +83,8 @@ public class SellingPriceController {
                     .build();
 
             SellingPrice savedPrice = sellingPriceService.createOrUpdatePrice(sellingPrice);
-            return ResponseEntity.status(HttpStatus.CREATED).body(savedPrice);
+            SellingPriceResponse response = sellingPriceService.toResponse(savedPrice);
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (IllegalArgumentException e) {
             log.error("Validation error creating selling price", e);
             return ResponseEntity.badRequest().build();
@@ -168,12 +169,12 @@ public class SellingPriceController {
      * Get current price for a product in a shop
      */
     @GetMapping("/shop/{shopId}/product/{productId}/current")
-    public ResponseEntity<SellingPrice> getCurrentPrice(
+    public ResponseEntity<SellingPriceResponse> getCurrentPrice(
             @PathVariable Long shopId,
             @PathVariable Long productId) {
 
         Optional<SellingPrice> price = sellingPriceService.getCurrentPrice(productId, shopId);
-        return price.map(ResponseEntity::ok)
+        return price.map(p -> ResponseEntity.ok(sellingPriceService.toResponse(p)))
                 .orElse(ResponseEntity.notFound().build());
     }
 
@@ -181,7 +182,7 @@ public class SellingPriceController {
      * Get all active prices for a product in a shop
      */
     @GetMapping("/shop/{shopId}/product/{productId}")
-    public ResponseEntity<List<SellingPrice>> getActivePrices(
+    public ResponseEntity<List<SellingPriceResponse>> getActivePrices(
             @PathVariable Long shopId,
             @PathVariable Long productId) {
 
@@ -193,14 +194,15 @@ public class SellingPriceController {
         }
 
         List<SellingPrice> prices = sellingPriceService.getActivePrices(product.get(), shop.get());
-        return ResponseEntity.ok(prices);
+        List<SellingPriceResponse> response = sellingPriceService.toResponseList(prices);
+        return ResponseEntity.ok(response);
     }
 
     /**
      * Get price by type
      */
     @GetMapping("/shop/{shopId}/product/{productId}/type/{priceType}")
-    public ResponseEntity<SellingPrice> getPriceByType(
+    public ResponseEntity<SellingPriceResponse> getPriceByType(
             @PathVariable Long shopId,
             @PathVariable Long productId,
             @PathVariable PriceType priceType) {
@@ -213,7 +215,7 @@ public class SellingPriceController {
         }
 
         Optional<SellingPrice> price = sellingPriceService.getPriceByType(product.get(), shop.get(), priceType);
-        return price.map(ResponseEntity::ok)
+        return price.map(p -> ResponseEntity.ok(sellingPriceService.toResponse(p)))
                 .orElse(ResponseEntity.notFound().build());
     }
 
@@ -221,7 +223,7 @@ public class SellingPriceController {
      * Get all prices for a product across all shops
      */
     @GetMapping("/product/{productId}")
-    public ResponseEntity<List<SellingPrice>> getProductPrices(@PathVariable Long productId) {
+    public ResponseEntity<List<SellingPriceResponse>> getProductPrices(@PathVariable Long productId) {
         Optional<Product> product = productRepository.findById(productId);
 
         if (product.isEmpty()) {
@@ -229,14 +231,15 @@ public class SellingPriceController {
         }
 
         List<SellingPrice> prices = sellingPriceService.getProductPrices(product.get());
-        return ResponseEntity.ok(prices);
+        List<SellingPriceResponse> response = sellingPriceService.toResponseList(prices);
+        return ResponseEntity.ok(response);
     }
 
     /**
      * Get all prices for a shop
      */
     @GetMapping("/shop/{shopId}")
-    public ResponseEntity<List<SellingPrice>> getShopPrices(@PathVariable Long shopId) {
+    public ResponseEntity<List<SellingPriceResponse>> getShopPrices(@PathVariable Long shopId) {
         Optional<Shop> shop = shopRepository.findById(shopId);
 
         if (shop.isEmpty()) {
@@ -244,14 +247,15 @@ public class SellingPriceController {
         }
 
         List<SellingPrice> prices = sellingPriceService.getShopPrices(shop.get());
-        return ResponseEntity.ok(prices);
+        List<SellingPriceResponse> response = sellingPriceService.toResponseList(prices);
+        return ResponseEntity.ok(response);
     }
 
     /**
      * Set promotional price
      */
     @PostMapping("/shop/{shopId}/product/{productId}/promotional")
-    public ResponseEntity<SellingPrice> setPromotionalPrice(
+    public ResponseEntity<SellingPriceResponse> setPromotionalPrice(
             @PathVariable Long shopId,
             @PathVariable Long productId,
             @RequestBody PromotionalPriceRequest request) {
@@ -270,7 +274,8 @@ public class SellingPriceController {
                     request.getPromotionalPrice(), request.getExpiryDate(),
                     request.getCreatedBy());
 
-            return ResponseEntity.ok(promoPrice);
+            SellingPriceResponse response = sellingPriceService.toResponse(promoPrice);
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Error setting promotional price", e);
             return ResponseEntity.badRequest().build();
@@ -281,7 +286,7 @@ public class SellingPriceController {
      * Set bulk pricing
      */
     @PostMapping("/shop/{shopId}/product/{productId}/bulk")
-    public ResponseEntity<SellingPrice> setBulkPrice(
+    public ResponseEntity<SellingPriceResponse> setBulkPrice(
             @PathVariable Long shopId,
             @PathVariable Long productId,
             @RequestBody BulkPriceRequest request) {
@@ -300,7 +305,8 @@ public class SellingPriceController {
                     request.getRegularPrice(), request.getBulkPrice(),
                     request.getQuantityBreak(), request.getCreatedBy());
 
-            return ResponseEntity.ok(bulkPrice);
+            SellingPriceResponse response = sellingPriceService.toResponse(bulkPrice);
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Error setting bulk price", e);
             return ResponseEntity.badRequest().build();
@@ -311,14 +317,15 @@ public class SellingPriceController {
      * Update price with cost calculation
      */
     @PutMapping("/{priceId}/cost-based")
-    public ResponseEntity<SellingPrice> updatePriceWithCost(
+    public ResponseEntity<SellingPriceResponse> updatePriceWithCost(
             @PathVariable Long priceId,
             @RequestBody CostBasedPriceRequest request) {
 
         try {
             SellingPrice updatedPrice = sellingPriceService.updatePriceWithCost(
                     priceId, request.getCostPrice(), request.getMarkupPercentage());
-            return ResponseEntity.ok(updatedPrice);
+            SellingPriceResponse response = sellingPriceService.toResponse(updatedPrice);
+            return ResponseEntity.ok(response);
         } catch (RuntimeException e) {
             log.error("Error updating price with cost", e);
             return ResponseEntity.badRequest().build();
@@ -389,12 +396,13 @@ public class SellingPriceController {
      * Get prices in range
      */
     @GetMapping("/price-range")
-    public ResponseEntity<List<SellingPrice>> getPricesInRange(
+    public ResponseEntity<List<SellingPriceResponse>> getPricesInRange(
             @RequestParam BigDecimal minPrice,
             @RequestParam BigDecimal maxPrice) {
 
         List<SellingPrice> prices = sellingPriceService.getPricesInRange(minPrice, maxPrice);
-        return ResponseEntity.ok(prices);
+        List<SellingPriceResponse> response = sellingPriceService.toResponseList(prices);
+        return ResponseEntity.ok(response);
     }
 
     /**
@@ -416,20 +424,22 @@ public class SellingPriceController {
      * Get low markup prices
      */
     @GetMapping("/low-markup")
-    public ResponseEntity<List<SellingPrice>> getLowMarkupPrices(
+    public ResponseEntity<List<SellingPriceResponse>> getLowMarkupPrices(
             @RequestParam(defaultValue = "10.0") BigDecimal threshold) {
 
         List<SellingPrice> prices = sellingPriceService.getLowMarkupPrices(threshold);
-        return ResponseEntity.ok(prices);
+        List<SellingPriceResponse> response = sellingPriceService.toResponseList(prices);
+        return ResponseEntity.ok(response);
     }
 
     /**
      * Find duplicate prices
      */
     @GetMapping("/duplicates")
-    public ResponseEntity<List<SellingPrice>> findDuplicatePrices() {
+    public ResponseEntity<List<SellingPriceResponse>> findDuplicatePrices() {
         List<SellingPrice> duplicates = sellingPriceService.findDuplicatePrices();
-        return ResponseEntity.ok(duplicates);
+        List<SellingPriceResponse> response = sellingPriceService.toResponseList(duplicates);
+        return ResponseEntity.ok(response);
     }
 
     /**
