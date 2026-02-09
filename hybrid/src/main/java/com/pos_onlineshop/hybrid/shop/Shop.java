@@ -1,5 +1,6 @@
 package com.pos_onlineshop.hybrid.shop;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.pos_onlineshop.hybrid.cashier.Cashier;
 import com.pos_onlineshop.hybrid.currency.Currency;
 import com.pos_onlineshop.hybrid.enums.CashierRole;
@@ -68,10 +69,12 @@ public class Shop {
 
     @OneToMany(mappedBy = "assignedShop", fetch = FetchType.LAZY)
     @Builder.Default
+    @JsonIgnore
     private Set<Cashier> assignedCashiers = new HashSet<>();
 
     @OneToMany(mappedBy = "shop", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @Builder.Default
+    @JsonIgnore
     private Set<ShopInventory> shopInventories = new HashSet<>();
 
     // Cashiers who can manage this shop (besides the primary manager)
@@ -82,6 +85,7 @@ public class Shop {
             inverseJoinColumns = @JoinColumn(name = "cashier_id")
     )
     @Builder.Default
+    @JsonIgnore
     private Set<Cashier> managedByCashiers = new HashSet<>();
 
     @Column(name = "max_cashiers")

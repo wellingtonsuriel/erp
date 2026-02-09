@@ -1,5 +1,6 @@
 package com.pos_onlineshop.hybrid.cashier;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.pos_onlineshop.hybrid.cashierSessions.CashierSession;
 import com.pos_onlineshop.hybrid.enums.CashierRole;
 import com.pos_onlineshop.hybrid.orders.Order;
@@ -52,6 +53,7 @@ public class Cashier {
 
     @ManyToOne
     @JoinColumn(name = "assigned_shop_id")
+    @JsonIgnore
     private Shop assignedShop;
 
     @Enumerated(EnumType.STRING)
@@ -74,10 +76,12 @@ public class Cashier {
 
     @OneToMany(mappedBy = "cashier", cascade = CascadeType.ALL)
     @Builder.Default
+    @JsonIgnore
     private Set<CashierSession> cashierSessions = new HashSet<>();
 
     @OneToMany(mappedBy = "cashier")
     @Builder.Default
+    @JsonIgnore
     private Set<Order> processedOrders = new HashSet<>();
 
     @Column(name = "created_at")
