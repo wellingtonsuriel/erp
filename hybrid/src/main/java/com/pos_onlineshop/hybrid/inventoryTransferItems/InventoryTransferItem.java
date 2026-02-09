@@ -2,6 +2,7 @@ package com.pos_onlineshop.hybrid.inventoryTransferItems;
 
 
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.pos_onlineshop.hybrid.inventoryTransfer.InventoryTransfer;
 import com.pos_onlineshop.hybrid.products.Product;
 import jakarta.persistence.*;
@@ -31,6 +32,7 @@ public class InventoryTransferItem {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "transfer_id", nullable = false)
+    @JsonIgnore
     private InventoryTransfer transfer;
 
     @ManyToOne(fetch = FetchType.LAZY)
