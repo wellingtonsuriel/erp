@@ -1,6 +1,7 @@
 package com.pos_onlineshop.hybrid.cashier;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.pos_onlineshop.hybrid.cashierSessions.CashierSession;
 import com.pos_onlineshop.hybrid.enums.CashierRole;
 import com.pos_onlineshop.hybrid.orders.Order;
@@ -53,7 +54,7 @@ public class Cashier {
 
     @ManyToOne
     @JoinColumn(name = "assigned_shop_id")
-    @JsonIgnore
+    @JsonIgnoreProperties({"manager", "assignedCashiers", "managedByCashiers", "shopInventories"})
     private Shop assignedShop;
 
     @Enumerated(EnumType.STRING)
