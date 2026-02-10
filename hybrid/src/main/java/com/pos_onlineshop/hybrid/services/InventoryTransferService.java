@@ -21,6 +21,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.hibernate.Hibernate;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -38,6 +40,14 @@ public class InventoryTransferService {
     private final ShopRepository shopRepository;
     private final ProductRepository productRepository;
     private final ShopInventoryService shopInventoryService;
+
+    /**
+     * Initialize lazy-loaded collections so they are available after the transaction closes.
+     */
+    private void initializeCollections(InventoryTransfer transfer) {
+        Hibernate.initialize(transfer.getTransferItems());
+        Hibernate.initialize(transfer.getDamagedItems());
+    }
 
     /**
      * Create a new inventory transfer request
@@ -68,6 +78,7 @@ public class InventoryTransferService {
                 .build();
 
         InventoryTransfer savedTransfer = transferRepository.save(transfer);
+        initializeCollections(savedTransfer);
         log.info("Created inventory transfer {} from shop {} to shop {}",
                 savedTransfer.getTransferNumber(), fromShop.getName(), toShop.getName());
 
@@ -144,6 +155,7 @@ public class InventoryTransferService {
         }
 
         InventoryTransfer savedTransfer = transferRepository.save(transfer);
+        initializeCollections(savedTransfer);
         log.info("Added {} product(s) to transfer {}: {} - Total items: {}, Total value: {}",
                 addedProducts.size(),
                 transfer.getTransferNumber(),
@@ -167,7 +179,9 @@ public class InventoryTransferService {
 
         transfer.getTransferItems().removeIf(item -> item.getProduct().getId().equals(productId));
 
-        return transferRepository.save(transfer);
+        InventoryTransfer savedTransfer = transferRepository.save(transfer);
+        initializeCollections(savedTransfer);
+        return savedTransfer;
     }
 
     /**
@@ -194,6 +208,7 @@ public class InventoryTransferService {
         transfer.approve(approver);
 
         InventoryTransfer savedTransfer = transferRepository.save(transfer);
+        initializeCollections(savedTransfer);
         log.info("Approved transfer {} by {}", transfer.getTransferNumber(), approver.getUsername());
 
         return savedTransfer;
@@ -245,6 +260,7 @@ public class InventoryTransferService {
         }
 
         InventoryTransfer savedTransfer = transferRepository.save(transfer);
+        initializeCollections(savedTransfer);
         log.info("Shipped transfer {} by {} - {} items from {} to {}",
                 transfer.getTransferNumber(),
                 shipper.getUsername(),
@@ -327,6 +343,7 @@ public class InventoryTransferService {
         transfer.receive(receiver);
 
         InventoryTransfer savedTransfer = transferRepository.save(transfer);
+        initializeCollections(savedTransfer);
 
         // Log comprehensive receive summary
         int totalReceived = receivedItems.stream()
@@ -386,6 +403,7 @@ public class InventoryTransferService {
         transfer.cancel(reason);
 
         InventoryTransfer savedTransfer = transferRepository.save(transfer);
+        initializeCollections(savedTransfer);
         log.info("Cancelled transfer {} with reason: {}", transfer.getTransferNumber(), reason);
 
         return savedTransfer;
@@ -401,6 +419,7 @@ public class InventoryTransferService {
         transfer.complete();
 
         InventoryTransfer savedTransfer = transferRepository.save(transfer);
+        initializeCollections(savedTransfer);
         log.info("Completed transfer {}", transfer.getTransferNumber());
 
         return savedTransfer;
@@ -410,46 +429,62 @@ public class InventoryTransferService {
 
     @Transactional(readOnly = true)
     public Optional<InventoryTransfer> findById(Long transferId) {
-        return transferRepository.findById(transferId);
+        Optional<InventoryTransfer> transfer = transferRepository.findById(transferId);
+        transfer.ifPresent(this::initializeCollections);
+        return transfer;
     }
 
     @Transactional(readOnly = true)
     public Optional<InventoryTransfer> findByTransferNumber(String transferNumber) {
-        return transferRepository.findByTransferNumber(transferNumber);
+        Optional<InventoryTransfer> transfer = transferRepository.findByTransferNumber(transferNumber);
+        transfer.ifPresent(this::initializeCollections);
+        return transfer;
     }
 
     @Transactional(readOnly = true)
     public Page<InventoryTransfer> findTransfersForShop(Long shopId, Pageable pageable) {
-        return transferRepository.findByShopInvolved(shopId, pageable);
+        Page<InventoryTransfer> page = transferRepository.findByShopInvolved(shopId, pageable);
+        page.getContent().forEach(this::initializeCollections);
+        return page;
     }
 
     @Transactional(readOnly = true)
     public Page<InventoryTransfer> findTransfersFromShop(Long shopId, Pageable pageable) {
         Shop shop = shopRepository.findById(shopId)
                 .orElseThrow(() -> new ResourceNotFoundException("Shop", shopId));
-        return transferRepository.findByFromShop(shop, pageable);
+        Page<InventoryTransfer> page = transferRepository.findByFromShop(shop, pageable);
+        page.getContent().forEach(this::initializeCollections);
+        return page;
     }
 
     @Transactional(readOnly = true)
     public Page<InventoryTransfer> findTransfersToShop(Long shopId, Pageable pageable) {
         Shop shop = shopRepository.findById(shopId)
                 .orElseThrow(() -> new ResourceNotFoundException("Shop", shopId));
-        return transferRepository.findByToShop(shop, pageable);
+        Page<InventoryTransfer> page = transferRepository.findByToShop(shop, pageable);
+        page.getContent().forEach(this::initializeCollections);
+        return page;
     }
 
     @Transactional(readOnly = true)
     public List<InventoryTransfer> findByStatus(TransferStatus status) {
-        return transferRepository.findByStatus(status);
+        List<InventoryTransfer> transfers = transferRepository.findByStatus(status);
+        transfers.forEach(this::initializeCollections);
+        return transfers;
     }
 
     @Transactional(readOnly = true)
     public List<InventoryTransfer> findOverdueTransfers() {
-        return transferRepository.findOverdueTransfers(LocalDateTime.now());
+        List<InventoryTransfer> transfers = transferRepository.findOverdueTransfers(LocalDateTime.now());
+        transfers.forEach(this::initializeCollections);
+        return transfers;
     }
 
     @Transactional(readOnly = true)
     public List<InventoryTransfer> findByDateRange(LocalDateTime startDate, LocalDateTime endDate) {
-        return transferRepository.findByDateRange(startDate, endDate);
+        List<InventoryTransfer> transfers = transferRepository.findByDateRange(startDate, endDate);
+        transfers.forEach(this::initializeCollections);
+        return transfers;
     }
 
     @Transactional(readOnly = true)
