@@ -1,8 +1,12 @@
 package com.pos_onlineshop.hybrid.controllers;
 
 import com.pos_onlineshop.hybrid.dtos.*;
+import com.pos_onlineshop.hybrid.enums.TransferStatus;
 import com.pos_onlineshop.hybrid.inventory.InventoryItem;
+import com.pos_onlineshop.hybrid.inventoryTransfer.InventoryTransfer;
 import com.pos_onlineshop.hybrid.services.InventoryService;
+import com.pos_onlineshop.hybrid.services.InventoryTransferService;
+import com.pos_onlineshop.hybrid.services.ShopInventoryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -24,6 +28,8 @@ import java.util.Map;
 public class InventoryController {
 
     private final InventoryService inventoryService;
+    private final ShopInventoryService shopInventoryService;
+    private final InventoryTransferService inventoryTransferService;
 
     @GetMapping("/product/{productId}")
     public ResponseEntity<InventoryItem> getInventoryByProduct(@PathVariable Long productId) {
@@ -32,9 +38,15 @@ public class InventoryController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    /**
+     * Get product availability with per-shop stock breakdown from InventoryTotal.
+     * Returns total stock across all shops, reserved quantity, and per-shop details.
+     */
     @GetMapping("/product/{productId}/availability")
-    public ResponseEntity<Map<String, Integer>> getProductAvailability(@PathVariable Long productId) {
-        return ResponseEntity.ok(inventoryService.getChannelInventory(productId));
+    public ResponseEntity<Map<String, Object>> getProductAvailability(@PathVariable Long productId) {
+        log.info("Fetching product availability for product ID: {}", productId);
+        Map<String, Object> availability = inventoryService.getProductAvailabilityFromTotal(productId);
+        return ResponseEntity.ok(availability);
     }
 
     @PostMapping("/product/{productId}/add")
@@ -85,14 +97,25 @@ public class InventoryController {
         return ResponseEntity.ok(inStock);
     }
 
+    /**
+     * Get low stock items from InventoryTotal with ShopInventory reorder levels.
+     * Returns per-shop, per-product low stock entries consistent with report data.
+     */
     @GetMapping("/low-stock")
-    public List<InventoryItem> getLowStockItems() {
-        return inventoryService.findLowStockItems();
+    public ResponseEntity<List<Map<String, Object>>> getLowStockItems() {
+        log.info("Fetching low stock items from InventoryTotal");
+        List<Map<String, Object>> lowStockItems = inventoryService.findLowStockItemsFromTotal();
+        return ResponseEntity.ok(lowStockItems);
     }
 
+    /**
+     * Get total inventory value computed from InventoryTotal stock × ShopInventory unit prices.
+     * Consistent with the stock value report calculation.
+     */
     @GetMapping("/total-value")
     public ResponseEntity<BigDecimal> getTotalInventoryValue() {
-        return ResponseEntity.ok(inventoryService.calculateTotalInventoryValue());
+        log.info("Calculating total inventory value from InventoryTotal");
+        return ResponseEntity.ok(inventoryService.calculateTotalInventoryValueFromTotal());
     }
 
     @PutMapping("/product/{productId}/reorder-level")
@@ -155,5 +178,65 @@ public class InventoryController {
         log.info("Admin requested global stock value report");
         StockValueReport report = inventoryService.generateStockValueReport();
         return ResponseEntity.ok(report);
+    }
+
+    // ==================== Additional Inventory Report Endpoints ====================
+
+    /**
+     * Get all out-of-stock items across all shops from InventoryTotal.
+     * Returns shop and product details for items with zero stock.
+     */
+    @GetMapping("/reports/out-of-stock")
+    public ResponseEntity<List<Map<String, Object>>> getOutOfStockItems() {
+        log.info("Admin requested out-of-stock items report");
+        List<Map<String, Object>> outOfStock = inventoryService.findOutOfStockItemsFromTotal();
+        return ResponseEntity.ok(outOfStock);
+    }
+
+    /**
+     * Get full shop inventory details from InventoryTotal for a specific shop.
+     * Returns product-level stock, pricing, and supplier details.
+     */
+    @GetMapping("/reports/shop/{shopId}/inventory")
+    public ResponseEntity<List<ShopInventoryResponse>> getShopInventoryReport(@PathVariable Long shopId) {
+        log.info("Admin requested shop inventory report for shop ID: {}", shopId);
+        List<ShopInventoryResponse> inventory = shopInventoryService.getShopInventoryFromTotal(shopId);
+        return ResponseEntity.ok(inventory);
+    }
+
+    /**
+     * Get overdue inventory transfers.
+     * Returns transfers that are in transit past their expected delivery date.
+     */
+    @GetMapping("/reports/overdue-transfers")
+    public ResponseEntity<List<InventoryTransfer>> getOverdueTransfers() {
+        log.info("Admin requested overdue transfers report");
+        List<InventoryTransfer> overdueTransfers = inventoryTransferService.findOverdueTransfers();
+        return ResponseEntity.ok(overdueTransfers);
+    }
+
+    /**
+     * Get inventory transfers filtered by status.
+     * Useful for reporting on pending, approved, in-transit, or completed transfers.
+     */
+    @GetMapping("/reports/transfers/status/{status}")
+    public ResponseEntity<List<InventoryTransfer>> getTransfersByStatus(@PathVariable TransferStatus status) {
+        log.info("Admin requested transfers by status: {}", status);
+        List<InventoryTransfer> transfers = inventoryTransferService.findByStatus(status);
+        return ResponseEntity.ok(transfers);
+    }
+
+    /**
+     * Get count of active (pending/approved/in-transit) transfers from a specific shop.
+     * Useful for monitoring shop transfer activity.
+     */
+    @GetMapping("/reports/active-transfers/shop/{shopId}")
+    public ResponseEntity<Map<String, Object>> getActiveTransferCountForShop(@PathVariable Long shopId) {
+        log.info("Admin requested active transfer count for shop ID: {}", shopId);
+        long count = inventoryTransferService.countActiveTransfersFromShop(shopId);
+        return ResponseEntity.ok(Map.of(
+                "shopId", shopId,
+                "activeTransferCount", count
+        ));
     }
 }

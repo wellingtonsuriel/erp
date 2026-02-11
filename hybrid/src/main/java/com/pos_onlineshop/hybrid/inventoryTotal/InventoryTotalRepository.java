@@ -86,4 +86,10 @@ public interface InventoryTotalRepository extends JpaRepository<InventoryTotal, 
      */
     @Query("SELECT it FROM InventoryTotal it JOIN FETCH it.shop JOIN FETCH it.product WHERE it.shop.id = :shopId")
     List<InventoryTotal> findByShopIdWithDetails(@Param("shopId") Long shopId);
+
+    /**
+     * Find all inventory totals for a product across all shops with fetched shop and product details
+     */
+    @Query("SELECT it FROM InventoryTotal it JOIN FETCH it.shop JOIN FETCH it.product WHERE it.product.id = :productId")
+    List<InventoryTotal> findByProductIdWithDetails(@Param("productId") Long productId);
 }

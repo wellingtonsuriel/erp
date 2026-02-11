@@ -491,6 +491,140 @@ public class InventoryService {
         return report;
     }
 
+    // ==================== Additional Report/Query Methods ====================
+
+    /**
+     * Get per-shop stock availability for a product from InventoryTotal.
+     * Returns a map with shop-level breakdown plus an aggregate total.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> getProductAvailabilityFromTotal(Long productId) {
+        List<InventoryTotal> totals = inventoryTotalRepository.findByProductIdWithDetails(productId);
+
+        List<Map<String, Object>> shopBreakdown = new ArrayList<>();
+        int grandTotal = 0;
+
+        for (InventoryTotal it : totals) {
+            Shop shop = it.getShop();
+            int stock = it.getTotalstock();
+            grandTotal += stock;
+
+            Optional<ShopInventory> siOpt = shopInventoryRepository
+                    .findFirstByShopAndProductOrderByIdDesc(shop, it.getProduct());
+            BigDecimal unitPrice = siOpt.map(ShopInventory::getUnitPrice).orElse(BigDecimal.ZERO);
+            Integer reorderLevel = siOpt.map(ShopInventory::getReorderLevel).orElse(null);
+
+            String stockStatus;
+            if (stock <= 0) {
+                stockStatus = "OUT_OF_STOCK";
+            } else if (reorderLevel != null && stock <= reorderLevel) {
+                stockStatus = "LOW_STOCK";
+            } else {
+                stockStatus = "IN_STOCK";
+            }
+
+            shopBreakdown.add(Map.of(
+                    "shopId", shop.getId(),
+                    "shopName", shop.getName(),
+                    "shopCode", shop.getCode(),
+                    "stock", stock,
+                    "unitPrice", unitPrice,
+                    "stockStatus", stockStatus
+            ));
+        }
+
+        // Also include global InventoryItem data if present
+        Optional<InventoryItem> globalOpt = inventoryRepository.findByProductIdWithLock(productId);
+        int reserved = globalOpt.map(InventoryItem::getReservedQuantity).orElse(0);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("productId", productId);
+        result.put("totalStockAcrossShops", grandTotal);
+        result.put("reservedQuantity", reserved);
+        result.put("availableQuantity", grandTotal - reserved);
+        result.put("shopBreakdown", shopBreakdown);
+
+        return result;
+    }
+
+    /**
+     * Find low stock items using InventoryTotal and ShopInventory reorder levels.
+     * This is consistent with how the reports detect low stock.
+     */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> findLowStockItemsFromTotal() {
+        List<InventoryTotal> allInventory = inventoryTotalRepository.findAllWithShopAndProduct();
+        List<Map<String, Object>> lowStockItems = new ArrayList<>();
+
+        for (InventoryTotal it : allInventory) {
+            if (it.getTotalstock() <= 0) continue;
+
+            Optional<ShopInventory> siOpt = shopInventoryRepository
+                    .findFirstByShopAndProductOrderByIdDesc(it.getShop(), it.getProduct());
+
+            if (siOpt.isPresent()) {
+                Integer reorderLevel = siOpt.get().getReorderLevel();
+                if (reorderLevel != null && it.getTotalstock() <= reorderLevel) {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("shopId", it.getShop().getId());
+                    item.put("shopName", it.getShop().getName());
+                    item.put("productId", it.getProduct().getId());
+                    item.put("productName", it.getProduct().getName());
+                    item.put("currentStock", it.getTotalstock());
+                    item.put("reorderLevel", reorderLevel);
+                    item.put("unitPrice", siOpt.get().getUnitPrice());
+                    lowStockItems.add(item);
+                }
+            }
+        }
+
+        return lowStockItems;
+    }
+
+    /**
+     * Find all out-of-stock items from InventoryTotal.
+     * Uses findAllWithShopAndProduct (JOIN FETCH) and filters to avoid N+1 queries.
+     */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> findOutOfStockItemsFromTotal() {
+        List<InventoryTotal> allInventory = inventoryTotalRepository.findAllWithShopAndProduct();
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        for (InventoryTotal it : allInventory) {
+            if (it.getTotalstock() > 0) continue;
+
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("shopId", it.getShop().getId());
+            item.put("shopName", it.getShop().getName());
+            item.put("productId", it.getProduct().getId());
+            item.put("productName", it.getProduct().getName());
+            item.put("currentStock", 0);
+            item.put("lastUpdated", it.getLastUpdated());
+            result.add(item);
+        }
+
+        return result;
+    }
+
+    /**
+     * Calculate total inventory value from InventoryTotal × ShopInventory unit prices.
+     * This is consistent with how the stock value report computes value.
+     */
+    @Transactional(readOnly = true)
+    public BigDecimal calculateTotalInventoryValueFromTotal() {
+        List<InventoryTotal> allInventory = inventoryTotalRepository.findAllWithShopAndProduct();
+        BigDecimal totalValue = BigDecimal.ZERO;
+
+        for (InventoryTotal it : allInventory) {
+            Optional<ShopInventory> siOpt = shopInventoryRepository
+                    .findFirstByShopAndProductOrderByIdDesc(it.getShop(), it.getProduct());
+            BigDecimal unitPrice = siOpt.map(ShopInventory::getUnitPrice).orElse(BigDecimal.ZERO);
+            totalValue = totalValue.add(unitPrice.multiply(BigDecimal.valueOf(it.getTotalstock())));
+        }
+
+        return totalValue;
+    }
+
     // ==================== Private Helpers ====================
 
     private BigDecimal calculateShopStockValue(Shop shop, List<InventoryTotal> shopItems) {
