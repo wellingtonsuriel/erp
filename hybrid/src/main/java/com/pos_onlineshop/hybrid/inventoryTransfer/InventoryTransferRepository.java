@@ -42,4 +42,23 @@ public interface InventoryTransferRepository extends JpaRepository<InventoryTran
     @Query("SELECT COUNT(it) FROM InventoryTransfer it WHERE it.fromShop.id = :shopId " +
             "AND it.status IN ('PENDING', 'APPROVED', 'IN_TRANSIT')")
     long countActiveTransfersFromShop(@Param("shopId") Long shopId);
+
+    /**
+     * Find all transfers with shops eagerly fetched for reporting
+     */
+    @Query("SELECT it FROM InventoryTransfer it " +
+            "JOIN FETCH it.fromShop JOIN FETCH it.toShop " +
+            "ORDER BY it.requestedAt DESC")
+    List<InventoryTransfer> findAllWithShops();
+
+    /**
+     * Find transfers within a date range with shops eagerly fetched
+     */
+    @Query("SELECT it FROM InventoryTransfer it " +
+            "JOIN FETCH it.fromShop JOIN FETCH it.toShop " +
+            "WHERE it.requestedAt BETWEEN :startDate AND :endDate " +
+            "ORDER BY it.requestedAt DESC")
+    List<InventoryTransfer> findByDateRangeWithShops(
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate);
 }
