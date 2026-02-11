@@ -17,6 +17,9 @@ public interface InventoryItemRepository extends JpaRepository<InventoryItem, Lo
 
     Optional<InventoryItem> findByProduct(Product product);
 
+    @Query("SELECT i FROM InventoryItem i WHERE i.product.id = :productId")
+    Optional<InventoryItem> findByProductId(Long productId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT i FROM InventoryItem i WHERE i.product.id = :productId")
     Optional<InventoryItem> findByProductIdWithLock(Long productId);

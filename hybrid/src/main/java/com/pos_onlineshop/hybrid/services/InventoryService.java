@@ -58,7 +58,7 @@ public class InventoryService {
     }
 
     public Optional<InventoryItem> findByProductId(Long productId) {
-        return inventoryRepository.findByProductIdWithLock(productId);
+        return inventoryRepository.findByProductId(productId);
     }
 
     @Transactional
@@ -108,7 +108,7 @@ public class InventoryService {
     }
 
     public boolean isInStock(Long productId, Integer quantity) {
-        return inventoryRepository.findByProductIdWithLock(productId)
+        return inventoryRepository.findByProductId(productId)
                 .map(inventory -> inventory.getAvailableQuantity() >= quantity)
                 .orElse(false);
     }
@@ -117,8 +117,17 @@ public class InventoryService {
         return inventoryRepository.findItemsNeedingReorder();
     }
 
+    @Transactional(readOnly = true)
     public BigDecimal calculateTotalInventoryValue() {
-        return inventoryRepository.calculateTotalInventoryValue();
+        List<InventoryTotal> allInventory = inventoryTotalRepository.findAllWithShopAndProduct();
+        BigDecimal totalValue = BigDecimal.ZERO;
+        for (InventoryTotal it : allInventory) {
+            Optional<ShopInventory> siOpt = shopInventoryRepository
+                    .findFirstByShopAndProductOrderByIdDesc(it.getShop(), it.getProduct());
+            BigDecimal unitPrice = siOpt.map(ShopInventory::getUnitPrice).orElse(BigDecimal.ZERO);
+            totalValue = totalValue.add(unitPrice.multiply(BigDecimal.valueOf(it.getTotalstock())));
+        }
+        return totalValue;
     }
 
     public void updateReorderLevel(Long productId, Integer newLevel) {
@@ -130,7 +139,7 @@ public class InventoryService {
     }
 
     public Map<String, Integer> getChannelInventory(Long productId) {
-        InventoryItem item = inventoryRepository.findByProductIdWithLock(productId)
+        InventoryItem item = inventoryRepository.findByProductId(productId)
                 .orElseThrow(() -> new RuntimeException("Inventory not found"));
 
         return Map.of(

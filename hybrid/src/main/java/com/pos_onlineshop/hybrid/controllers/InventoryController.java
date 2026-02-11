@@ -1,8 +1,12 @@
 package com.pos_onlineshop.hybrid.controllers;
 
 import com.pos_onlineshop.hybrid.dtos.*;
+import com.pos_onlineshop.hybrid.enums.TransferStatus;
 import com.pos_onlineshop.hybrid.inventory.InventoryItem;
+import com.pos_onlineshop.hybrid.inventoryTransfer.InventoryTransfer;
 import com.pos_onlineshop.hybrid.services.InventoryService;
+import com.pos_onlineshop.hybrid.services.InventoryTransferService;
+import com.pos_onlineshop.hybrid.services.ShopInventoryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -24,6 +28,8 @@ import java.util.Map;
 public class InventoryController {
 
     private final InventoryService inventoryService;
+    private final InventoryTransferService inventoryTransferService;
+    private final ShopInventoryService shopInventoryService;
 
     @GetMapping("/product/{productId}")
     public ResponseEntity<InventoryItem> getInventoryByProduct(@PathVariable Long productId) {
@@ -155,5 +161,63 @@ public class InventoryController {
         log.info("Admin requested global stock value report");
         StockValueReport report = inventoryService.generateStockValueReport();
         return ResponseEntity.ok(report);
+    }
+
+    // ==================== Transfer-Based Report Endpoints ====================
+
+    /**
+     * Get all overdue inventory transfers.
+     * Returns transfers that are IN_TRANSIT past their expected delivery date.
+     */
+    @GetMapping("/reports/overdue-transfers")
+    public ResponseEntity<List<InventoryTransfer>> getOverdueTransfers() {
+        log.info("Admin requested overdue transfers report");
+        List<InventoryTransfer> overdueTransfers = inventoryTransferService.findOverdueTransfers();
+        return ResponseEntity.ok(overdueTransfers);
+    }
+
+    /**
+     * Get inventory transfers filtered by status.
+     * Useful for reporting on pending, in-transit, or completed transfers.
+     */
+    @GetMapping("/reports/transfers/by-status")
+    public ResponseEntity<List<InventoryTransfer>> getTransfersByStatus(@RequestParam TransferStatus status) {
+        log.info("Admin requested transfers by status: {}", status);
+        List<InventoryTransfer> transfers = inventoryTransferService.findByStatus(status);
+        return ResponseEntity.ok(transfers);
+    }
+
+    /**
+     * Get the count of active (non-completed, non-cancelled) transfers from a shop.
+     */
+    @GetMapping("/reports/active-transfers/shop/{shopId}")
+    public ResponseEntity<Map<String, Long>> getActiveTransferCount(@PathVariable Long shopId) {
+        log.info("Admin requested active transfer count for shop ID: {}", shopId);
+        long count = inventoryTransferService.countActiveTransfersFromShop(shopId);
+        return ResponseEntity.ok(Map.of("shopId", shopId, "activeTransferCount", count));
+    }
+
+    /**
+     * Get current inventory levels for a shop from the InventoryTotal table (source of truth).
+     * Returns full inventory details including stock totals, prices, and supplier info.
+     */
+    @GetMapping("/reports/shop/{shopId}/inventory")
+    public ResponseEntity<List<ShopInventoryResponse>> getShopInventoryReport(@PathVariable Long shopId) {
+        log.info("Admin requested shop inventory report for shop ID: {}", shopId);
+        List<ShopInventoryResponse> inventory = shopInventoryService.getShopInventoryFromTotal(shopId);
+        return ResponseEntity.ok(inventory);
+    }
+
+    /**
+     * Get transfers within a date range for reporting purposes.
+     * Both startDate and endDate are required.
+     */
+    @GetMapping("/reports/transfers/by-date-range")
+    public ResponseEntity<List<InventoryTransfer>> getTransfersByDateRange(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
+        log.info("Admin requested transfers by date range: {} to {}", startDate, endDate);
+        List<InventoryTransfer> transfers = inventoryTransferService.findByDateRange(startDate, endDate);
+        return ResponseEntity.ok(transfers);
     }
 }
