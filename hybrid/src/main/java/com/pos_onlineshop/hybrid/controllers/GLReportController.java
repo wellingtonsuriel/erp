@@ -5,11 +5,13 @@ import com.pos_onlineshop.hybrid.dtos.ArAgingReport;
 import com.pos_onlineshop.hybrid.dtos.BalanceSheetReport;
 import com.pos_onlineshop.hybrid.dtos.ProfitAndLossReport;
 import com.pos_onlineshop.hybrid.dtos.TrialBalanceReport;
+import com.pos_onlineshop.hybrid.dtos.VatReturnReport;
 import com.pos_onlineshop.hybrid.services.ApAgingService;
 import com.pos_onlineshop.hybrid.services.ArAgingService;
 import com.pos_onlineshop.hybrid.services.BalanceSheetService;
 import com.pos_onlineshop.hybrid.services.ProfitAndLossService;
 import com.pos_onlineshop.hybrid.services.TrialBalanceService;
+import com.pos_onlineshop.hybrid.services.VatReturnService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -19,7 +21,8 @@ import java.time.LocalDate;
 
 /**
  * /api/reports/*. Implemented: Trial Balance, AP aging, AR aging, Profit & Loss, Balance
- * Sheet. Not yet implemented: Cash Flow, VAT, GL detail (see the implementation summary).
+ * Sheet, VAT Return. Not yet implemented: Cash Flow, GL detail (see the implementation
+ * summary).
  */
 @RestController
 @RequestMapping("/api/reports")
@@ -31,6 +34,7 @@ public class GLReportController {
     private final ArAgingService arAgingService;
     private final ProfitAndLossService profitAndLossService;
     private final BalanceSheetService balanceSheetService;
+    private final VatReturnService vatReturnService;
 
     @GetMapping("/trial-balance")
     public ResponseEntity<TrialBalanceReport> trialBalance(
@@ -65,5 +69,13 @@ public class GLReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOfDate,
             @RequestParam(required = false) Long shopId) {
         return ResponseEntity.ok(balanceSheetService.generate(asOfDate != null ? asOfDate : LocalDate.now(), shopId));
+    }
+
+    @GetMapping("/vat-return")
+    public ResponseEntity<VatReturnReport> vatReturn(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
+            @RequestParam(required = false) Long shopId) {
+        return ResponseEntity.ok(vatReturnService.generate(fromDate, toDate, shopId));
     }
 }
