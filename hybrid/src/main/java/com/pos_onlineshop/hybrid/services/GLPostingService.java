@@ -5,9 +5,11 @@ import com.pos_onlineshop.hybrid.accountingPeriod.AccountingPeriodRepository;
 import com.pos_onlineshop.hybrid.enums.AmountSource;
 import com.pos_onlineshop.hybrid.enums.DebitCredit;
 import com.pos_onlineshop.hybrid.enums.JournalStatus;
+import com.pos_onlineshop.hybrid.enums.GLSourceModule;
 import com.pos_onlineshop.hybrid.gl.ClosedPeriodException;
 import com.pos_onlineshop.hybrid.gl.FinancialEvent;
 import com.pos_onlineshop.hybrid.gl.GLPostingException;
+import com.pos_onlineshop.hybrid.gl.ManualLineSpec;
 import com.pos_onlineshop.hybrid.gl.PostingRuleNotFoundException;
 import com.pos_onlineshop.hybrid.journalEntry.JournalEntry;
 import com.pos_onlineshop.hybrid.journalEntry.JournalEntryRepository;
@@ -184,6 +186,70 @@ public class GLPostingService {
         log.info("GL: reversed entry #{} with entry #{} ({})",
                 original.getEntryNumber(), savedReversal.getEntryNumber(), reason);
         return savedReversal;
+    }
+
+    /**
+     * Posts a fully-specified set of lines (accounts and debit/credit amounts already
+     * chosen by the caller) rather than resolving them from a PostingRule. This is the
+     * path ManualJournalService uses once a manual journal is APPROVED - see
+     * ManualJournal's class comment for why manual journals bypass PostingRule entirely.
+     * sourceModule is always MANUAL here, so JournalValidator's control-account rule
+     * applies exactly as it would to any other manual entry.
+     */
+    @Transactional
+    public JournalEntry postManual(String idempotencyKey, LocalDate entryDate, String description,
+                                    String sourceReferenceType, Long sourceReferenceId,
+                                    List<ManualLineSpec> lineSpecs, String postedBy) {
+        Optional<JournalEntry> existing = journalEntryRepository.findByIdempotencyKey(idempotencyKey);
+        if (existing.isPresent()) {
+            log.info("GL: idempotent replay for key {} - returning existing entry #{}",
+                    idempotencyKey, existing.get().getEntryNumber());
+            return existing.get();
+        }
+
+        AccountingPeriod period = resolvePeriod(entryDate);
+
+        JournalEntry entry = JournalEntry.builder()
+                .entryNumber(numberingService.nextEntryNumber())
+                .idempotencyKey(idempotencyKey)
+                .entryDate(entryDate)
+                .accountingPeriod(period)
+                .description(description)
+                .sourceModule(GLSourceModule.MANUAL)
+                .sourceReferenceType(sourceReferenceType)
+                .sourceReferenceId(sourceReferenceId)
+                .status(JournalStatus.POSTED)
+                .postedBy(postedBy)
+                .postedAt(LocalDateTime.now())
+                .build();
+
+        for (ManualLineSpec spec : lineSpecs) {
+            BigDecimal exchangeRate = spec.exchangeRate() != null ? spec.exchangeRate() : BigDecimal.ONE;
+            BigDecimal debit = spec.debitAmount() != null ? spec.debitAmount() : BigDecimal.ZERO;
+            BigDecimal credit = spec.creditAmount() != null ? spec.creditAmount() : BigDecimal.ZERO;
+            BigDecimal amount = debit.compareTo(BigDecimal.ZERO) > 0 ? debit : credit;
+            JournalLine line = JournalLine.builder()
+                    .account(spec.account())
+                    .debitAmount(debit)
+                    .creditAmount(credit)
+                    .currency(spec.currency())
+                    .baseAmount(amount.multiply(exchangeRate).setScale(4, RoundingMode.HALF_UP))
+                    .exchangeRate(exchangeRate)
+                    .costCenterShop(spec.costCenterShop())
+                    .memo(spec.memo())
+                    .build();
+            entry.addLine(line);
+        }
+
+        validator.validate(entry);
+
+        try {
+            JournalEntry saved = journalEntryRepository.save(entry);
+            log.info("GL: posted manual entry #{} for {}", saved.getEntryNumber(), idempotencyKey);
+            return saved;
+        } catch (DataIntegrityViolationException e) {
+            return journalEntryRepository.findByIdempotencyKey(idempotencyKey).orElseThrow(() -> e);
+        }
     }
 
     private AccountingPeriod resolvePeriod(LocalDate date) {

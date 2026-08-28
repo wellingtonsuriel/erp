@@ -7,6 +7,8 @@ import com.pos_onlineshop.hybrid.currency.Currency;
 import com.pos_onlineshop.hybrid.enums.*;
 import com.pos_onlineshop.hybrid.gl.ClosedPeriodException;
 import com.pos_onlineshop.hybrid.gl.FinancialEvent;
+import com.pos_onlineshop.hybrid.gl.JournalImbalanceException;
+import com.pos_onlineshop.hybrid.gl.ManualLineSpec;
 import com.pos_onlineshop.hybrid.gl.PostingRuleNotFoundException;
 import com.pos_onlineshop.hybrid.glNumbering.JournalNumberCounter;
 import com.pos_onlineshop.hybrid.glNumbering.JournalNumberCounterRepository;
@@ -23,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -223,5 +226,76 @@ class GLPostingServiceTest {
 
         assertSame(existingReversal, result);
         verify(journalEntryRepository, never()).save(any());
+    }
+
+    @Test
+    void postManualPostsFullySpecifiedLinesWithoutConsultingAPostingRule() {
+        stubCounter();
+        when(journalEntryRepository.findByIdempotencyKey("MANUAL-JOURNAL-7")).thenReturn(Optional.empty());
+        when(accountingPeriodRepository.findContaining(LocalDate.of(2026, 8, 15))).thenReturn(Optional.of(openPeriod));
+        when(journalEntryRepository.save(any(JournalEntry.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Currency currency = Currency.builder().id(1L).code("USD").build();
+        List<ManualLineSpec> specs = List.of(
+                new ManualLineSpec(revenue, BigDecimal.ZERO, new BigDecimal("50.00"), currency, BigDecimal.ONE, null, "accrual"),
+                new ManualLineSpec(cash, new BigDecimal("50.00"), BigDecimal.ZERO, currency, BigDecimal.ONE, null, "accrual"));
+
+        JournalEntry result = glPostingService.postManual(
+                "MANUAL-JOURNAL-7", LocalDate.of(2026, 8, 15), "Accrual correction",
+                "MANUAL_JOURNAL", 7L, specs, "accountant1");
+
+        assertEquals(2, result.getLines().size());
+        assertEquals(GLSourceModule.MANUAL, result.getSourceModule());
+        assertEquals(JournalStatus.POSTED, result.getStatus());
+        assertEquals(1L, result.getEntryNumber());
+        verifyNoInteractions(postingRuleRepository);
+    }
+
+    @Test
+    void postManualRejectsAnUnbalancedLineSet() {
+        stubCounter();
+        when(journalEntryRepository.findByIdempotencyKey("MANUAL-JOURNAL-8")).thenReturn(Optional.empty());
+        when(accountingPeriodRepository.findContaining(LocalDate.of(2026, 8, 15))).thenReturn(Optional.of(openPeriod));
+
+        Currency currency = Currency.builder().id(1L).code("USD").build();
+        List<ManualLineSpec> specs = List.of(
+                new ManualLineSpec(revenue, BigDecimal.ZERO, new BigDecimal("50.00"), currency, BigDecimal.ONE, null, null),
+                new ManualLineSpec(cash, new BigDecimal("40.00"), BigDecimal.ZERO, currency, BigDecimal.ONE, null, null));
+
+        assertThrows(JournalImbalanceException.class, () -> glPostingService.postManual(
+                "MANUAL-JOURNAL-8", LocalDate.of(2026, 8, 15), "Bad accrual",
+                "MANUAL_JOURNAL", 8L, specs, "accountant1"));
+    }
+
+    @Test
+    void postManualBlocksPostingDirectlyToAControlAccount() {
+        stubCounter();
+        when(journalEntryRepository.findByIdempotencyKey("MANUAL-JOURNAL-9")).thenReturn(Optional.empty());
+        when(accountingPeriodRepository.findContaining(LocalDate.of(2026, 8, 15))).thenReturn(Optional.of(openPeriod));
+
+        Account controlAccount = Account.builder().id(4L).code("1100").name("Accounts Receivable")
+                .accountType(AccountType.ASSET).normalBalance(DebitCredit.DEBIT).controlAccount(true).active(true).build();
+        Currency currency = Currency.builder().id(1L).code("USD").build();
+        List<ManualLineSpec> specs = List.of(
+                new ManualLineSpec(controlAccount, new BigDecimal("50.00"), BigDecimal.ZERO, currency, BigDecimal.ONE, null, null),
+                new ManualLineSpec(cash, BigDecimal.ZERO, new BigDecimal("50.00"), currency, BigDecimal.ONE, null, null));
+
+        assertThrows(JournalImbalanceException.class, () -> glPostingService.postManual(
+                "MANUAL-JOURNAL-9", LocalDate.of(2026, 8, 15), "Bad manual entry",
+                "MANUAL_JOURNAL", 9L, specs, "accountant1"));
+    }
+
+    @Test
+    void postManualIsIdempotent() {
+        JournalEntry existing = JournalEntry.builder().id(9L).entryNumber(5L).idempotencyKey("MANUAL-JOURNAL-7").build();
+        when(journalEntryRepository.findByIdempotencyKey("MANUAL-JOURNAL-7")).thenReturn(Optional.of(existing));
+
+        JournalEntry result = glPostingService.postManual(
+                "MANUAL-JOURNAL-7", LocalDate.of(2026, 8, 15), "Accrual correction",
+                "MANUAL_JOURNAL", 7L, List.of(), "accountant1");
+
+        assertSame(existing, result);
+        verify(journalEntryRepository, never()).save(any());
+        verifyNoInteractions(accountingPeriodRepository, counterRepository);
     }
 }
