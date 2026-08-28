@@ -23,4 +23,6 @@ public class UpdateAccountRequest {
     private Long parentAccountId;
 
     private boolean controlAccount;
+
+    private boolean costOfGoodsSold;
 }

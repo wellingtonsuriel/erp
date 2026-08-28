@@ -48,6 +48,12 @@ public class Account {
     @Builder.Default
     private boolean controlAccount = false;
 
+    /** Marks an EXPENSE account as part of Cost of Goods Sold for P&L gross-profit
+     * calculation, distinct from operating expenses. Meaningless on any other account type. */
+    @Column(name = "is_cost_of_goods_sold", nullable = false)
+    @Builder.Default
+    private boolean costOfGoodsSold = false;
+
     @Column(name = "is_active", nullable = false)
     @Builder.Default
     private boolean active = true;

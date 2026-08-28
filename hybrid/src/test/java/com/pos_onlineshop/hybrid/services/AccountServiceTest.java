@@ -88,6 +88,20 @@ class AccountServiceTest {
     }
 
     @Test
+    void createPropagatesCostOfGoodsSoldFlag() {
+        when(accountRepository.existsByCode("5000")).thenReturn(false);
+        when(accountRepository.save(any(Account.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        CreateAccountRequest request = createRequest("5000");
+        request.setAccountType(AccountType.EXPENSE);
+        request.setCostOfGoodsSold(true);
+
+        AccountResponse response = service.create(request);
+
+        assertTrue(response.isCostOfGoodsSold());
+    }
+
+    @Test
     void updateRejectsAccountTypeChangeWhenJournalHistoryExists() {
         Account existing = account(1L, "1010", AccountType.ASSET, false);
         when(accountRepository.findById(1L)).thenReturn(Optional.of(existing));

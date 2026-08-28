@@ -16,6 +16,7 @@ public class AccountResponse {
     private Long parentAccountId;
     private String parentAccountCode;
     private boolean controlAccount;
+    private boolean costOfGoodsSold;
     private boolean active;
     private boolean hasJournalHistory;
 }

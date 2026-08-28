@@ -50,6 +50,7 @@ public class AccountService {
                 .normalBalance(request.getNormalBalance())
                 .parentAccount(parent)
                 .controlAccount(request.isControlAccount())
+                .costOfGoodsSold(request.isCostOfGoodsSold())
                 .active(request.isActive())
                 .build();
         return toResponse(accountRepository.save(account));
@@ -74,6 +75,7 @@ public class AccountService {
         account.setNormalBalance(request.getNormalBalance());
         account.setParentAccount(parent);
         account.setControlAccount(request.isControlAccount());
+        account.setCostOfGoodsSold(request.isCostOfGoodsSold());
         return toResponse(accountRepository.save(account));
     }
 
@@ -112,6 +114,7 @@ public class AccountService {
                 .parentAccountId(account.getParentAccount() != null ? account.getParentAccount().getId() : null)
                 .parentAccountCode(account.getParentAccount() != null ? account.getParentAccount().getCode() : null)
                 .controlAccount(account.isControlAccount())
+                .costOfGoodsSold(account.isCostOfGoodsSold())
                 .active(account.isActive())
                 .hasJournalHistory(journalLineRepository.existsByAccount(account))
                 .build();

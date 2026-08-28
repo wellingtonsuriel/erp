@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.pos_onlineshop.hybrid.enums.AccountType.*;
 import static com.pos_onlineshop.hybrid.enums.DebitCredit.CREDIT;
@@ -25,7 +26,10 @@ import static com.pos_onlineshop.hybrid.enums.DebitCredit.DEBIT;
 @Slf4j
 public class GLAccountSeedService {
 
-    private record Seed(String code, String name, AccountType type, DebitCredit normal, boolean control) {
+    private record Seed(String code, String name, AccountType type, DebitCredit normal, boolean control, boolean cogs) {
+        Seed(String code, String name, AccountType type, DebitCredit normal, boolean control) {
+            this(code, name, type, normal, control, false);
+        }
     }
 
     private static final List<Seed> STARTER_CHART = List.of(
@@ -45,7 +49,7 @@ public class GLAccountSeedService {
             new Seed("4010", "Sales Revenue - Online", REVENUE, CREDIT, false),
             new Seed("4020", "Sales Revenue - Credit/Wholesale", REVENUE, CREDIT, false),
             new Seed("4900", "Sales Returns & Allowances", REVENUE, DEBIT, false),
-            new Seed("5000", "Cost of Goods Sold", EXPENSE, DEBIT, false),
+            new Seed("5000", "Cost of Goods Sold", EXPENSE, DEBIT, false, true),
             new Seed("5100", "Inventory Write-off", EXPENSE, DEBIT, false),
             new Seed("5300", "Operating Expenses", EXPENSE, DEBIT, false),
             new Seed("5900", "FX Gain / Loss", EXPENSE, DEBIT, false)
@@ -55,23 +59,36 @@ public class GLAccountSeedService {
 
     @Transactional
     public void seed() {
-        int created = 0;
+        AtomicInteger created = new AtomicInteger();
         for (Seed s : STARTER_CHART) {
-            if (accountRepository.existsByCode(s.code())) {
-                continue;
-            }
-            accountRepository.save(Account.builder()
-                    .code(s.code())
-                    .name(s.name())
-                    .accountType(s.type())
-                    .normalBalance(s.normal())
-                    .controlAccount(s.control())
-                    .active(true)
-                    .build());
-            created++;
+            accountRepository.findByCode(s.code()).ifPresentOrElse(
+                    existing -> syncCostOfGoodsSoldFlag(existing, s.cogs()),
+                    () -> {
+                        accountRepository.save(Account.builder()
+                                .code(s.code())
+                                .name(s.name())
+                                .accountType(s.type())
+                                .normalBalance(s.normal())
+                                .controlAccount(s.control())
+                                .costOfGoodsSold(s.cogs())
+                                .active(true)
+                                .build());
+                        created.incrementAndGet();
+                    });
         }
-        if (created > 0) {
-            log.info("GL: seeded {} chart-of-accounts entries", created);
+        if (created.get() > 0) {
+            log.info("GL: seeded {} chart-of-accounts entries", created.get());
+        }
+    }
+
+    /** Existing rows are matched and left alone (name/type/control are user-editable via the
+     * Account API), except costOfGoodsSold: a chart deployed before that field existed should
+     * still classify 5000 as COGS once this seed runs again, without disturbing anything else
+     * about the row. */
+    private void syncCostOfGoodsSoldFlag(Account existing, boolean expectedCogs) {
+        if (existing.isCostOfGoodsSold() != expectedCogs) {
+            existing.setCostOfGoodsSold(expectedCogs);
+            accountRepository.save(existing);
         }
     }
 }

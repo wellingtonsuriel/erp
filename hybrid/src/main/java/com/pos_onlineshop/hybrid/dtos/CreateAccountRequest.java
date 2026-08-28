@@ -25,5 +25,7 @@ public class CreateAccountRequest {
 
     private boolean controlAccount;
 
+    private boolean costOfGoodsSold;
+
     private boolean active = true;
 }
