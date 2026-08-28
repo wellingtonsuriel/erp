@@ -15,6 +15,8 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, Long> 
 
     List<JournalLine> findByAccount(Account account);
 
+    boolean existsByAccount(Account account);
+
     @Query("SELECT COALESCE(SUM(l.debitAmount), 0) FROM JournalLine l " +
             "WHERE l.account = :account AND l.journalEntry.entryDate BETWEEN :from AND :to " +
             "AND l.journalEntry.status = com.pos_onlineshop.hybrid.enums.JournalStatus.POSTED")
