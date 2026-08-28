@@ -48,4 +48,20 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, Long> 
             "AND (:shopId IS NULL OR l.costCenterShop.id = :shopId) " +
             "GROUP BY l.account.id")
     List<Object[]> aggregateBetween(@Param("from") LocalDate from, @Param("to") LocalDate to, @Param("shopId") Long shopId);
+
+    /** [sourceReferenceType, sumDebit, sumCredit] for POSTED lines against one of the given
+     * accounts within [from, to] - used by CashFlowService to break down cash-account activity
+     * by the business event that moved it, since JournalEntry does not store a FinancialEventType. */
+    @Query("SELECT COALESCE(l.journalEntry.sourceReferenceType, 'OTHER'), " +
+            "COALESCE(SUM(l.debitAmount), 0), COALESCE(SUM(l.creditAmount), 0) " +
+            "FROM JournalLine l " +
+            "WHERE l.account.id IN :accountIds " +
+            "AND l.journalEntry.status = com.pos_onlineshop.hybrid.enums.JournalStatus.POSTED " +
+            "AND l.journalEntry.entryDate BETWEEN :from AND :to " +
+            "AND (:shopId IS NULL OR l.costCenterShop.id = :shopId) " +
+            "GROUP BY l.journalEntry.sourceReferenceType")
+    List<Object[]> aggregateBySourceReferenceTypeForAccounts(@Param("accountIds") List<Long> accountIds,
+                                                               @Param("from") LocalDate from,
+                                                               @Param("to") LocalDate to,
+                                                               @Param("shopId") Long shopId);
 }
