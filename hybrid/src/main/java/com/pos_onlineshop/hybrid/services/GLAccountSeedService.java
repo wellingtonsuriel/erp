@@ -46,6 +46,7 @@ public class GLAccountSeedService {
             new Seed("4900", "Sales Returns & Allowances", REVENUE, DEBIT, false),
             new Seed("5000", "Cost of Goods Sold", EXPENSE, DEBIT, false),
             new Seed("5100", "Inventory Write-off", EXPENSE, DEBIT, false),
+            new Seed("5300", "Operating Expenses", EXPENSE, DEBIT, false),
             new Seed("5900", "FX Gain / Loss", EXPENSE, DEBIT, false)
     );
 

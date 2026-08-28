@@ -97,6 +97,21 @@ public class GLPostingRuleSeedService {
         seedRule(FinancialEventType.LOYALTY_REDEMPTION, "Loyalty points redeemed against a sale",
                 line("2300", DebitCredit.DEBIT, AmountSource.GROSS, 1),
                 line("4000", DebitCredit.CREDIT, AmountSource.GROSS, 2));
+
+        // Only used for a SupplierInvoice with no linked PurchaseOrder - see
+        // SupplierInvoiceService's class comment for why PO-linked invoices don't post here too.
+        seedRule(FinancialEventType.PURCHASE_INVOICE, "Supplier invoice not linked to a purchase order (service/expense)",
+                line("5300", DebitCredit.DEBIT, AmountSource.NET, 1),
+                line("1400", DebitCredit.DEBIT, AmountSource.TAX, 2),
+                line("2100", DebitCredit.CREDIT, AmountSource.GROSS, 3));
+
+        seedRule(FinancialEventType.SUPPLIER_PAYMENT, "Payment issued against a supplier invoice via bank",
+                line("2100", DebitCredit.DEBIT, AmountSource.GROSS, 1),
+                line("1030", DebitCredit.CREDIT, AmountSource.GROSS, 2));
+
+        seedRule(FinancialEventType.SUPPLIER_PAYMENT_CASH, "Payment issued against a supplier invoice from the cash drawer",
+                line("2100", DebitCredit.DEBIT, AmountSource.GROSS, 1),
+                line("1010", DebitCredit.CREDIT, AmountSource.GROSS, 2));
     }
 
     private record LineSpec(String accountCode, DebitCredit side, AmountSource source, int sequence, ShopRole shopRole) {
