@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -25,6 +26,7 @@ public class CustomerInvoiceController {
     private final CustomerInvoiceService customerInvoiceService;
 
     @PostMapping
+    @PreAuthorize("hasAuthority('AR_CREATE') or hasRole('ADMIN')")
     public ResponseEntity<?> create(@Valid @RequestBody CreateCustomerInvoiceRequest request) {
         try {
             CustomerInvoice invoice = customerInvoiceService.createInvoice(request);
@@ -35,6 +37,7 @@ public class CustomerInvoiceController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAuthority('AR_VIEW') or hasRole('ADMIN')")
     public List<CustomerInvoiceResponse> list(@RequestParam(required = false) Boolean outstandingOnly) {
         List<CustomerInvoice> invoices = Boolean.TRUE.equals(outstandingOnly)
                 ? customerInvoiceService.findOutstanding()
@@ -43,6 +46,7 @@ public class CustomerInvoiceController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('AR_VIEW') or hasRole('ADMIN')")
     public ResponseEntity<?> get(@PathVariable Long id) {
         try {
             return ResponseEntity.ok(customerInvoiceService.toResponse(customerInvoiceService.findOrThrow(id)));
@@ -52,11 +56,13 @@ public class CustomerInvoiceController {
     }
 
     @PostMapping("/{id}/post")
+    @PreAuthorize("hasAuthority('AR_CREATE') or hasRole('ADMIN')")
     public ResponseEntity<?> post(@PathVariable Long id) {
         return runTransition(() -> customerInvoiceService.toResponse(customerInvoiceService.postInvoice(id)));
     }
 
     @PostMapping("/{id}/void")
+    @PreAuthorize("hasAuthority('AR_CREATE') or hasRole('ADMIN')")
     public ResponseEntity<?> voidInvoice(@PathVariable Long id, @RequestBody(required = false) Map<String, String> body) {
         String reason = body != null ? body.getOrDefault("reason", "Not specified") : "Not specified";
         return runTransition(() -> customerInvoiceService.toResponse(customerInvoiceService.voidInvoice(id, reason)));

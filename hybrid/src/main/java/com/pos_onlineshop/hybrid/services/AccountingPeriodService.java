@@ -32,6 +32,17 @@ public class AccountingPeriodService {
 
     private final AccountingPeriodRepository accountingPeriodRepository;
 
+    @Transactional(readOnly = true)
+    public java.util.List<AccountingPeriod> findAll() {
+        return accountingPeriodRepository.findAll();
+    }
+
+    @Transactional(readOnly = true)
+    public AccountingPeriod findById(Long id) {
+        return accountingPeriodRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Accounting period not found: " + id));
+    }
+
     @Transactional
     public AccountingPeriod getOrCreateMonthlyPeriod(LocalDate date) {
         return accountingPeriodRepository.findContaining(date)

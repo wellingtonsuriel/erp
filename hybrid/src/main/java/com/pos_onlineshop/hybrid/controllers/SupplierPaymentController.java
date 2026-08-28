@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -16,6 +17,7 @@ import java.util.Map;
 @RequestMapping("/api/supplier-payments")
 @RequiredArgsConstructor
 @Slf4j
+@PreAuthorize("hasAuthority('AP_PAY') or hasRole('ADMIN')")
 public class SupplierPaymentController {
 
     private final SupplierPaymentService supplierPaymentService;

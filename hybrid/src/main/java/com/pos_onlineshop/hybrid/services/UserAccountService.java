@@ -3,8 +3,11 @@ package com.pos_onlineshop.hybrid.services;
 import com.pos_onlineshop.hybrid.enums.Role;
 import com.pos_onlineshop.hybrid.userAccount.UserAccount;
 import com.pos_onlineshop.hybrid.userAccount.UserAccountRepository;
+import com.pos_onlineshop.hybrid.userAccountPermission.UserAccountPermission;
+import com.pos_onlineshop.hybrid.userAccountPermission.UserAccountPermissionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -13,9 +16,9 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -24,22 +27,31 @@ import java.util.stream.Collectors;
 public class UserAccountService implements UserDetailsService {
 
     private final UserAccountRepository userRepository;
+    private final UserAccountPermissionRepository userAccountPermissionRepository;
     private final PasswordEncoder passwordEncoder;
     private final CartService cartService;
 
+    /** Authorities are ROLE_<role> (e.g. ROLE_ADMIN, checked via hasRole('ADMIN')) plus one
+     * unprefixed authority per granted AccountingPermission (e.g. "GL_POST", checked via
+     * hasAuthority('GL_POST')) - the two models are independent and both apply. */
     @Override
+    @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         UserAccount user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
+
+        List<GrantedAuthority> authorities = new ArrayList<>();
+        user.getRoles().forEach(role -> authorities.add(new SimpleGrantedAuthority("ROLE_" + role.name())));
+        userAccountPermissionRepository.findByUserAccount(user).stream()
+                .map(UserAccountPermission::getPermission)
+                .forEach(permission -> authorities.add(new SimpleGrantedAuthority(permission.name())));
 
         return new User(
                 user.getUsername(),
                 user.getPassword(),
                 user.isEnabled(),
                 true, true, true,
-                user.getRoles().stream()
-                        .map(role -> new SimpleGrantedAuthority("ROLE_" + role.name()))
-                        .collect(Collectors.toList())
+                authorities
         );
     }
 

@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -21,11 +22,13 @@ public class PostingRuleController {
     private final PostingRuleService postingRuleService;
 
     @GetMapping
+    @PreAuthorize("hasAuthority('GL_VIEW') or hasRole('ADMIN')")
     public List<?> list() {
         return postingRuleService.findAll();
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('GL_VIEW') or hasRole('ADMIN')")
     public ResponseEntity<?> get(@PathVariable Long id) {
         try {
             return ResponseEntity.ok(postingRuleService.findById(id));
@@ -35,6 +38,7 @@ public class PostingRuleController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('GL_ADMIN') or hasRole('ADMIN')")
     public ResponseEntity<?> create(@Valid @RequestBody PostingRuleRequest request) {
         try {
             return ResponseEntity.status(HttpStatus.CREATED).body(postingRuleService.create(request));
@@ -44,6 +48,7 @@ public class PostingRuleController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('GL_ADMIN') or hasRole('ADMIN')")
     public ResponseEntity<?> update(@PathVariable Long id, @Valid @RequestBody PostingRuleRequest request) {
         try {
             return ResponseEntity.ok(postingRuleService.update(id, request));
@@ -53,6 +58,7 @@ public class PostingRuleController {
     }
 
     @PatchMapping("/{id}/activate")
+    @PreAuthorize("hasAuthority('GL_ADMIN') or hasRole('ADMIN')")
     public ResponseEntity<?> activate(@PathVariable Long id) {
         try {
             return ResponseEntity.ok(postingRuleService.activate(id));
@@ -62,6 +68,7 @@ public class PostingRuleController {
     }
 
     @PatchMapping("/{id}/deactivate")
+    @PreAuthorize("hasAuthority('GL_ADMIN') or hasRole('ADMIN')")
     public ResponseEntity<?> deactivate(@PathVariable Long id) {
         try {
             return ResponseEntity.ok(postingRuleService.deactivate(id));

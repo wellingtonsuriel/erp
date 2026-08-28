@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -23,11 +24,13 @@ public class ManualJournalController {
     private final ManualJournalService manualJournalService;
 
     @GetMapping
+    @PreAuthorize("hasAuthority('GL_VIEW') or hasRole('ADMIN')")
     public List<ManualJournalResponse> list() {
         return manualJournalService.findAll();
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('GL_VIEW') or hasRole('ADMIN')")
     public ResponseEntity<?> get(@PathVariable Long id) {
         try {
             return ResponseEntity.ok(manualJournalService.findById(id));
@@ -37,6 +40,7 @@ public class ManualJournalController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('GL_MANUAL_JOURNAL') or hasRole('ADMIN')")
     public ResponseEntity<?> create(@Valid @RequestBody CreateManualJournalRequest request) {
         try {
             return ResponseEntity.status(HttpStatus.CREATED).body(manualJournalService.create(request));
@@ -48,21 +52,25 @@ public class ManualJournalController {
     }
 
     @PostMapping("/{id}/submit")
+    @PreAuthorize("hasAuthority('GL_MANUAL_JOURNAL') or hasRole('ADMIN')")
     public ResponseEntity<?> submit(@PathVariable Long id, @Valid @RequestBody ManualJournalActionRequest request) {
         return runTransition(() -> manualJournalService.submit(id, request));
     }
 
     @PostMapping("/{id}/approve")
+    @PreAuthorize("hasAuthority('GL_APPROVE') or hasRole('ADMIN')")
     public ResponseEntity<?> approve(@PathVariable Long id, @Valid @RequestBody ManualJournalActionRequest request) {
         return runTransition(() -> manualJournalService.approve(id, request));
     }
 
     @PostMapping("/{id}/reject")
+    @PreAuthorize("hasAuthority('GL_APPROVE') or hasRole('ADMIN')")
     public ResponseEntity<?> reject(@PathVariable Long id, @Valid @RequestBody RejectManualJournalRequest request) {
         return runTransition(() -> manualJournalService.reject(id, request));
     }
 
     @PostMapping("/{id}/post")
+    @PreAuthorize("hasAuthority('GL_POST') or hasRole('ADMIN')")
     public ResponseEntity<?> post(@PathVariable Long id, @Valid @RequestBody ManualJournalActionRequest request) {
         return runTransition(() -> manualJournalService.post(id, request));
     }

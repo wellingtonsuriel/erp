@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -23,11 +24,13 @@ public class AccountController {
     private final AccountService accountService;
 
     @GetMapping
+    @PreAuthorize("hasAuthority('GL_VIEW') or hasRole('ADMIN')")
     public List<AccountResponse> list(@RequestParam(required = false) Boolean activeOnly) {
         return accountService.findAll(activeOnly);
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('GL_VIEW') or hasRole('ADMIN')")
     public ResponseEntity<?> get(@PathVariable Long id) {
         try {
             return ResponseEntity.ok(accountService.findById(id));
@@ -37,6 +40,7 @@ public class AccountController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('GL_ADMIN') or hasRole('ADMIN')")
     public ResponseEntity<?> create(@Valid @RequestBody CreateAccountRequest request) {
         try {
             return ResponseEntity.status(HttpStatus.CREATED).body(accountService.create(request));
@@ -46,6 +50,7 @@ public class AccountController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('GL_ADMIN') or hasRole('ADMIN')")
     public ResponseEntity<?> update(@PathVariable Long id, @Valid @RequestBody UpdateAccountRequest request) {
         try {
             return ResponseEntity.ok(accountService.update(id, request));
@@ -58,6 +63,7 @@ public class AccountController {
     }
 
     @PatchMapping("/{id}/activate")
+    @PreAuthorize("hasAuthority('GL_ADMIN') or hasRole('ADMIN')")
     public ResponseEntity<?> activate(@PathVariable Long id) {
         try {
             return ResponseEntity.ok(accountService.activate(id));
@@ -67,6 +73,7 @@ public class AccountController {
     }
 
     @PatchMapping("/{id}/deactivate")
+    @PreAuthorize("hasAuthority('GL_ADMIN') or hasRole('ADMIN')")
     public ResponseEntity<?> deactivate(@PathVariable Long id) {
         try {
             return ResponseEntity.ok(accountService.deactivate(id));

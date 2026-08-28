@@ -2,17 +2,17 @@ package com.pos_onlineshop.hybrid.config;
 
 
 
+import com.pos_onlineshop.hybrid.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.security.web.authentication.logout.LogoutHandler;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
@@ -21,14 +21,26 @@ import java.util.List;
 
 import static org.springframework.security.config.http.SessionCreationPolicy.STATELESS;
 
-
+/**
+ * NOTE on WHITE_LIST_URL: "/**" is still permitAll here, unchanged from before - narrowing
+ * it is a larger, separate change that needs frontend coordination (most existing endpoints,
+ * including POS/checkout, have never required a token and the frontend has never sent one).
+ * What this class now does that it didn't before: @EnableMethodSecurity means every
+ * @PreAuthorize annotation already written across the codebase (UserAccountController,
+ * SupplierController, and the newly-added GL/AP/AR/procurement/report controllers) actually
+ * gets enforced instead of being silently ignored, and JwtAuthenticationFilter means a
+ * request that DOES carry a valid "Authorization: Bearer <token>" header is authenticated
+ * with real roles/authorities before those checks run - see JwtAuthenticationFilter's class
+ * comment for why this doesn't change behavior for requests that don't send a token.
+ */
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfiguration {
 
-    //private final LogoutHandler logoutHandler;
-    //private final AuthenticationProvider authenticationProvider;
+    private final AuthenticationProvider authenticationProvider;
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
     private static final String[] WHITE_LIST_URL = {
             "/metrics",
@@ -54,21 +66,10 @@ public class SecurityConfiguration {
                 .sessionManagement(session -> session.sessionCreationPolicy(STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(WHITE_LIST_URL).permitAll()
-//                        .requestMatchers("/api/v1/deposit-percentage/**").hasAnyRole(ADMIN.name())
-//                        .requestMatchers("/api/v1/customers/**").hasAnyRole(ADMIN.name())
-//                        .requestMatchers("/api/v1/customer-packages/**").hasAnyRole(ADMIN.name())
-//                        .requestMatchers("/api/v1/installation-fees/**").hasAnyRole(ADMIN.name())
-//                        .requestMatchers("/api/v1/starlink-kits/**").hasAnyRole(ADMIN.name())
                         .anyRequest().authenticated()
                 )
-//                .addFilterBefore(null, UsernamePasswordAuthenticationFilter.class)
-//                .authenticationProvider(authenticationProvider)
-//                .logout(logout -> logout
-//                        .logoutUrl("/api/v1/auth/logout")
-//                      //  .addLogoutHandler(logoutHandler)
-//                        .logoutSuccessHandler((request, response, authentication) -> SecurityContextHolder.clearContext())
-   //             )
-
+                .authenticationProvider(authenticationProvider)
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
         ;
 
         return http.build();

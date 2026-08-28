@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -27,6 +28,7 @@ public class JournalEntryController {
     private final JournalEntryService journalEntryService;
 
     @GetMapping
+    @PreAuthorize("hasAuthority('GL_VIEW') or hasRole('ADMIN')")
     public List<JournalEntryResponse> search(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
@@ -43,6 +45,7 @@ public class JournalEntryController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('GL_VIEW') or hasRole('ADMIN')")
     public ResponseEntity<?> get(@PathVariable Long id) {
         try {
             return ResponseEntity.ok(journalEntryService.findById(id));
@@ -52,6 +55,7 @@ public class JournalEntryController {
     }
 
     @PostMapping("/{id}/reverse")
+    @PreAuthorize("hasAuthority('GL_REVERSE') or hasRole('ADMIN')")
     public ResponseEntity<?> reverse(@PathVariable Long id, @Valid @RequestBody ReverseJournalEntryRequest request) {
         try {
             return ResponseEntity.ok(journalEntryService.reverse(id, request));
