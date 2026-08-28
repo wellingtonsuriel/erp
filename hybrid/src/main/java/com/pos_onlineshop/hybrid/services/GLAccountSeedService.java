@@ -43,6 +43,7 @@ public class GLAccountSeedService {
             new Seed("3900", "Opening Balance Equity", EQUITY, CREDIT, false),
             new Seed("4000", "Sales Revenue - POS", REVENUE, CREDIT, false),
             new Seed("4010", "Sales Revenue - Online", REVENUE, CREDIT, false),
+            new Seed("4020", "Sales Revenue - Credit/Wholesale", REVENUE, CREDIT, false),
             new Seed("4900", "Sales Returns & Allowances", REVENUE, DEBIT, false),
             new Seed("5000", "Cost of Goods Sold", EXPENSE, DEBIT, false),
             new Seed("5100", "Inventory Write-off", EXPENSE, DEBIT, false),

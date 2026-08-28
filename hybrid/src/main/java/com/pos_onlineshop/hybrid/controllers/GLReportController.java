@@ -1,8 +1,10 @@
 package com.pos_onlineshop.hybrid.controllers;
 
 import com.pos_onlineshop.hybrid.dtos.ApAgingReport;
+import com.pos_onlineshop.hybrid.dtos.ArAgingReport;
 import com.pos_onlineshop.hybrid.dtos.TrialBalanceReport;
 import com.pos_onlineshop.hybrid.services.ApAgingService;
+import com.pos_onlineshop.hybrid.services.ArAgingService;
 import com.pos_onlineshop.hybrid.services.TrialBalanceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -12,8 +14,8 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 
 /**
- * /api/reports/*. Implemented: Trial Balance, AP aging. Not yet implemented: P&L, Balance
- * Sheet, Cash Flow, VAT, GL detail, AR aging (see the implementation summary).
+ * /api/reports/*. Implemented: Trial Balance, AP aging, AR aging. Not yet implemented: P&L,
+ * Balance Sheet, Cash Flow, VAT, GL detail (see the implementation summary).
  */
 @RestController
 @RequestMapping("/api/reports")
@@ -22,6 +24,7 @@ public class GLReportController {
 
     private final TrialBalanceService trialBalanceService;
     private final ApAgingService apAgingService;
+    private final ArAgingService arAgingService;
 
     @GetMapping("/trial-balance")
     public ResponseEntity<TrialBalanceReport> trialBalance(
@@ -35,5 +38,11 @@ public class GLReportController {
     public ResponseEntity<ApAgingReport> apAging(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOfDate) {
         return ResponseEntity.ok(apAgingService.generate(asOfDate != null ? asOfDate : LocalDate.now()));
+    }
+
+    @GetMapping("/ar-aging")
+    public ResponseEntity<ArAgingReport> arAging(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOfDate) {
+        return ResponseEntity.ok(arAgingService.generate(asOfDate != null ? asOfDate : LocalDate.now()));
     }
 }

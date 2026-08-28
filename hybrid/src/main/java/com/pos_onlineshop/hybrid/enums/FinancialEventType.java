@@ -29,5 +29,13 @@ public enum FinancialEventType {
     /** Supplier payment settled from the physical cash drawer - distinct from SUPPLIER_PAYMENT
      * so it credits 1010 Cash rather than 1030 Bank, mirroring the POS cash/non-cash split. */
     SUPPLIER_PAYMENT_CASH,
+    /** A standalone credit-sale invoice, independent of the POS/online Order pipeline (which
+     * has no credit/unpaid concept today - see CustomerInvoiceService). */
+    CUSTOMER_INVOICE,
+    /** Customer receipt via mobile money/card clearing - the default, matching how customers
+     * actually pay in this business. */
+    CUSTOMER_RECEIPT,
+    /** Customer receipt via physical cash. */
+    CUSTOMER_RECEIPT_CASH,
     MANUAL_ENTRY
 }

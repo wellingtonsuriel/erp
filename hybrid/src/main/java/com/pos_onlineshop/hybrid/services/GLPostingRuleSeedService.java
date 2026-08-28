@@ -112,6 +112,19 @@ public class GLPostingRuleSeedService {
         seedRule(FinancialEventType.SUPPLIER_PAYMENT_CASH, "Payment issued against a supplier invoice from the cash drawer",
                 line("2100", DebitCredit.DEBIT, AmountSource.GROSS, 1),
                 line("1010", DebitCredit.CREDIT, AmountSource.GROSS, 2));
+
+        seedRule(FinancialEventType.CUSTOMER_INVOICE, "Standalone credit-sale invoice",
+                line("1100", DebitCredit.DEBIT, AmountSource.GROSS, 1),
+                line("4020", DebitCredit.CREDIT, AmountSource.NET, 2),
+                line("2200", DebitCredit.CREDIT, AmountSource.TAX, 3));
+
+        seedRule(FinancialEventType.CUSTOMER_RECEIPT, "Customer receipt via mobile money/card clearing",
+                line("1020", DebitCredit.DEBIT, AmountSource.GROSS, 1),
+                line("1100", DebitCredit.CREDIT, AmountSource.GROSS, 2));
+
+        seedRule(FinancialEventType.CUSTOMER_RECEIPT_CASH, "Customer receipt via physical cash",
+                line("1010", DebitCredit.DEBIT, AmountSource.GROSS, 1),
+                line("1100", DebitCredit.CREDIT, AmountSource.GROSS, 2));
     }
 
     private record LineSpec(String accountCode, DebitCredit side, AmountSource source, int sequence, ShopRole shopRole) {
