@@ -35,7 +35,10 @@ public class FinancialEvent {
     private LocalDate eventDate;
     private String description;
 
+    /** Primary shop dimension - used by every event type. */
     private Shop shop;
+    /** Only meaningful for INVENTORY_TRANSFER: the shop stock is moving into. */
+    private Shop destinationShop;
     private Currency currency;
     private BigDecimal exchangeRate;
     private BigDecimal baseAmount;

@@ -44,10 +44,9 @@ public class POSController {
                     session
             );
 
-            // Update session with sale
-            if (request.getPaymentMethod() == PaymentMethod.CASH) {
-                cashierService.recordSale(session, order.getTotalAmount());
-            }
+            // Update session with sale - totalSales/transactionCount for every payment method,
+            // expectedCash (the physical drawer expectation) only for cash.
+            cashierService.recordSale(session, order.getTotalAmount(), request.getPaymentMethod() == PaymentMethod.CASH);
 
             return ResponseEntity.ok(order);
         } catch (RuntimeException e) {

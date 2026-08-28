@@ -3,6 +3,7 @@ package com.pos_onlineshop.hybrid.postingRule;
 import com.pos_onlineshop.hybrid.account.Account;
 import com.pos_onlineshop.hybrid.enums.AmountSource;
 import com.pos_onlineshop.hybrid.enums.DebitCredit;
+import com.pos_onlineshop.hybrid.enums.ShopRole;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -39,4 +40,11 @@ public class PostingRuleLine {
 
     @Column(nullable = false)
     private int sequence;
+
+    /** Which of FinancialEvent's shop fields this line's costCenter comes from. Defaults to
+     * SOURCE (event.getShop()); only INVENTORY_TRANSFER rules use DESTINATION. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "shop_role", nullable = false)
+    @Builder.Default
+    private ShopRole shopRole = ShopRole.SOURCE;
 }

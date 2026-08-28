@@ -5,6 +5,7 @@ import com.pos_onlineshop.hybrid.account.AccountRepository;
 import com.pos_onlineshop.hybrid.enums.AmountSource;
 import com.pos_onlineshop.hybrid.enums.DebitCredit;
 import com.pos_onlineshop.hybrid.enums.FinancialEventType;
+import com.pos_onlineshop.hybrid.enums.ShopRole;
 import com.pos_onlineshop.hybrid.postingRule.PostingRule;
 import com.pos_onlineshop.hybrid.postingRule.PostingRuleLine;
 import com.pos_onlineshop.hybrid.postingRule.PostingRuleRepository;
@@ -18,9 +19,6 @@ import org.springframework.transaction.annotation.Transactional;
  * a single shop dimension and a gross/net/tax/cost split - see FinancialEvent.
  *
  * Deliberately NOT seeded here, with reasons (see the GL implementation summary for detail):
- *  - INVENTORY_TRANSFER: needs two shop dimensions (source and destination) on one event;
- *    FinancialEvent only carries one `shop` field today. Seeding a rule that can't actually
- *    tell source from destination would be wrong, not just incomplete.
  *  - FX_REVALUATION: the credit/debit side is whichever foreign-currency account is being
  *    revalued, decided per invocation at period close - not a fixed account pair a static
  *    PostingRule can express.
@@ -58,8 +56,11 @@ public class GLPostingRuleSeedService {
                 line("1200", DebitCredit.DEBIT, AmountSource.COST, 4),
                 line("5000", DebitCredit.CREDIT, AmountSource.COST, 5));
 
-        seedRule(FinancialEventType.ONLINE_ORDER_PAID, "Online order paid at checkout",
-                line("1010", DebitCredit.DEBIT, AmountSource.GROSS, 1),
+        // 1020 (not 1010 Cash) is the default here: an online checkout is realistically never
+        // physical cash-in-hand. A genuine cash-on-delivery flow, if one exists, would need
+        // its own event type/rule rather than reusing this one.
+        seedRule(FinancialEventType.ONLINE_ORDER_PAID, "Online order paid at checkout (card/mobile money/online payment)",
+                line("1020", DebitCredit.DEBIT, AmountSource.GROSS, 1),
                 line("4010", DebitCredit.CREDIT, AmountSource.NET, 2),
                 line("2200", DebitCredit.CREDIT, AmountSource.TAX, 3),
                 line("5000", DebitCredit.DEBIT, AmountSource.COST, 4),
@@ -76,6 +77,10 @@ public class GLPostingRuleSeedService {
                 line("1200", DebitCredit.DEBIT, AmountSource.NET, 1),
                 line("1400", DebitCredit.DEBIT, AmountSource.TAX, 2),
                 line("2100", DebitCredit.CREDIT, AmountSource.GROSS, 3));
+
+        seedRule(FinancialEventType.INVENTORY_TRANSFER, "Inter-shop inventory transfer receipt - no P&L impact",
+                destLine("1200", DebitCredit.DEBIT, AmountSource.GROSS, 1),
+                line("1200", DebitCredit.CREDIT, AmountSource.GROSS, 2));
 
         seedRule(FinancialEventType.DAMAGED_STOCK, "Damaged stock write-off",
                 line("5100", DebitCredit.DEBIT, AmountSource.GROSS, 1),
@@ -94,11 +99,16 @@ public class GLPostingRuleSeedService {
                 line("4000", DebitCredit.CREDIT, AmountSource.GROSS, 2));
     }
 
-    private record LineSpec(String accountCode, DebitCredit side, AmountSource source, int sequence) {
+    private record LineSpec(String accountCode, DebitCredit side, AmountSource source, int sequence, ShopRole shopRole) {
     }
 
     private LineSpec line(String accountCode, DebitCredit side, AmountSource source, int sequence) {
-        return new LineSpec(accountCode, side, source, sequence);
+        return new LineSpec(accountCode, side, source, sequence, ShopRole.SOURCE);
+    }
+
+    /** Same as line(), but its costCenter comes from FinancialEvent.destinationShop. */
+    private LineSpec destLine(String accountCode, DebitCredit side, AmountSource source, int sequence) {
+        return new LineSpec(accountCode, side, source, sequence, ShopRole.DESTINATION);
     }
 
     private void seedRule(FinancialEventType eventType, String description, LineSpec... lines) {
@@ -119,6 +129,7 @@ public class GLPostingRuleSeedService {
                     .side(spec.side())
                     .amountSource(spec.source())
                     .sequence(spec.sequence())
+                    .shopRole(spec.shopRole())
                     .build());
         }
         postingRuleRepository.save(rule);

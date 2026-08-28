@@ -1,11 +1,17 @@
 package com.pos_onlineshop.hybrid.services;
 
 import com.pos_onlineshop.hybrid.cashier.Cashier;
+import com.pos_onlineshop.hybrid.currency.Currency;
+import com.pos_onlineshop.hybrid.damagedStockReceived.DamagedStockReceived;
+import com.pos_onlineshop.hybrid.damagedStockReceived.DamagedStockReceivedRepository;
+import com.pos_onlineshop.hybrid.enums.FinancialEventType;
+import com.pos_onlineshop.hybrid.enums.GLSourceModule;
 import com.pos_onlineshop.hybrid.enums.TransferPriority;
 import com.pos_onlineshop.hybrid.enums.TransferStatus;
 import com.pos_onlineshop.hybrid.enums.TransferType;
 import com.pos_onlineshop.hybrid.exceptions.InsufficientInventoryException;
 import com.pos_onlineshop.hybrid.exceptions.ResourceNotFoundException;
+import com.pos_onlineshop.hybrid.gl.FinancialEvent;
 import com.pos_onlineshop.hybrid.inventoryTransfer.InventoryTransfer;
 import com.pos_onlineshop.hybrid.inventoryTransfer.InventoryTransferRepository;
 import com.pos_onlineshop.hybrid.inventoryTransferItems.InventoryTransferItem;
@@ -24,11 +30,16 @@ import org.springframework.transaction.annotation.Transactional;
 import org.hibernate.Hibernate;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -40,6 +51,9 @@ public class InventoryTransferService {
     private final ShopRepository shopRepository;
     private final ProductRepository productRepository;
     private final ShopInventoryService shopInventoryService;
+    private final DamagedStockReceivedRepository damagedStockReceivedRepository;
+    private final com.pos_onlineshop.hybrid.services.GLPostingService glPostingService;
+    private final com.pos_onlineshop.hybrid.services.CurrencyService currencyService;
 
     /**
      * Initialize lazy-loaded collections so they are available after the transaction closes.
@@ -280,6 +294,10 @@ public class InventoryTransferService {
         InventoryTransfer transfer = transferRepository.findById(transferId)
                 .orElseThrow(() -> new ResourceNotFoundException("Transfer", transferId));
 
+        BigDecimal receivedValue = BigDecimal.ZERO;
+        BigDecimal damagedValue = BigDecimal.ZERO;
+        List<DamagedStockReceived> newDamageRecords = new ArrayList<>();
+
         // Update received quantities for each item
         for (ReceiveItemDto receivedItem : receivedItems) {
             InventoryTransferItem transferItem = transfer.getTransferItems().stream()
@@ -303,6 +321,8 @@ public class InventoryTransferService {
             transferItem.receiveQuantity(receivedItem.getReceivedQuantity(), receivedItem.getDamagedQuantity());
 
             try {
+                BigDecimal unitCost = transferItem.getUnitCost() != null ? transferItem.getUnitCost() : BigDecimal.ZERO;
+
                 // 1. Add received stock to destination shop inventory
                 if (receivedItem.getReceivedQuantity() > 0) {
                     shopInventoryService.addStock(
@@ -314,14 +334,37 @@ public class InventoryTransferService {
                             receivedItem.getReceivedQuantity(),
                             transferItem.getProduct().getName(),
                             transfer.getToShop().getName());
+
+                    if (transferItem.getUnitCost() != null) {
+                        receivedValue = receivedValue.add(unitCost.multiply(BigDecimal.valueOf(receivedItem.getReceivedQuantity())));
+                    }
+                    // else: no unitCost was recorded on this transfer item - this item's value is
+                    // simply excluded from the GL posting below rather than guessed at.
                 }
 
-                // 2. Log damaged items (these are not added to inventory)
+                // 2. Damaged items are not added to inventory. Persist a DamagedStockReceived
+                // record (previously this branch only logged - nothing was ever written to that
+                // table anywhere in the codebase) and value it for a write-off posting below.
                 if (receivedItem.getDamagedQuantity() != null && receivedItem.getDamagedQuantity() > 0) {
                     log.warn("Received {} damaged units of {} in transfer {} - not added to inventory",
                             receivedItem.getDamagedQuantity(),
                             transferItem.getProduct().getName(),
                             transfer.getTransferNumber());
+
+                    DamagedStockReceived damageRecord = DamagedStockReceived.builder()
+                            .transfer(transfer)
+                            .product(transferItem.getProduct())
+                            .damagedQuantity(receivedItem.getDamagedQuantity())
+                            .unitCost(unitCost)
+                            .reportedBy(receiver)
+                            .repairable(false)
+                            .insuranceClaimed(false)
+                            .build();
+                    newDamageRecords.add(damagedStockReceivedRepository.save(damageRecord));
+
+                    if (transferItem.getUnitCost() != null) {
+                        damagedValue = damagedValue.add(unitCost.multiply(BigDecimal.valueOf(receivedItem.getDamagedQuantity())));
+                    }
                 }
 
                 // 3. Handle partial receipts (items not received at all)
@@ -344,6 +387,15 @@ public class InventoryTransferService {
 
         InventoryTransfer savedTransfer = transferRepository.save(transfer);
         initializeCollections(savedTransfer);
+
+        if (receivedValue.compareTo(BigDecimal.ZERO) > 0) {
+            postTransferReceiptToGeneralLedger(savedTransfer, receivedItems, receivedValue);
+        }
+        for (DamagedStockReceived damageRecord : newDamageRecords) {
+            if (damageRecord.getTotalDamageValue().compareTo(BigDecimal.ZERO) > 0) {
+                postDamagedStockToGeneralLedger(savedTransfer, damageRecord);
+            }
+        }
 
         // Log comprehensive receive summary
         int totalReceived = receivedItems.stream()
@@ -499,6 +551,93 @@ public class InventoryTransferService {
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
         String prefix = "TRF";
         return prefix + timestamp;
+    }
+
+    /**
+     * receiveTransfer supports partial receipts (called more than once for the same transfer
+     * as more of it arrives), so a static "TRANSFER-{id}-RECEIVED" key would incorrectly block
+     * a second, genuinely different partial receipt. Instead the key is derived from exactly
+     * what this call received - a true retry of the same HTTP request carries identical
+     * content and is still deduplicated; a distinct later partial receipt has different
+     * quantities and gets its own entry. (The domain model's own outstanding-quantity check in
+     * InventoryTransferItem.receiveQuantity also independently rejects an accidental duplicate
+     * submission before this point is ever reached.)
+     */
+    private String receiveEventIdempotencyKey(Long transferId, List<ReceiveItemDto> receivedItems) {
+        String content = receivedItems.stream()
+                .sorted((a, b) -> Long.compare(a.getProductId(), b.getProductId()))
+                .map(i -> i.getProductId() + ":" + i.getReceivedQuantity() + ":" + i.getDamagedQuantity())
+                .collect(Collectors.joining(","));
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(content.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (int i = 0; i < 8; i++) {
+                hex.append(String.format("%02x", hash[i]));
+            }
+            return "TRANSFER-" + transferId + "-RECEIVE-" + hex;
+        } catch (NoSuchAlgorithmException e) {
+            // SHA-256 is guaranteed available on every JVM - this branch cannot occur in practice.
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private void postTransferReceiptToGeneralLedger(InventoryTransfer transfer, List<ReceiveItemDto> receivedItems,
+                                                      BigDecimal receivedValue) {
+        Currency currency = transfer.getToShop().getDefaultCurrency();
+        Currency baseCurrency = currencyService.getBaseCurrency();
+        BigDecimal exchangeRate = BigDecimal.ONE;
+        if (currency != null && !currency.equals(baseCurrency)) {
+            exchangeRate = currencyService.getExchangeRate(currency, baseCurrency);
+        }
+
+        FinancialEvent event = FinancialEvent.builder()
+                .eventType(FinancialEventType.INVENTORY_TRANSFER)
+                .sourceModule(GLSourceModule.TRANSFER)
+                .sourceReferenceType("INVENTORY_TRANSFER")
+                .sourceReferenceId(transfer.getId())
+                .idempotencyKey(receiveEventIdempotencyKey(transfer.getId(), receivedItems))
+                .eventDate(LocalDate.now())
+                .description("Transfer " + transfer.getTransferNumber() + ": " + transfer.getFromShop().getName()
+                        + " -> " + transfer.getToShop().getName())
+                .shop(transfer.getFromShop())
+                .destinationShop(transfer.getToShop())
+                .currency(currency)
+                .exchangeRate(exchangeRate)
+                .grossAmount(receivedValue)
+                .netAmount(receivedValue)
+                .postedBy("system")
+                .build();
+
+        glPostingService.post(event);
+    }
+
+    private void postDamagedStockToGeneralLedger(InventoryTransfer transfer, DamagedStockReceived damageRecord) {
+        Currency currency = transfer.getToShop().getDefaultCurrency();
+        Currency baseCurrency = currencyService.getBaseCurrency();
+        BigDecimal exchangeRate = BigDecimal.ONE;
+        if (currency != null && !currency.equals(baseCurrency)) {
+            exchangeRate = currencyService.getExchangeRate(currency, baseCurrency);
+        }
+
+        FinancialEvent event = FinancialEvent.builder()
+                .eventType(FinancialEventType.DAMAGED_STOCK)
+                .sourceModule(GLSourceModule.TRANSFER)
+                .sourceReferenceType("DAMAGED_STOCK_RECEIVED")
+                .sourceReferenceId(damageRecord.getId())
+                .idempotencyKey("DAMAGE-" + damageRecord.getId())
+                .eventDate(LocalDate.now())
+                .description("Damaged in transfer " + transfer.getTransferNumber() + ": "
+                        + damageRecord.getDamagedQuantity() + " x " + damageRecord.getProduct().getName())
+                .shop(transfer.getToShop())
+                .currency(currency)
+                .exchangeRate(exchangeRate)
+                .grossAmount(damageRecord.getTotalDamageValue())
+                .netAmount(damageRecord.getTotalDamageValue())
+                .postedBy("system")
+                .build();
+
+        glPostingService.post(event);
     }
 
     /**

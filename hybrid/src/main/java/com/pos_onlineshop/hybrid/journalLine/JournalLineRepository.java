@@ -28,4 +28,22 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, Long> 
     BigDecimal sumCreditsForAccountBetween(@Param("account") Account account,
                                             @Param("from") LocalDate from,
                                             @Param("to") LocalDate to);
+
+    /** Per-account [accountId, sumDebit, sumCredit] for all POSTED activity strictly before beforeDate. */
+    @Query("SELECT l.account.id, COALESCE(SUM(l.debitAmount), 0), COALESCE(SUM(l.creditAmount), 0) " +
+            "FROM JournalLine l " +
+            "WHERE l.journalEntry.status = com.pos_onlineshop.hybrid.enums.JournalStatus.POSTED " +
+            "AND l.journalEntry.entryDate < :beforeDate " +
+            "AND (:shopId IS NULL OR l.costCenterShop.id = :shopId) " +
+            "GROUP BY l.account.id")
+    List<Object[]> aggregateBeforeDate(@Param("beforeDate") LocalDate beforeDate, @Param("shopId") Long shopId);
+
+    /** Per-account [accountId, sumDebit, sumCredit] for all POSTED activity within [from, to]. */
+    @Query("SELECT l.account.id, COALESCE(SUM(l.debitAmount), 0), COALESCE(SUM(l.creditAmount), 0) " +
+            "FROM JournalLine l " +
+            "WHERE l.journalEntry.status = com.pos_onlineshop.hybrid.enums.JournalStatus.POSTED " +
+            "AND l.journalEntry.entryDate BETWEEN :from AND :to " +
+            "AND (:shopId IS NULL OR l.costCenterShop.id = :shopId) " +
+            "GROUP BY l.account.id")
+    List<Object[]> aggregateBetween(@Param("from") LocalDate from, @Param("to") LocalDate to, @Param("shopId") Long shopId);
 }

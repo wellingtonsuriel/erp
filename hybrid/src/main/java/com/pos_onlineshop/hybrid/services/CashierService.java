@@ -6,9 +6,13 @@ import com.pos_onlineshop.hybrid.cashierPermission.CashierPermission;
 import com.pos_onlineshop.hybrid.cashierPermission.CashierPermissionRepository;
 import com.pos_onlineshop.hybrid.cashierSessions.CashierSession;
 import com.pos_onlineshop.hybrid.cashierSessions.CashierSessionRepository;
+import com.pos_onlineshop.hybrid.currency.Currency;
 import com.pos_onlineshop.hybrid.enums.CashierRole;
+import com.pos_onlineshop.hybrid.enums.FinancialEventType;
+import com.pos_onlineshop.hybrid.enums.GLSourceModule;
 import com.pos_onlineshop.hybrid.enums.Permission;
 import com.pos_onlineshop.hybrid.enums.SessionStatus;
+import com.pos_onlineshop.hybrid.gl.FinancialEvent;
 import com.pos_onlineshop.hybrid.shop.Shop;
 import java.util.stream.Collectors;
 import java.util.Map;
@@ -36,6 +40,8 @@ public class CashierService {
     private final CashierPermissionRepository permissionRepository;
     private final PasswordEncoder passwordEncoder;
     private final ShopRepository shopRepository;
+    private final GLPostingService glPostingService;
+    private final CurrencyService currencyService;
 
     public Cashier createCashier(Cashier cashier, String plainPassword) {
         if (cashierRepository.existsByUsername(cashier.getUsername())) {
@@ -175,18 +181,69 @@ public class CashierService {
         session.endSession(closingCash);
         session.setNotes(notes);
 
-        return sessionRepository.save(session);
+        CashierSession savedSession = sessionRepository.save(session);
+        postCashDifferenceToGeneralLedger(savedSession);
+        return savedSession;
     }
 
+    /**
+     * Posts CashierSession.cashDifference (computed by session.endSession above) to the GL.
+     * A zero difference posts nothing - there is nothing to record.
+     */
+    private void postCashDifferenceToGeneralLedger(CashierSession session) {
+        BigDecimal difference = session.getCashDifference();
+        if (difference == null || difference.compareTo(BigDecimal.ZERO) == 0) {
+            return;
+        }
+
+        Shop shop = session.getShop();
+        Currency currency = shop != null ? shop.getDefaultCurrency() : null;
+        Currency baseCurrency = currencyService.getBaseCurrency();
+        BigDecimal exchangeRate = BigDecimal.ONE;
+        if (currency != null && !currency.equals(baseCurrency)) {
+            exchangeRate = currencyService.getExchangeRate(currency, baseCurrency);
+        }
+
+        boolean short_ = difference.compareTo(BigDecimal.ZERO) < 0;
+        BigDecimal amount = difference.abs();
+
+        FinancialEvent event = FinancialEvent.builder()
+                .eventType(short_ ? FinancialEventType.SESSION_CASH_SHORT : FinancialEventType.SESSION_CASH_OVER)
+                .sourceModule(GLSourceModule.POS)
+                .sourceReferenceType("CASHIER_SESSION")
+                .sourceReferenceId(session.getId())
+                .idempotencyKey("SESSION-CLOSE-" + session.getId())
+                .eventDate(LocalDateTime.now().toLocalDate())
+                .description("Session close cash " + (short_ ? "shortage" : "overage") + " for "
+                        + (session.getCashier() != null ? session.getCashier().getFullName() : "cashier " + session.getId()))
+                .shop(shop)
+                .currency(currency)
+                .exchangeRate(exchangeRate)
+                .grossAmount(amount)
+                .netAmount(amount)
+                .postedBy(session.getCashier() != null ? session.getCashier().getFullName() : "system")
+                .build();
+
+        glPostingService.post(event);
+    }
+
+    /**
+     * Records a completed sale against the session. totalSales/transactionCount are updated for
+     * every payment method - only expectedCash (the physical cash-drawer expectation) is
+     * cash-specific. Previously this only ran at all for CASH sales, so a session's total
+     * sales/transaction count silently undercounted every EcoCash/card/mobile-money sale.
+     */
     @Transactional
-    public void recordSale(CashierSession session, BigDecimal saleAmount) {
+    public void recordSale(CashierSession session, BigDecimal saleAmount, boolean isCash) {
         if (!session.isActive()) {
             throw new RuntimeException("Cannot record sale on inactive session");
         }
 
         session.setTotalSales(session.getTotalSales().add(saleAmount));
         session.setTransactionCount(session.getTransactionCount() + 1);
-        session.setExpectedCash(session.getExpectedCash().add(saleAmount));
+        if (isCash) {
+            session.setExpectedCash(session.getExpectedCash().add(saleAmount));
+        }
 
         sessionRepository.save(session);
     }

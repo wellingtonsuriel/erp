@@ -98,7 +98,8 @@ public class GLPostingService {
                     .currency(event.getCurrency())
                     .baseAmount(amount.multiply(exchangeRate).setScale(4, RoundingMode.HALF_UP))
                     .exchangeRate(exchangeRate)
-                    .costCenterShop(event.getShop())
+                    .costCenterShop(ruleLine.getShopRole() == com.pos_onlineshop.hybrid.enums.ShopRole.DESTINATION
+                            ? event.getDestinationShop() : event.getShop())
                     .memo(event.getDescription())
                     .build();
             entry.addLine(line);

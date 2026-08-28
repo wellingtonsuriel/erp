@@ -10,9 +10,12 @@ import com.pos_onlineshop.hybrid.customers.CustomersRepository;
 import com.pos_onlineshop.hybrid.dtos.OrderResponse;
 import com.pos_onlineshop.hybrid.dtos.QuickSaleItem;
 import com.pos_onlineshop.hybrid.dtos.UpdateOrderRequest;
+import com.pos_onlineshop.hybrid.enums.FinancialEventType;
+import com.pos_onlineshop.hybrid.enums.GLSourceModule;
 import com.pos_onlineshop.hybrid.enums.OrderStatus;
 import com.pos_onlineshop.hybrid.enums.PaymentMethod;
 import com.pos_onlineshop.hybrid.enums.SalesChannel;
+import com.pos_onlineshop.hybrid.gl.FinancialEvent;
 import com.pos_onlineshop.hybrid.mappers.OrderMapper;
 import com.pos_onlineshop.hybrid.orderLines.OrderLine;
 import com.pos_onlineshop.hybrid.orderLines.OrderLineRepository;
@@ -56,6 +59,7 @@ public class OrderService {
     private final ShopInventoryService shopInventoryService;
     private final ZimraService zimraService;
     private final SellingPriceService sellingPriceService;
+    private final GLPostingService glPostingService;
 
     @Transactional
     public Order createOrderFromCart(UserAccount user, String shippingAddress,
@@ -118,6 +122,7 @@ public class OrderService {
 
         Order savedOrder = orderRepository.save(order);
         accountancyService.createOrderAccountingEntries(savedOrder);
+        postOnlineOrderToGeneralLedger(savedOrder, paymentMethod);
         cartService.clearCart(user);
 
         // Notify new order
@@ -126,6 +131,53 @@ public class OrderService {
         log.info("Created order {} for user {} in currency {}",
                 savedOrder.getId(), user.getUsername(), orderCurrency.getCode());
         return savedOrder;
+    }
+
+    /**
+     * Every online order carries a definite, non-null PaymentMethod today - this codebase has
+     * no "place order now, pay later" concept (no Order.paid flag, no deferred-payment flow),
+     * so ONLINE_ORDER_UNPAID (credit) is never emitted here; treating an order as unpaid just
+     * because its payment method happened to be absent would be inventing a distinction the
+     * data doesn't actually make. If/when a real credit-order flow is added, that call site
+     * should emit ONLINE_ORDER_UNPAID against 1100 Accounts Receivable instead.
+     *
+     * costAmount is deliberately left null: the online-channel stock pool (InventoryItem) has
+     * no cost field at all (confirmed by inspection - quantity/reservedQuantity/reorderLevel
+     * only), so there is no reliable cost source for online COGS. Posting a guessed cost - or
+     * worse, the selling price - would misstate margin. The NET/TAX/GROSS lines still post
+     * correctly; the COGS/Inventory pair is simply absent until Product gains a real cost field.
+     */
+    private void postOnlineOrderToGeneralLedger(Order savedOrder, PaymentMethod paymentMethod) {
+        Currency currency = savedOrder.getCurrency();
+        Currency baseCurrency = currencyService.getBaseCurrency();
+        BigDecimal exchangeRate = BigDecimal.ONE;
+        if (currency != null && !currency.equals(baseCurrency)) {
+            exchangeRate = currencyService.getExchangeRate(currency, baseCurrency);
+        }
+
+        BigDecimal gross = savedOrder.getTotalAmount();
+        BigDecimal tax = savedOrder.getTaxAmount() != null ? savedOrder.getTaxAmount() : BigDecimal.ZERO;
+        BigDecimal net = gross.subtract(tax);
+
+        FinancialEvent event = FinancialEvent.builder()
+                .eventType(FinancialEventType.ONLINE_ORDER_PAID)
+                .sourceModule(GLSourceModule.ORDER)
+                .sourceReferenceType("ORDER")
+                .sourceReferenceId(savedOrder.getId())
+                .idempotencyKey("ONLINE-ORDER-" + savedOrder.getId())
+                .eventDate(java.time.LocalDate.now())
+                .description("Online order " + savedOrder.getId() + " (" + paymentMethod + ")")
+                .shop(savedOrder.getShop())
+                .currency(currency)
+                .exchangeRate(exchangeRate)
+                .grossAmount(gross)
+                .netAmount(net)
+                .taxAmount(tax)
+                .costAmount(null)
+                .postedBy("system")
+                .build();
+
+        glPostingService.post(event);
     }
 
     @Transactional

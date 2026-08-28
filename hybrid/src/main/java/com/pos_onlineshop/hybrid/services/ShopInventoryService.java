@@ -6,6 +6,9 @@ import com.pos_onlineshop.hybrid.currency.CurrencyRepository;
 import com.pos_onlineshop.hybrid.dtos.CreateShopInventoryRequest;
 import com.pos_onlineshop.hybrid.dtos.ShopInventoryResponse;
 import com.pos_onlineshop.hybrid.dtos.UpdateShopInventoryRequest;
+import com.pos_onlineshop.hybrid.enums.FinancialEventType;
+import com.pos_onlineshop.hybrid.enums.GLSourceModule;
+import com.pos_onlineshop.hybrid.gl.FinancialEvent;
 import com.pos_onlineshop.hybrid.inventoryTotal.InventoryTotal;
 import com.pos_onlineshop.hybrid.inventoryTotal.InventoryTotalRepository;
 import com.pos_onlineshop.hybrid.products.Product;
@@ -39,6 +42,8 @@ public class ShopInventoryService {
     private final SuppliersRepository suppliersRepository;
     private final CurrencyRepository currencyRepository;
     private final InventoryTotalRepository inventoryTotalRepository;
+    private final GLPostingService glPostingService;
+    private final CurrencyService currencyService;
 
     /**
      * Get inventory for a specific shop and product
@@ -344,12 +349,55 @@ public class ShopInventoryService {
             addStock(shop.getId(), product.getId(), initialQuantity);
             log.info("Created shop inventory record for shop {} and product {}: quantity = {}",
                     shop.getCode(), product.getName(), initialQuantity);
+            postStockReceiptToGeneralLedger(savedInventory, initialQuantity);
         } else {
             log.info("Created shop inventory record for shop {} and product {} with zero quantity",
                     shop.getCode(), product.getName());
         }
 
         return savedInventory;
+    }
+
+    /**
+     * ShopInventory carries no tax field, so a stock receipt has no way to know an input-VAT
+     * split - netAmount is posted equal to grossAmount and the STOCK_RECEIPT posting rule's
+     * 1400 VAT Input line is skipped (taxAmount left null) rather than guessing a rate. This
+     * is a real model limitation - see the implementation summary.
+     *
+     * The receipt always credits 2100 Accounts Payable: ShopInventory requires a non-null
+     * supplier reference on every lot, and there's no field anywhere indicating the purchase
+     * was paid for immediately, so "owed to the supplier" is the only assumption the data
+     * actually supports.
+     */
+    private void postStockReceiptToGeneralLedger(ShopInventory inventory, int quantity) {
+        Currency currency = inventory.getCurrency();
+        Currency baseCurrency = currencyService.getBaseCurrency();
+        BigDecimal exchangeRate = BigDecimal.ONE;
+        if (currency != null && !currency.equals(baseCurrency)) {
+            exchangeRate = currencyService.getExchangeRate(currency, baseCurrency);
+        }
+
+        BigDecimal value = inventory.getUnitPrice().multiply(BigDecimal.valueOf(quantity));
+
+        FinancialEvent event = FinancialEvent.builder()
+                .eventType(FinancialEventType.STOCK_RECEIPT)
+                .sourceModule(GLSourceModule.INVENTORY)
+                .sourceReferenceType("SHOP_INVENTORY")
+                .sourceReferenceId(inventory.getId())
+                .idempotencyKey("STOCK-RECEIPT-" + inventory.getId())
+                .eventDate(LocalDateTime.now().toLocalDate())
+                .description("Stock receipt: " + quantity + " x " + inventory.getProduct().getName()
+                        + " from " + (inventory.getSuppliers() != null ? inventory.getSuppliers().getName() : "unknown supplier"))
+                .shop(inventory.getShop())
+                .currency(currency)
+                .exchangeRate(exchangeRate)
+                .grossAmount(value)
+                .netAmount(value)
+                .taxAmount(null)
+                .postedBy("system")
+                .build();
+
+        glPostingService.post(event);
     }
 
     /**
