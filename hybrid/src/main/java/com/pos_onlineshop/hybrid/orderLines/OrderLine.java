@@ -54,6 +54,17 @@ public class OrderLine {
     @Builder.Default
     private BigDecimal taxRate = new BigDecimal("0.00");
 
+    /**
+     * Tax embedded in unitPrice (which is itself tax-inclusive - see SellingPrice), scaled by
+     * quantity. Populated by copyProductDetails from the SellingPrice's actual configured taxes
+     * at the time of sale. This is an amount, not a rate: Order.recalculateTotal sums this
+     * directly into Order.taxAmount rather than multiplying it onto an already tax-inclusive
+     * subtotal, which would double-count the tax already inside unitPrice.
+     */
+    @Column(name = "tax_amount", precision = 19, scale = 4)
+    @Builder.Default
+    private BigDecimal taxAmount = BigDecimal.ZERO;
+
     @Column(name = "product_name", nullable = false)
     private String productName;
 
@@ -108,6 +119,26 @@ public class OrderLine {
         // Set unit price from product's selling price
         // Note: In a real scenario, you might need to convert price to the order's currency
         this.unitPrice = sellingPrice.getSellingPrice();
+
+        // Tax is already baked into sellingPrice.getSellingPrice() (see
+        // SellingPrice.calculateSellingPriceFromBaseAndTaxes). Recover the embedded tax amount
+        // from the same basePrice + taxes that produced it, so Order.taxAmount can report what
+        // was actually charged instead of staying at zero. If basePrice or taxes aren't set on
+        // this price record, the tax breakdown genuinely isn't known - leave it at zero rather
+        // than guess.
+        BigDecimal basePrice = sellingPrice.getBasePrice();
+        int quantity = this.quantity != null ? this.quantity : 0;
+        if (basePrice != null && sellingPrice.getTaxes() != null && !sellingPrice.getTaxes().isEmpty()) {
+            BigDecimal taxPerUnit = BigDecimal.ZERO;
+            for (com.pos_onlineshop.hybrid.tax.Tax tax : sellingPrice.getTaxes()) {
+                if (tax != null && Boolean.TRUE.equals(tax.getActive())) {
+                    taxPerUnit = taxPerUnit.add(tax.calculateTaxAmount(basePrice));
+                }
+            }
+            this.taxAmount = taxPerUnit.multiply(BigDecimal.valueOf(quantity));
+        } else {
+            this.taxAmount = BigDecimal.ZERO;
+        }
     }
 
     /**

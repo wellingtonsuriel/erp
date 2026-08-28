@@ -6,15 +6,20 @@ import com.pos_onlineshop.hybrid.currency.Currency;
 import com.pos_onlineshop.hybrid.dtos.DailySummary;
 import com.pos_onlineshop.hybrid.dtos.QuickSaleItem;
 import com.pos_onlineshop.hybrid.dtos.Receipt;
+import com.pos_onlineshop.hybrid.enums.FinancialEventType;
+import com.pos_onlineshop.hybrid.enums.GLSourceModule;
 import com.pos_onlineshop.hybrid.enums.OrderStatus;
 import com.pos_onlineshop.hybrid.enums.PaymentMethod;
 import com.pos_onlineshop.hybrid.enums.SalesChannel;
+import com.pos_onlineshop.hybrid.gl.FinancialEvent;
+import com.pos_onlineshop.hybrid.journalEntry.JournalEntry;
 import com.pos_onlineshop.hybrid.orderLines.OrderLine;
 import com.pos_onlineshop.hybrid.orders.Order;
 import com.pos_onlineshop.hybrid.orders.OrderRepository;
 import com.pos_onlineshop.hybrid.products.Product;
 import com.pos_onlineshop.hybrid.selling_price.SellingPrice;
 import com.pos_onlineshop.hybrid.shop.Shop;
+import com.pos_onlineshop.hybrid.shopInventory.ShopInventory;
 import com.pos_onlineshop.hybrid.userAccount.UserAccount;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +44,9 @@ public class POSService {
     private final ShopInventoryService shopInventoryService;
     private final AccountancyService accountancyService;
     private final SellingPriceService sellingPriceService;
+    private final GLPostingService glPostingService;
+    private final CurrencyService currencyService;
+    private final com.pos_onlineshop.hybrid.journalEntry.JournalEntryRepository journalEntryRepository;
 
     @Transactional
     public Order processQuickSale(List<QuickSaleItem> items, PaymentMethod paymentMethod,
@@ -60,6 +68,11 @@ public class POSService {
                 .status(OrderStatus.COMPLETED)
                 .receiptNumber(generateReceiptNumber())
                 .build();
+
+        // Tracks whether a real per-line cost was found for every line, so the GL event only
+        // carries a COGS figure when it is fully known - never a partial, understated one.
+        BigDecimal totalCost = BigDecimal.ZERO;
+        boolean costKnownForAllLines = true;
 
         for (QuickSaleItem item : items) {
             Product product = productService.findById(item.getProductId())
@@ -87,6 +100,15 @@ public class POSService {
 
             // Remove from shop inventory using the corrected method
             shopInventoryService.reduceStock(shop.getId(), item.getProductId(), item.getQuantity());
+
+            // Cost basis for COGS: the latest received lot's unit cost - the same "most recent
+            // lot" valuation convention every stock report in this codebase already uses.
+            Optional<ShopInventory> latestLot = shopInventoryService.getInventory(shop, product);
+            if (latestLot.isPresent() && latestLot.get().getUnitPrice() != null) {
+                totalCost = totalCost.add(latestLot.get().getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())));
+            } else {
+                costKnownForAllLines = false;
+            }
         }
 
         if (paymentMethod == PaymentMethod.CASH && cashGiven != null) {
@@ -98,9 +120,57 @@ public class POSService {
         accountancyService.createOrderAccountingEntries(savedOrder);
         accountancyService.createPaymentAccountingEntries(savedOrder);
 
-        log.info("Processed POS sale {} at shop {} by cashier {}",
-                savedOrder.getId(), shop.getName(), cashier.getFullName());
+        JournalEntry glEntry = postSaleToGeneralLedger(savedOrder, paymentMethod, totalCost, costKnownForAllLines, cashier);
+
+        log.info("Processed POS sale {} at shop {} by cashier {} - GL entry #{}",
+                savedOrder.getId(), shop.getName(), cashier.getFullName(), glEntry.getEntryNumber());
         return savedOrder;
+    }
+
+    /**
+     * Emits the FinancialEvent for a completed POS order and posts it to the GL, inside the
+     * same transaction as the order/stock write above - see GLPostingService's class comment
+     * for why this must never become a second, separately-failable call.
+     *
+     * This runs alongside the existing AccountancyService calls above, not instead of them -
+     * see the GL design report's migration plan (parallel posting until the new ledger's
+     * totals are verified against the old one, then the legacy calls are retired).
+     */
+    private JournalEntry postSaleToGeneralLedger(Order savedOrder, PaymentMethod paymentMethod,
+                                                  BigDecimal totalCost, boolean costKnownForAllLines,
+                                                  Cashier cashier) {
+        Currency currency = savedOrder.getCurrency();
+        Currency baseCurrency = currencyService.getBaseCurrency();
+        BigDecimal exchangeRate = BigDecimal.ONE;
+        if (currency != null && !currency.equals(baseCurrency)) {
+            exchangeRate = currencyService.getExchangeRate(currency, baseCurrency);
+        }
+
+        BigDecimal gross = savedOrder.getTotalAmount();
+        BigDecimal tax = savedOrder.getTaxAmount() != null ? savedOrder.getTaxAmount() : BigDecimal.ZERO;
+        BigDecimal net = gross.subtract(tax);
+
+        FinancialEvent event = FinancialEvent.builder()
+                .eventType(paymentMethod == PaymentMethod.CASH
+                        ? FinancialEventType.POS_CASH_SALE
+                        : FinancialEventType.POS_NON_CASH_SALE)
+                .sourceModule(GLSourceModule.POS)
+                .sourceReferenceType("ORDER")
+                .sourceReferenceId(savedOrder.getId())
+                .idempotencyKey("POS-SALE-" + savedOrder.getId())
+                .eventDate(LocalDate.now())
+                .description("POS sale, receipt " + savedOrder.getReceiptNumber())
+                .shop(savedOrder.getShop())
+                .currency(currency)
+                .exchangeRate(exchangeRate)
+                .grossAmount(gross)
+                .netAmount(net)
+                .taxAmount(tax)
+                .costAmount(costKnownForAllLines ? totalCost : null)
+                .postedBy(cashier != null ? cashier.getFullName() : "system")
+                .build();
+
+        return glPostingService.post(event);
     }
 
 
@@ -238,8 +308,19 @@ public class POSService {
         order.setStatus(OrderStatus.CANCELLED);
         orderRepository.save(order);
 
-        // Create refund accounting entries
+        // Create refund accounting entries (legacy - runs alongside the GL reversal below,
+        // same parallel-posting rationale as the sale path)
         accountancyService.createRefundAccountingEntries(order);
+
+        // Reverse the original GL entry line-by-line rather than posting a generic refund
+        // pair, per the "prefer an exact reversal" requirement. Orders that predate the GL
+        // (or weren't a POS sale) simply have no matching entry - void still succeeds, the
+        // GL side is just skipped, since stock and the legacy accounting entry are the
+        // authoritative effects for those.
+        journalEntryRepository.findByIdempotencyKey("POS-SALE-" + orderId).ifPresentOrElse(
+                originalEntry -> glPostingService.reverse(originalEntry, LocalDate.now(), reason,
+                        order.getCashier() != null ? order.getCashier().getFullName() : "system"),
+                () -> log.info("No GL entry found for order {} - void proceeds without a GL reversal", orderId));
 
         log.info("Voided order {} - Reason: {}", orderId, reason);
     }

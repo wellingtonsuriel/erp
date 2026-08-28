@@ -134,14 +134,18 @@ public class Order {
     }
 
     public void recalculateTotal() {
+        // Every OrderLine.unitPrice is already tax-inclusive (see SellingPrice /
+        // OrderLine.copyProductDetails), so totalAmount is simply the sum of line subtotals -
+        // tax must NOT be added on top of that again, or it would be charged twice.
         this.totalAmount = orderLines.stream()
                 .map(OrderLine::getSubtotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        // taxAmount reports the tax already embedded within totalAmount, for receipts/VAT
+        // reporting/GL posting - it does not change totalAmount.
         this.taxAmount = orderLines.stream()
-                .map(line -> line.getSubtotal().multiply(line.getTaxRate()))
+                .map(OrderLine::getTaxAmount)
+                .filter(java.util.Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        this.totalAmount = this.totalAmount.add(this.taxAmount);
     }
 }
