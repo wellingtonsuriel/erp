@@ -101,6 +101,11 @@ public class AccountingPeriodService {
         if (period.getStatus() != PeriodStatus.OPEN) {
             throw new IllegalStateException("Period " + period.getName() + " is already " + period.getStatus());
         }
+        if (accountingPeriodRepository.existsByStartDateBeforeAndStatus(period.getStartDate(), PeriodStatus.OPEN)) {
+            throw new IllegalStateException(
+                    "Cannot close period " + period.getName() + ": an earlier period is still OPEN - "
+                            + "periods must be closed in chronological order");
+        }
 
         TrialBalanceReport trialBalance = trialBalanceService.generate(period.getStartDate(), period.getEndDate(), null);
         if (!trialBalance.isBalanced()) {
@@ -109,11 +114,13 @@ public class AccountingPeriodService {
                             + "(debits=" + trialBalance.getTotalClosingDebit() + ", credits=" + trialBalance.getTotalClosingCredit() + ")");
         }
 
-        sweepRevenueAndExpenseToRetainedEarnings(period, closedBy);
+        JournalEntry closingEntry = sweepRevenueAndExpenseToRetainedEarnings(period, closedBy);
 
         period.setStatus(PeriodStatus.CLOSED);
         period.setClosedAt(LocalDateTime.now());
         period.setClosedBy(closedBy);
+        period.setClosingJournalEntry(closingEntry);
+        period.setCloseCount(period.getCloseCount() + 1);
         return accountingPeriodRepository.save(period);
     }
 
@@ -124,10 +131,14 @@ public class AccountingPeriodService {
      * offsetting amount posted to Retained Earnings. If total revenue exactly equals total
      * expense for the period, the revenue- and expense-closing lines already balance each
      * other with no Retained Earnings line needed at all. Idempotency key is
-     * "PERIOD-CLOSE-{periodId}", so a retried close (e.g. after a transient failure between
-     * the sweep and the status flip) never double-posts.
+     * "PERIOD-CLOSE-{periodId}-{closeCount+1}" - closeCount only advances once the whole close
+     * transaction commits (see closePeriod), so a retried close after a transient failure
+     * between the sweep and the status flip still computes the same key and replays
+     * idempotently. It is deliberately NOT just "PERIOD-CLOSE-{periodId}", so that a close
+     * following a reopen gets a fresh key rather than replaying the prior (now-reversed) sweep
+     * entry untouched - see reopenPeriod for why the prior sweep must be reversed at all.
      */
-    private void sweepRevenueAndExpenseToRetainedEarnings(AccountingPeriod period, String closedBy) {
+    private JournalEntry sweepRevenueAndExpenseToRetainedEarnings(AccountingPeriod period, String closedBy) {
         Map<Long, Totals> periodActivity = toTotalsMap(
                 journalLineRepository.aggregateBetween(period.getStartDate(), period.getEndDate(), null));
         List<Account> accounts = accountRepository.findByActiveTrue();
@@ -165,7 +176,7 @@ public class AccountingPeriodService {
 
         if (specs.isEmpty()) {
             log.info("GL: no revenue/expense activity to sweep for period {}", period.getName());
-            return;
+            return null;
         }
 
         Account retainedEarnings = accountRepository.findByCode(RETAINED_EARNINGS_ACCOUNT_CODE)
@@ -178,7 +189,7 @@ public class AccountingPeriodService {
         }
 
         JournalEntry closingEntry = glPostingService.postManual(
-                "PERIOD-CLOSE-" + period.getId(),
+                "PERIOD-CLOSE-" + period.getId() + "-" + (period.getCloseCount() + 1),
                 period.getEndDate(),
                 "Period close: sweep revenue/expense to Retained Earnings for " + period.getName(),
                 GLSourceModule.SYSTEM,
@@ -188,6 +199,7 @@ public class AccountingPeriodService {
                 closedBy);
         log.info("GL: closed period {} with closing entry #{} (net income {})",
                 period.getName(), closingEntry.getEntryNumber(), netIncome);
+        return closingEntry;
     }
 
     private ManualLineSpec debitSpec(Account account, BigDecimal amount, Currency currency, String memo) {
@@ -213,13 +225,38 @@ public class AccountingPeriodService {
         return map;
     }
 
+    /**
+     * Reopens a CLOSED period so new entries can post into it again. If the period's last
+     * close swept revenue/expense to Retained Earnings, that sweep entry is reversed first -
+     * closePeriod's sweep recomputes from every JournalLine dated within the period, which
+     * includes the sweep's own prior lines, so leaving it in place would double-count it the
+     * next time this period closes. The next close computes a fresh idempotency key (see
+     * sweepRevenueAndExpenseToRetainedEarnings), so it posts a new sweep rather than replaying
+     * this reversed one.
+     */
     @Transactional
-    public AccountingPeriod reopenPeriod(Long periodId) {
+    public AccountingPeriod reopenPeriod(Long periodId, String reopenedBy) {
         AccountingPeriod period = accountingPeriodRepository.findById(periodId)
                 .orElseThrow(() -> new IllegalArgumentException("Accounting period not found: " + periodId));
         if (period.getStatus() == PeriodStatus.LOCKED) {
             throw new IllegalStateException("Period " + period.getName() + " is LOCKED and cannot be reopened");
         }
+        if (period.getStatus() == PeriodStatus.OPEN) {
+            throw new IllegalStateException("Period " + period.getName() + " is already OPEN");
+        }
+        if (accountingPeriodRepository.existsByStartDateAfterAndStatusIn(
+                period.getStartDate(), List.of(PeriodStatus.CLOSED, PeriodStatus.LOCKED))) {
+            throw new IllegalStateException(
+                    "Cannot reopen period " + period.getName() + ": a later period has already closed - "
+                            + "periods must be reopened in reverse chronological order");
+        }
+
+        if (period.getClosingJournalEntry() != null) {
+            glPostingService.reverse(period.getClosingJournalEntry(), LocalDate.now(),
+                    "Period " + period.getName() + " reopened", reopenedBy);
+            period.setClosingJournalEntry(null);
+        }
+
         period.setStatus(PeriodStatus.OPEN);
         period.setClosedAt(null);
         period.setClosedBy(null);

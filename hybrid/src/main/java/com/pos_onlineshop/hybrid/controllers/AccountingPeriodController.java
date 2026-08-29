@@ -61,9 +61,10 @@ public class AccountingPeriodController {
 
     @PostMapping("/{id}/reopen")
     @PreAuthorize("hasAuthority('PERIOD_REOPEN') or hasRole('ADMIN')")
-    public ResponseEntity<?> reopen(@PathVariable Long id) {
+    public ResponseEntity<?> reopen(@PathVariable Long id, @RequestBody(required = false) Map<String, String> body) {
+        String reopenedBy = body != null ? body.getOrDefault("reopenedBy", "system") : "system";
         try {
-            return ResponseEntity.ok(accountingPeriodService.reopenPeriod(id));
+            return ResponseEntity.ok(accountingPeriodService.reopenPeriod(id, reopenedBy));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (IllegalStateException e) {

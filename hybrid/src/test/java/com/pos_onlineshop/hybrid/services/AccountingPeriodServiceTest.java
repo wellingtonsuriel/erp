@@ -108,7 +108,7 @@ class AccountingPeriodServiceTest {
                 new Object[]{1L, BigDecimal.ZERO, new BigDecimal("1000.00")},   // revenue: credit 1000
                 new Object[]{3L, new BigDecimal("400.00"), BigDecimal.ZERO}));  // COGS: debit 400
         JournalEntry closingEntry = JournalEntry.builder().id(99L).entryNumber(50L).build();
-        when(glPostingService.postManual(eq("PERIOD-CLOSE-1"), eq(end), anyString(), eq(GLSourceModule.SYSTEM),
+        when(glPostingService.postManual(eq("PERIOD-CLOSE-1-1"), eq(end), anyString(), eq(GLSourceModule.SYSTEM),
                 eq("ACCOUNTING_PERIOD"), eq(1L), anyList(), eq("admin1"))).thenReturn(closingEntry);
         when(accountingPeriodRepository.save(any(AccountingPeriod.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -119,7 +119,7 @@ class AccountingPeriodServiceTest {
         assertNotNull(result.getClosedAt());
 
         ArgumentCaptor<List<ManualLineSpec>> captor = ArgumentCaptor.forClass(List.class);
-        verify(glPostingService).postManual(eq("PERIOD-CLOSE-1"), eq(end), anyString(), eq(GLSourceModule.SYSTEM),
+        verify(glPostingService).postManual(eq("PERIOD-CLOSE-1-1"), eq(end), anyString(), eq(GLSourceModule.SYSTEM),
                 eq("ACCOUNTING_PERIOD"), eq(1L), captor.capture(), eq("admin1"));
         List<ManualLineSpec> specs = captor.getValue();
         // revenue debit 1000 (closing it to zero) + COGS credit 400 (closing it to zero)
@@ -213,6 +213,80 @@ class AccountingPeriodServiceTest {
         period.setStatus(PeriodStatus.LOCKED);
         when(accountingPeriodRepository.findById(1L)).thenReturn(Optional.of(period));
 
-        assertThrows(IllegalStateException.class, () -> service.reopenPeriod(1L));
+        assertThrows(IllegalStateException.class, () -> service.reopenPeriod(1L, "admin1"));
+    }
+
+    @Test
+    void reopenPeriodRejectsAnAlreadyOpenPeriod() {
+        AccountingPeriod period = openPeriod();
+        when(accountingPeriodRepository.findById(1L)).thenReturn(Optional.of(period));
+
+        assertThrows(IllegalStateException.class, () -> service.reopenPeriod(1L, "admin1"));
+        verifyNoInteractions(glPostingService);
+    }
+
+    @Test
+    void closePeriodRejectsClosingOutOfChronologicalOrder() {
+        AccountingPeriod period = openPeriod();
+        when(accountingPeriodRepository.findById(1L)).thenReturn(Optional.of(period));
+        when(accountingPeriodRepository.existsByStartDateBeforeAndStatus(start, PeriodStatus.OPEN)).thenReturn(true);
+
+        assertThrows(IllegalStateException.class, () -> service.closePeriod(1L, "admin1"));
+        verifyNoInteractions(trialBalanceService, glPostingService);
+    }
+
+    @Test
+    void reopenPeriodRejectsWhenALaterPeriodHasAlreadyClosed() {
+        AccountingPeriod period = openPeriod();
+        period.setStatus(PeriodStatus.CLOSED);
+        when(accountingPeriodRepository.findById(1L)).thenReturn(Optional.of(period));
+        when(accountingPeriodRepository.existsByStartDateAfterAndStatusIn(
+                start, List.of(PeriodStatus.CLOSED, PeriodStatus.LOCKED))).thenReturn(true);
+
+        assertThrows(IllegalStateException.class, () -> service.reopenPeriod(1L, "admin1"));
+        verifyNoInteractions(glPostingService);
+    }
+
+    @Test
+    void reopenPeriodReversesThePriorClosingEntryAndClearsIt() {
+        AccountingPeriod period = openPeriod();
+        period.setStatus(PeriodStatus.CLOSED);
+        JournalEntry priorClosingEntry = JournalEntry.builder().id(99L).entryNumber(50L).build();
+        period.setClosingJournalEntry(priorClosingEntry);
+        period.setCloseCount(1);
+        when(accountingPeriodRepository.findById(1L)).thenReturn(Optional.of(period));
+        when(accountingPeriodRepository.save(any(AccountingPeriod.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AccountingPeriod result = service.reopenPeriod(1L, "admin1");
+
+        verify(glPostingService).reverse(eq(priorClosingEntry), any(LocalDate.class),
+                eq("Period 2026-08 reopened"), eq("admin1"));
+        assertNull(result.getClosingJournalEntry());
+        assertEquals(PeriodStatus.OPEN, result.getStatus());
+    }
+
+    @Test
+    void reclosingAReopenedPeriodUsesAFreshIdempotencyKeyReflectingCloseCount() {
+        AccountingPeriod period = openPeriod();
+        period.setCloseCount(1); // already closed once before
+        when(accountingPeriodRepository.findById(1L)).thenReturn(Optional.of(period));
+        when(trialBalanceService.generate(start, end, null)).thenReturn(balancedTrialBalance());
+        when(accountRepository.findByActiveTrue()).thenReturn(List.of(posRevenue, cogs));
+        when(accountRepository.findByCode("3000")).thenReturn(Optional.of(retainedEarnings));
+        when(currencyService.getBaseCurrency()).thenReturn(currency);
+        when(journalLineRepository.aggregateBetween(start, end, null)).thenReturn(List.<Object[]>of(
+                new Object[]{1L, BigDecimal.ZERO, new BigDecimal("500.00")},
+                new Object[]{3L, new BigDecimal("200.00"), BigDecimal.ZERO}));
+        JournalEntry secondClosingEntry = JournalEntry.builder().id(150L).entryNumber(80L).build();
+        when(glPostingService.postManual(eq("PERIOD-CLOSE-1-2"), eq(end), anyString(), eq(GLSourceModule.SYSTEM),
+                eq("ACCOUNTING_PERIOD"), eq(1L), anyList(), eq("admin1"))).thenReturn(secondClosingEntry);
+        when(accountingPeriodRepository.save(any(AccountingPeriod.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AccountingPeriod result = service.closePeriod(1L, "admin1");
+
+        assertEquals(2, result.getCloseCount());
+        assertEquals(secondClosingEntry, result.getClosingJournalEntry());
+        verify(glPostingService).postManual(eq("PERIOD-CLOSE-1-2"), eq(end), anyString(), eq(GLSourceModule.SYSTEM),
+                eq("ACCOUNTING_PERIOD"), eq(1L), anyList(), eq("admin1"));
     }
 }
