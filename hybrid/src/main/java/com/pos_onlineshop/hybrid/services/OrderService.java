@@ -601,6 +601,34 @@ public class OrderService {
     }
 
     /**
+     * Cancels every ONLINE order still PENDING (never confirmed/paid) since before cutoff -
+     * the abandoned-cart case: a customer reserved stock at checkout and never completed
+     * payment, and that stock needs to come back to the available pool for other customers.
+     * Releases each line's reservation the same way deleteOrder() does, then marks the order
+     * CANCELLED rather than deleting it, preserving the record instead of erasing it. Safe to
+     * run repeatedly - an order this already cancelled no longer matches the PENDING query,
+     * so re-running never double-releases a reservation. Returns the number of orders expired.
+     */
+    @Transactional
+    public int expireStalePendingOrders(LocalDateTime cutoff) {
+        List<Order> stale = orderRepository.findBySalesChannelAndStatusAndOrderDateBefore(
+                SalesChannel.ONLINE, OrderStatus.PENDING, cutoff);
+        for (Order order : stale) {
+            if (order.getShop() != null) {
+                for (OrderLine line : order.getOrderLines()) {
+                    shopInventoryService.releaseReservation(order.getShop().getId(), line.getProduct().getId(), line.getQuantity());
+                }
+            }
+            order.setStatus(OrderStatus.CANCELLED);
+            orderRepository.save(order);
+        }
+        if (!stale.isEmpty()) {
+            log.info("Expired {} stale PENDING online order(s) older than {}", stale.size(), cutoff);
+        }
+        return stale.size();
+    }
+
+    /**
      * Get order by ID as DTO
      */
     @Transactional(readOnly = true)

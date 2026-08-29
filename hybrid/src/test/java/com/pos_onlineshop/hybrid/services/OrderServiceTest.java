@@ -213,4 +213,35 @@ class OrderServiceTest {
         verifyNoInteractions(shopInventoryService);
         verify(orderRepository).deleteById(200L);
     }
+
+    @Test
+    void expireStalePendingOrdersReleasesReservationsAndCancelsRatherThanDeletes() {
+        OrderLine line = OrderLine.builder().id(1L).product(product).quantity(3).build();
+        Order stale = Order.builder().id(300L).status(OrderStatus.PENDING)
+                .salesChannel(SalesChannel.ONLINE).shop(onlineShop).currency(currency).build();
+        stale.addOrderLine(line);
+        java.time.LocalDateTime cutoff = java.time.LocalDateTime.of(2026, 8, 15, 0, 0);
+        when(orderRepository.findBySalesChannelAndStatusAndOrderDateBefore(SalesChannel.ONLINE, OrderStatus.PENDING, cutoff))
+                .thenReturn(List.of(stale));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        int expired = service.expireStalePendingOrders(cutoff);
+
+        assertEquals(1, expired);
+        assertEquals(OrderStatus.CANCELLED, stale.getStatus());
+        verify(shopInventoryService).releaseReservation(10L, 1L, 3);
+        verify(orderRepository, never()).deleteById(anyLong());
+    }
+
+    @Test
+    void expireStalePendingOrdersIsANoOpWhenNothingIsStale() {
+        java.time.LocalDateTime cutoff = java.time.LocalDateTime.of(2026, 8, 15, 0, 0);
+        when(orderRepository.findBySalesChannelAndStatusAndOrderDateBefore(SalesChannel.ONLINE, OrderStatus.PENDING, cutoff))
+                .thenReturn(List.of());
+
+        int expired = service.expireStalePendingOrders(cutoff);
+
+        assertEquals(0, expired);
+        verifyNoInteractions(shopInventoryService);
+    }
 }

@@ -47,4 +47,9 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             "GROUP BY o.salesChannel")
     List<Object[]> getSalesChannelStats(@Param("startDate") LocalDateTime startDate,
                                         @Param("endDate") LocalDateTime endDate);
+
+    /** Online orders still PENDING (never confirmed/paid) whose stock reservation has been
+     * sitting untouched since before cutoff - the abandoned-cart case ScheduledJobsService's
+     * reservation-expiry job cleans up. */
+    List<Order> findBySalesChannelAndStatusAndOrderDateBefore(SalesChannel salesChannel, OrderStatus status, LocalDateTime cutoff);
 }
