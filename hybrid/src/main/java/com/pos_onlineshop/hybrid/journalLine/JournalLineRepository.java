@@ -64,4 +64,16 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, Long> 
                                                                @Param("from") LocalDate from,
                                                                @Param("to") LocalDate to,
                                                                @Param("shopId") Long shopId);
+
+    /** [sourceReferenceType, sourceReferenceId, sumDebits] per business event in range - total
+     * debits of a balanced entry equals its gross value (e.g. the Cash debit of a POS sale),
+     * making it comparable to AccountancyEntryRepository.aggregateDebitsByReferenceBetween's
+     * legacy-side DEBIT total for the same event. Used by LegacyGlReconciliationService. */
+    @Query("SELECT l.journalEntry.sourceReferenceType, l.journalEntry.sourceReferenceId, SUM(l.debitAmount) " +
+            "FROM JournalLine l " +
+            "WHERE l.journalEntry.status = com.pos_onlineshop.hybrid.enums.JournalStatus.POSTED " +
+            "AND l.journalEntry.sourceReferenceType IS NOT NULL AND l.journalEntry.sourceReferenceId IS NOT NULL " +
+            "AND l.journalEntry.entryDate BETWEEN :from AND :to " +
+            "GROUP BY l.journalEntry.sourceReferenceType, l.journalEntry.sourceReferenceId")
+    List<Object[]> aggregateDebitsBySourceReferenceBetween(@Param("from") LocalDate from, @Param("to") LocalDate to);
 }
