@@ -49,6 +49,8 @@ public class GLAccountSeedService {
             new Seed("1100", "Accounts Receivable", ASSET, DEBIT, true),
             new Seed("1200", "Inventory Asset", ASSET, DEBIT, true, false, false),
             new Seed("1400", "VAT Input / Recoverable", ASSET, DEBIT, false),
+            new Seed("1500", "Fixed Assets", ASSET, DEBIT, true, false, false),
+            new Seed("1590", "Accumulated Depreciation", ASSET, CREDIT, true, false, false),
             new Seed("2100", "Accounts Payable", LIABILITY, CREDIT, true),
             new Seed("2200", "VAT Output / Payable", LIABILITY, CREDIT, false),
             new Seed("2300", "Customer Deposits & Loyalty Liability", LIABILITY, CREDIT, false),
@@ -62,7 +64,9 @@ public class GLAccountSeedService {
             new Seed("5000", "Cost of Goods Sold", EXPENSE, DEBIT, false, true),
             new Seed("5100", "Inventory Write-off", EXPENSE, DEBIT, false),
             new Seed("5300", "Operating Expenses", EXPENSE, DEBIT, false),
-            new Seed("5900", "FX Gain / Loss", EXPENSE, DEBIT, false)
+            new Seed("5400", "Depreciation Expense", EXPENSE, DEBIT, false),
+            new Seed("5900", "FX Gain / Loss", EXPENSE, DEBIT, false),
+            new Seed("5950", "Gain / Loss on Disposal of Assets", EXPENSE, DEBIT, false)
     );
 
     private final AccountRepository accountRepository;
