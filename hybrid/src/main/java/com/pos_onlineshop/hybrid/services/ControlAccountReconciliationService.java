@@ -8,8 +8,6 @@ import com.pos_onlineshop.hybrid.dtos.ControlAccountReconciliationReport;
 import com.pos_onlineshop.hybrid.enums.CustomerInvoiceStatus;
 import com.pos_onlineshop.hybrid.enums.SupplierInvoiceStatus;
 import com.pos_onlineshop.hybrid.journalLine.JournalLineRepository;
-import com.pos_onlineshop.hybrid.shopInventory.ShopInventory;
-import com.pos_onlineshop.hybrid.shopInventory.ShopInventoryRepository;
 import com.pos_onlineshop.hybrid.supplierInvoice.SupplierInvoice;
 import com.pos_onlineshop.hybrid.supplierInvoice.SupplierInvoiceRepository;
 import lombok.RequiredArgsConstructor;
@@ -41,7 +39,7 @@ public class ControlAccountReconciliationService {
     private final JournalLineRepository journalLineRepository;
     private final SupplierInvoiceRepository supplierInvoiceRepository;
     private final CustomerInvoiceRepository customerInvoiceRepository;
-    private final ShopInventoryRepository shopInventoryRepository;
+    private final ShopInventoryService shopInventoryService;
 
     private record Totals(BigDecimal debit, BigDecimal credit) {
         static final Totals ZERO = new Totals(BigDecimal.ZERO, BigDecimal.ZERO);
@@ -92,26 +90,25 @@ public class ControlAccountReconciliationService {
                 glBalance, subledgerBalance, null);
     }
 
+    /**
+     * Uses ShopInventoryService.calculateTotalInventoryValue() - the single authoritative
+     * inventory valuation, also used by AnalyticsController's dashboard - rather than
+     * recomputing it here. Previously this valued immutable ShopInventory receipt-lot
+     * quantities directly, which never decrease as stock sells; that overstated the
+     * subledger balance against every unit ever sold. It now correctly values the live
+     * InventoryTotal on-hand balance at each pair's latest received lot cost.
+     */
     private ControlAccountReconciliationReport.Line reconcileInventory(Map<Long, Totals> cumulative) {
         Account account = accountByCode(INVENTORY_ASSET_CODE);
         Totals t = cumulative.getOrDefault(account.getId(), Totals.ZERO);
         BigDecimal glBalance = t.debit().subtract(t.credit()); // 1200 is debit-normal (ASSET)
 
-        BigDecimal subledgerBalance = shopInventoryRepository.findLatestPerShopAndProduct().stream()
-                .map(this::lotValue)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal subledgerBalance = shopInventoryService.calculateTotalInventoryValue();
 
-        return line(account, "ShopInventory live snapshot (latest lot per shop/product x unit price)",
+        return line(account, "InventoryTotal live on-hand balance (valued at latest lot unit cost)",
                 glBalance, subledgerBalance,
-                "Inventory subledger is always a live snapshot, not as-of-date - ShopInventory has "
-                        + "no historical point-in-time query, unlike the GL side.");
-    }
-
-    private BigDecimal lotValue(ShopInventory lot) {
-        if (lot.getQuantity() == null || lot.getUnitPrice() == null) {
-            return BigDecimal.ZERO;
-        }
-        return lot.getUnitPrice().multiply(BigDecimal.valueOf(lot.getQuantity()));
+                "Inventory subledger is always a live on-hand snapshot, not as-of-date - "
+                        + "InventoryTotal has no historical point-in-time query, unlike the GL side.");
     }
 
     private Account accountByCode(String code) {

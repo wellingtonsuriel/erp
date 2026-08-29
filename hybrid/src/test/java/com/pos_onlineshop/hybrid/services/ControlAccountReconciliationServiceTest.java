@@ -11,8 +11,6 @@ import com.pos_onlineshop.hybrid.enums.CustomerInvoiceStatus;
 import com.pos_onlineshop.hybrid.enums.DebitCredit;
 import com.pos_onlineshop.hybrid.enums.SupplierInvoiceStatus;
 import com.pos_onlineshop.hybrid.journalLine.JournalLineRepository;
-import com.pos_onlineshop.hybrid.shopInventory.ShopInventory;
-import com.pos_onlineshop.hybrid.shopInventory.ShopInventoryRepository;
 import com.pos_onlineshop.hybrid.suppliers.Suppliers;
 import com.pos_onlineshop.hybrid.supplierInvoice.SupplierInvoice;
 import com.pos_onlineshop.hybrid.supplierInvoice.SupplierInvoiceRepository;
@@ -24,7 +22,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -37,7 +34,7 @@ class ControlAccountReconciliationServiceTest {
     @Mock private JournalLineRepository journalLineRepository;
     @Mock private SupplierInvoiceRepository supplierInvoiceRepository;
     @Mock private CustomerInvoiceRepository customerInvoiceRepository;
-    @Mock private ShopInventoryRepository shopInventoryRepository;
+    @Mock private ShopInventoryService shopInventoryService;
 
     private ControlAccountReconciliationService service;
 
@@ -49,7 +46,7 @@ class ControlAccountReconciliationServiceTest {
     @BeforeEach
     void setUp() {
         service = new ControlAccountReconciliationService(accountRepository, journalLineRepository,
-                supplierInvoiceRepository, customerInvoiceRepository, shopInventoryRepository);
+                supplierInvoiceRepository, customerInvoiceRepository, shopInventoryService);
 
         accountsPayable = Account.builder().id(1L).code("2100").name("Accounts Payable")
                 .accountType(AccountType.LIABILITY).normalBalance(DebitCredit.CREDIT).controlAccount(true).active(true).build();
@@ -87,7 +84,7 @@ class ControlAccountReconciliationServiceTest {
                 .thenReturn(List.of(supplierInvoice(new BigDecimal("500.00"), BigDecimal.ZERO)));
         when(customerInvoiceRepository.findByStatusIn(List.of(CustomerInvoiceStatus.POSTED, CustomerInvoiceStatus.PARTIALLY_PAID)))
                 .thenReturn(List.of());
-        when(shopInventoryRepository.findLatestPerShopAndProduct()).thenReturn(List.of());
+        when(shopInventoryService.calculateTotalInventoryValue()).thenReturn(BigDecimal.ZERO);
 
         ControlAccountReconciliationReport report = service.generate(asOfDate);
 
@@ -105,7 +102,7 @@ class ControlAccountReconciliationServiceTest {
                 .thenReturn(List.of(supplierInvoice(new BigDecimal("450.00"), BigDecimal.ZERO)));
         when(customerInvoiceRepository.findByStatusIn(List.of(CustomerInvoiceStatus.POSTED, CustomerInvoiceStatus.PARTIALLY_PAID)))
                 .thenReturn(List.of());
-        when(shopInventoryRepository.findLatestPerShopAndProduct()).thenReturn(List.of());
+        when(shopInventoryService.calculateTotalInventoryValue()).thenReturn(BigDecimal.ZERO);
 
         ControlAccountReconciliationReport report = service.generate(asOfDate);
 
@@ -123,7 +120,7 @@ class ControlAccountReconciliationServiceTest {
                 .thenReturn(List.of());
         when(customerInvoiceRepository.findByStatusIn(List.of(CustomerInvoiceStatus.POSTED, CustomerInvoiceStatus.PARTIALLY_PAID)))
                 .thenReturn(List.of(customerInvoice(new BigDecimal("300.00"), BigDecimal.ZERO)));
-        when(shopInventoryRepository.findLatestPerShopAndProduct()).thenReturn(List.of());
+        when(shopInventoryService.calculateTotalInventoryValue()).thenReturn(BigDecimal.ZERO);
 
         ControlAccountReconciliationReport report = service.generate(asOfDate);
 
@@ -134,15 +131,17 @@ class ControlAccountReconciliationServiceTest {
     }
 
     @Test
-    void inventoryValuationUsesTheLatestLotPerShopAndProductOnly() {
+    void inventoryLineUsesTheAuthoritativeSharedValuationNotAnImmutableLotSnapshot() {
         when(journalLineRepository.aggregateBeforeDate(asOfDate.plusDays(1), null)).thenReturn(List.<Object[]>of(
                 new Object[]{3L, new BigDecimal("200.00"), BigDecimal.ZERO}));
         when(supplierInvoiceRepository.findByStatusIn(List.of(SupplierInvoiceStatus.POSTED, SupplierInvoiceStatus.PARTIALLY_PAID)))
                 .thenReturn(List.of());
         when(customerInvoiceRepository.findByStatusIn(List.of(CustomerInvoiceStatus.POSTED, CustomerInvoiceStatus.PARTIALLY_PAID)))
                 .thenReturn(List.of());
-        ShopInventory latestLot = ShopInventory.builder().id(2L).quantity(20).unitPrice(new BigDecimal("10.00")).build();
-        when(shopInventoryRepository.findLatestPerShopAndProduct()).thenReturn(List.of(latestLot));
+        // e.g. 100 received, 60 sold via POS -> InventoryTotal reflects 40 remaining, valued
+        // by the shared ShopInventoryService method (not by summing never-decremented
+        // ShopInventory receipt-lot quantities, which would still show all 100).
+        when(shopInventoryService.calculateTotalInventoryValue()).thenReturn(new BigDecimal("200.00"));
 
         ControlAccountReconciliationReport report = service.generate(asOfDate);
 
@@ -151,5 +150,24 @@ class ControlAccountReconciliationServiceTest {
         assertEquals(0, new BigDecimal("200.00").compareTo(invLine.getSubledgerBalance()));
         assertTrue(invLine.isMatched());
         assertNotNull(invLine.getNote());
+    }
+
+    @Test
+    void inventoryVarianceIsReportedWhenGlAndAuthoritativeValuationDisagree() {
+        when(journalLineRepository.aggregateBeforeDate(asOfDate.plusDays(1), null)).thenReturn(List.<Object[]>of(
+                new Object[]{3L, new BigDecimal("1000.00"), BigDecimal.ZERO}));
+        when(supplierInvoiceRepository.findByStatusIn(List.of(SupplierInvoiceStatus.POSTED, SupplierInvoiceStatus.PARTIALLY_PAID)))
+                .thenReturn(List.of());
+        when(customerInvoiceRepository.findByStatusIn(List.of(CustomerInvoiceStatus.POSTED, CustomerInvoiceStatus.PARTIALLY_PAID)))
+                .thenReturn(List.of());
+        // Received 100 units worth 1000 in the GL, but only 400 worth remains on hand (60 sold).
+        when(shopInventoryService.calculateTotalInventoryValue()).thenReturn(new BigDecimal("400.00"));
+
+        ControlAccountReconciliationReport report = service.generate(asOfDate);
+
+        ControlAccountReconciliationReport.Line invLine = report.getLines().stream()
+                .filter(l -> "1200".equals(l.getAccountCode())).findFirst().orElseThrow();
+        assertFalse(invLine.isMatched());
+        assertEquals(0, new BigDecimal("600.00").compareTo(invLine.getVariance()));
     }
 }

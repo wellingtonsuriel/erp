@@ -40,6 +40,15 @@ public class InventoryService {
     private final ShopInventoryRepository shopInventoryRepository;
     private final SimpMessagingTemplate messagingTemplate;
 
+    // ==================== Deprecated InventoryItem pool ====================
+    // The methods below operate on InventoryItem, a global stock counter independent of
+    // InventoryTotal (the authoritative per-shop model - see ShopInventoryService's class
+    // comment). OrderService no longer calls these for new orders; retained only for
+    // historical pre-hardening orders. Do not add new callers - use ShopInventoryService's
+    // reserveStock/releaseReservation/commitReservedStock/addStock/reduceStock/isInStock
+    // instead, all of which are shop-scoped against InventoryTotal.
+
+    @Deprecated
     public InventoryItem initializeInventory(Product product, Integer initialQuantity) {
         log.info("Initializing inventory for product: {}", product.getName());
 
@@ -53,14 +62,17 @@ public class InventoryService {
         return inventoryRepository.save(inventory);
     }
 
+    @Deprecated
     public Optional<InventoryItem> findByProduct(Product product) {
         return inventoryRepository.findByProduct(product);
     }
 
+    @Deprecated
     public Optional<InventoryItem> findByProductId(Long productId) {
         return inventoryRepository.findByProductIdWithLock(productId);
     }
 
+    @Deprecated
     @Transactional
     public void addStock(Long productId, Integer quantity) {
         InventoryItem inventory = inventoryRepository.findByProductIdWithLock(productId)
@@ -72,6 +84,7 @@ public class InventoryService {
         log.info("Added {} units to product {}", quantity, productId);
     }
 
+    @Deprecated
     @Transactional
     public void removeStock(Long productId, Integer quantity) {
         InventoryItem inventory = inventoryRepository.findByProductIdWithLock(productId)
@@ -83,6 +96,7 @@ public class InventoryService {
         log.info("Removed {} units from product {}", quantity, productId);
     }
 
+    @Deprecated
     @Transactional
     public void reserveInventory(Long productId, Integer quantity) {
         InventoryItem inventory = inventoryRepository.findByProductIdWithLock(productId)
@@ -97,6 +111,7 @@ public class InventoryService {
         broadcastInventoryUpdate(productId, inventory.getQuantity());
     }
 
+    @Deprecated
     @Transactional
     public void releaseReservation(Long productId, Integer quantity) {
         InventoryItem inventory = inventoryRepository.findByProductIdWithLock(productId)
@@ -107,20 +122,26 @@ public class InventoryService {
         broadcastInventoryUpdate(productId, inventory.getQuantity());
     }
 
+    @Deprecated
     public boolean isInStock(Long productId, Integer quantity) {
         return inventoryRepository.findByProductIdWithLock(productId)
                 .map(inventory -> inventory.getAvailableQuantity() >= quantity)
                 .orElse(false);
     }
 
+    @Deprecated
     public List<InventoryItem> findLowStockItems() {
         return inventoryRepository.findItemsNeedingReorder();
     }
 
+    /** @deprecated use ShopInventoryService.calculateTotalInventoryValue() - this sums the
+     * deprecated InventoryItem pool, which is never populated in normal operation. */
+    @Deprecated
     public BigDecimal calculateTotalInventoryValue() {
         return inventoryRepository.calculateTotalInventoryValue();
     }
 
+    @Deprecated
     public void updateReorderLevel(Long productId, Integer newLevel) {
         InventoryItem inventory = inventoryRepository.findByProductIdWithLock(productId)
                 .orElseThrow(() -> new RuntimeException("Inventory not found for product: " + productId));
@@ -129,6 +150,7 @@ public class InventoryService {
         inventoryRepository.save(inventory);
     }
 
+    @Deprecated
     public Map<String, Integer> getChannelInventory(Long productId) {
         InventoryItem item = inventoryRepository.findByProductIdWithLock(productId)
                 .orElseThrow(() -> new RuntimeException("Inventory not found"));

@@ -4,6 +4,19 @@ import com.pos_onlineshop.hybrid.products.Product;
 import jakarta.persistence.*;
 import lombok.*;
 
+/**
+ * @deprecated This was a second, entirely independent global stock counter with no
+ * synchronization to InventoryTotal (the authoritative per-shop stock model - see
+ * ShopInventoryService's class comment) - the exact defect that let POS and online
+ * checkout both believe the same physical units were available and sell them twice.
+ * OrderService.createOrderFromCart no longer reads or writes this pool for new orders;
+ * it is retained only so historical pre-hardening orders (which may still have
+ * Order.shop == null) can still be confirmed/cancelled/restored correctly - see
+ * OrderService's legacyConfirmWithoutShop/legacyRestoreWithoutShop. Do not add new
+ * callers. Not deleted, since existing rows/history must not be destroyed without an
+ * explicit migration decision.
+ */
+@Deprecated
 @Entity
 @Table(name = "inventory_items")
 @Data

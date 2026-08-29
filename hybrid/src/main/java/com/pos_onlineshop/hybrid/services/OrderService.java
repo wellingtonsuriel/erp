@@ -15,6 +15,7 @@ import com.pos_onlineshop.hybrid.enums.GLSourceModule;
 import com.pos_onlineshop.hybrid.enums.OrderStatus;
 import com.pos_onlineshop.hybrid.enums.PaymentMethod;
 import com.pos_onlineshop.hybrid.enums.SalesChannel;
+import com.pos_onlineshop.hybrid.enums.ShopType;
 import com.pos_onlineshop.hybrid.gl.FinancialEvent;
 import com.pos_onlineshop.hybrid.mappers.OrderMapper;
 import com.pos_onlineshop.hybrid.orderLines.OrderLine;
@@ -24,6 +25,7 @@ import com.pos_onlineshop.hybrid.orders.OrderRepository;
 import com.pos_onlineshop.hybrid.products.Product;
 import com.pos_onlineshop.hybrid.selling_price.SellingPrice;
 import com.pos_onlineshop.hybrid.shop.Shop;
+import com.pos_onlineshop.hybrid.shop.ShopRepository;
 import com.pos_onlineshop.hybrid.userAccount.UserAccount;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -57,6 +59,7 @@ public class OrderService {
     private final CustomersRepository customersRepository;
     private final OrderMapper orderMapper;
     private final ShopInventoryService shopInventoryService;
+    private final ShopRepository shopRepository;
     private final ZimraService zimraService;
     private final SellingPriceService sellingPriceService;
     private final GLPostingService glPostingService;
@@ -79,6 +82,8 @@ public class OrderService {
             exchangeRate = currencyService.getExchangeRate(baseCurrency, orderCurrency);
         }
 
+        Shop fulfillmentShop = resolveFulfillmentShop(cart.getCartItems());
+
         Order order = Order.builder()
                 .user(user)
                 .currency(orderCurrency)
@@ -86,14 +91,17 @@ public class OrderService {
                 .shippingAddress(shippingAddress)
                 .paymentMethod(paymentMethod)
                 .salesChannel(channel)
+                .shop(fulfillmentShop)
                 .status(OrderStatus.PENDING)
                 .build();
 
         for (CartItem cartItem : cart.getCartItems()) {
             Product product = cartItem.getProduct();
 
-            // Check inventory
-            if (!inventoryService.isInStock(product.getId(), cartItem.getQuantity())) {
+            // Check availability against the authoritative per-shop stock model - the same
+            // InventoryTotal balance POS deducts from, so the two channels can never both
+            // believe the same physical units are free to sell.
+            if (!shopInventoryService.isInStock(fulfillmentShop.getId(), product.getId(), cartItem.getQuantity())) {
                 throw new RuntimeException("Insufficient stock for product: " + product.getName());
             }
 
@@ -114,9 +122,11 @@ public class OrderService {
             order.addOrderLine(orderLine);
 
             if (channel == SalesChannel.ONLINE) {
-                inventoryService.reserveInventory(product.getId(), cartItem.getQuantity());
+                // Reserved, not yet physically removed - see updateOrderStatus for where a
+                // reservation is committed (CONFIRMED) or released (CANCELLED before confirm).
+                shopInventoryService.reserveStock(fulfillmentShop.getId(), product.getId(), cartItem.getQuantity());
             } else {
-                inventoryService.removeStock(product.getId(), cartItem.getQuantity());
+                shopInventoryService.reduceStock(fulfillmentShop.getId(), product.getId(), cartItem.getQuantity());
             }
         }
 
@@ -128,9 +138,56 @@ public class OrderService {
         // Notify new order
         messagingTemplate.convertAndSend("/topic/orders", savedOrder);
 
-        log.info("Created order {} for user {} in currency {}",
-                savedOrder.getId(), user.getUsername(), orderCurrency.getCode());
+        log.info("Created order {} for user {} in currency {}, fulfilled from shop {}",
+                savedOrder.getId(), user.getUsername(), orderCurrency.getCode(), fulfillmentShop.getCode());
         return savedOrder;
+    }
+
+    /**
+     * Picks which shop's physical stock an online/cart-based order draws from. There is no
+     * per-order shop-selection field in CreateOrderRequest today, so tier 1 ("explicit
+     * fulfillment shop") from the hardening spec is not reachable yet - documented here
+     * rather than silently invented. Falls through:
+     * 1. The configured default ONLINE-type shop (ShopType.ONLINE), if one is active.
+     * 2. The first active shop (any type) that has sufficient available stock for every
+     *    line in the cart.
+     * Throws if neither exists - never silently picks a shop that can't fulfill the order.
+     */
+    private Shop resolveFulfillmentShop(List<CartItem> cartItems) {
+        Optional<Shop> defaultOnlineShop = shopRepository.findByActiveTrueAndType(ShopType.ONLINE)
+                .stream().findFirst();
+        if (defaultOnlineShop.isPresent()) {
+            return defaultOnlineShop.get();
+        }
+
+        return shopRepository.findByActiveTrue().stream()
+                .filter(candidate -> cartItems.stream().allMatch(item ->
+                        shopInventoryService.isInStock(candidate.getId(), item.getProduct().getId(), item.getQuantity())))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException(
+                        "No shop is configured or available with sufficient stock to fulfill this order"));
+    }
+
+    /**
+     * Every new online order now always has a shop (see resolveFulfillmentShop), but an
+     * order created before this fix may still have shop == null in the database - ddl-auto
+     * schema changes don't retroactively populate application data. These fall back to the
+     * deprecated InventoryItem pool they were actually reserved/deducted from, so historical
+     * orders keep working, rather than throwing on a null shop.
+     */
+    private void legacyConfirmWithoutShop(Order order) {
+        log.warn("Order {} has no shop recorded (pre-inventory-hardening); confirming via the "
+                + "deprecated InventoryItem pool", order.getId());
+        for (OrderLine line : order.getOrderLines()) {
+            inventoryService.releaseReservation(line.getProduct().getId(), line.getQuantity());
+            inventoryService.removeStock(line.getProduct().getId(), line.getQuantity());
+        }
+    }
+
+    private void legacyRestoreWithoutShop(Order order, OrderLine line) {
+        log.warn("Order {} has no shop recorded (pre-inventory-hardening); restoring via the "
+                + "deprecated InventoryItem pool", order.getId());
+        inventoryService.addStock(line.getProduct().getId(), line.getQuantity());
     }
 
     /**
@@ -277,23 +334,26 @@ public class OrderService {
         order.setStatus(newStatus);
 
         if (newStatus == OrderStatus.CONFIRMED && oldStatus == OrderStatus.PENDING) {
-            // Convert reservations to actual stock deduction for online orders
-            if (order.getSalesChannel() == SalesChannel.ONLINE) {
+            // Convert reservations to actual, permanent stock deduction for online orders.
+            // The oldStatus == PENDING guard makes this idempotent: a second CONFIRMED call
+            // on an already-CONFIRMED order sees oldStatus == CONFIRMED and skips this block.
+            if (order.getSalesChannel() == SalesChannel.ONLINE && order.getShop() != null) {
                 for (OrderLine line : order.getOrderLines()) {
-                    inventoryService.releaseReservation(line.getProduct().getId(), line.getQuantity());
-                    inventoryService.removeStock(line.getProduct().getId(), line.getQuantity());
+                    shopInventoryService.commitReservedStock(order.getShop().getId(), line.getProduct().getId(), line.getQuantity());
                 }
+            } else if (order.getSalesChannel() == SalesChannel.ONLINE) {
+                legacyConfirmWithoutShop(order);
             }
             accountancyService.createPaymentAccountingEntries(order);
         } else if (newStatus == OrderStatus.CANCELLED) {
             // Restore inventory
             for (OrderLine line : order.getOrderLines()) {
-                if (order.getSalesChannel() == SalesChannel.ONLINE && oldStatus == OrderStatus.PENDING) {
-                    inventoryService.releaseReservation(line.getProduct().getId(), line.getQuantity());
+                if (order.getSalesChannel() == SalesChannel.ONLINE && oldStatus == OrderStatus.PENDING && order.getShop() != null) {
+                    shopInventoryService.releaseReservation(order.getShop().getId(), line.getProduct().getId(), line.getQuantity());
                 } else if (order.getShop() != null) {
                     shopInventoryService.addStock(order.getShop().getId(), line.getProduct().getId(), line.getQuantity());
                 } else {
-                    inventoryService.addStock(line.getProduct().getId(), line.getQuantity());
+                    legacyRestoreWithoutShop(order, line);
                 }
             }
             if (oldStatus != OrderStatus.PENDING) {
@@ -523,12 +583,12 @@ public class OrderService {
             // Restore inventory before deletion
             if (order.getStatus() != OrderStatus.CANCELLED) {
                 for (OrderLine line : order.getOrderLines()) {
-                    if (order.getSalesChannel() == SalesChannel.ONLINE && order.getStatus() == OrderStatus.PENDING) {
-                        inventoryService.releaseReservation(line.getProduct().getId(), line.getQuantity());
+                    if (order.getSalesChannel() == SalesChannel.ONLINE && order.getStatus() == OrderStatus.PENDING && order.getShop() != null) {
+                        shopInventoryService.releaseReservation(order.getShop().getId(), line.getProduct().getId(), line.getQuantity());
                     } else if (order.getShop() != null) {
                         shopInventoryService.addStock(order.getShop().getId(), line.getProduct().getId(), line.getQuantity());
                     } else {
-                        inventoryService.addStock(line.getProduct().getId(), line.getQuantity());
+                        legacyRestoreWithoutShop(order, line);
                     }
                 }
             }

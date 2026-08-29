@@ -28,7 +28,6 @@ import java.util.Map;
 public class AnalyticsController {
 
     private final OrderService orderService;
-    private final InventoryService inventoryService;
     private final UserAccountService userAccountService;
     private final AccountancyService accountancyService;
     private final ShopInventoryService shopInventoryService;
@@ -66,9 +65,12 @@ public class AnalyticsController {
 //                dashboard.put("shopUnderstockedCount", shopInventoryService.getUnderstockedItems(shopId).size());
 //                dashboard.put("shopItemsNeedingRestock", shopInventoryService.getItemsNeedingRestock(shopId).size());
             } else {
-                // System-wide inventory data using existing InventoryService
-                dashboard.put("totalInventoryValue", inventoryService.calculateTotalInventoryValue());
-                dashboard.put("lowStockCount", inventoryService.findLowStockItems().size());
+                // System-wide inventory value from the authoritative InventoryTotal model -
+                // not InventoryService/InventoryItem, a separate and effectively-dead stock
+                // pool (see ShopInventoryService's class comment). lowStockCount is not yet
+                // available on the InventoryTotal model - tracked as follow-up work rather
+                // than left silently wrong via the deprecated pool.
+                dashboard.put("totalInventoryValue", shopInventoryService.calculateTotalInventoryValue());
             }
 
             // User statistics
@@ -226,10 +228,12 @@ public class AnalyticsController {
 //                inventoryData.put("needsRestock", shopInventoryService.getItemsNeedingRestock(shopId));
                 inventoryData.put("shopId", shopId);
             } else {
-                // System-wide inventory using existing InventoryService
-                inventoryData.put("totalValue", inventoryService.calculateTotalInventoryValue());
-                inventoryData.put("lowStockItems", inventoryService.findLowStockItems());
-                inventoryData.put("lowStockCount", inventoryService.findLowStockItems().size());
+                // System-wide inventory value from the authoritative InventoryTotal model -
+                // see the dashboard endpoint above for why InventoryService/InventoryItem is
+                // no longer the source here. lowStockItems/lowStockCount removed rather than
+                // left silently wrong: the deprecated InventoryItem pool they read from is
+                // never populated in normal operation, so they always reported empty.
+                inventoryData.put("totalValue", shopInventoryService.calculateTotalInventoryValue());
             }
 
             return ResponseEntity.ok(inventoryData);

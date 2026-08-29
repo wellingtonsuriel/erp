@@ -30,6 +30,20 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+/**
+ * Manages the authoritative per-shop operational stock model. InventoryTotal.totalstock is
+ * the single live physical-quantity counter both POS (see POSService) and online checkout
+ * (see OrderService.createOrderFromCart) draw from - there is no other authoritative stock
+ * pool. ShopInventory rows are an immutable receipt/lot audit trail (quantity is set once at
+ * insert and never decremented - see updateShopInventory's comment) used only to look up the
+ * cost of the most recent receipt, never as a current-quantity source.
+ *
+ * The legacy InventoryItem/InventoryService pool is deprecated: it was a second, entirely
+ * disconnected global stock counter that only the online order path ever consulted, with no
+ * synchronization to InventoryTotal at all - the exact defect that let the same physical
+ * stock be sold twice through POS and online independently. See InventoryService's class
+ * Javadoc for the deprecation note.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -239,8 +253,10 @@ public class ShopInventoryService {
     }
 
     /**
-     * Check if product is in stock with sufficient quantity
-     * Checks against inventoryTotal (current available stock)
+     * Check if product is in stock with sufficient quantity. Checks AVAILABLE stock
+     * (totalstock minus whatever is already reserved by a pending order) - not raw
+     * totalstock - so POS and online checkout can never both believe the same units are
+     * free to sell.
      */
     @Transactional(readOnly = true)
     public boolean isInStock(Long shopId, Long productId, Integer requiredQuantity) {
@@ -258,7 +274,121 @@ public class ShopInventoryService {
         }
 
         InventoryTotal inventoryTotal = inventoryTotalOpt.get();
-        return inventoryTotal.getTotalstock() >= requiredQuantity;
+        return inventoryTotal.getAvailableStock() >= requiredQuantity;
+    }
+
+    /**
+     * Reserves stock against a not-yet-finalized order (a PENDING online order) without
+     * physically removing it from the shelf yet. Locks the same InventoryTotal row POS
+     * deducts from, so a reservation and a POS sale can never both succeed against stock
+     * that only exists once.
+     */
+    public InventoryTotal reserveStock(Long shopId, Long productId, Integer quantity) {
+        if (quantity == null || quantity <= 0) {
+            throw new IllegalArgumentException("Quantity to reserve must be positive, received: " + quantity);
+        }
+
+        InventoryTotal inventoryTotal = inventoryTotalRepository.findByShopIdAndProductIdWithLock(shopId, productId)
+                .orElseThrow(() -> new RuntimeException(
+                        "Inventory total not found for shop " + shopId + " and product " + productId));
+
+        if (inventoryTotal.getAvailableStock() < quantity) {
+            throw new RuntimeException("Insufficient available stock to reserve. Available: "
+                    + inventoryTotal.getAvailableStock() + ", Requested: " + quantity);
+        }
+
+        inventoryTotal.setReservedStock(inventoryTotal.getReservedStock() + quantity);
+        inventoryTotal.setLastUpdated(LocalDateTime.now());
+        InventoryTotal saved = inventoryTotalRepository.save(inventoryTotal);
+
+        log.info("Reserved {} units for shop {} product {}. Reserved now {}, available now {}",
+                quantity, shopId, productId, saved.getReservedStock(), saved.getAvailableStock());
+        return saved;
+    }
+
+    /**
+     * Releases a reservation without touching totalstock - used when a PENDING order is
+     * cancelled before it was ever confirmed, i.e. the stock was never physically removed.
+     */
+    public InventoryTotal releaseReservation(Long shopId, Long productId, Integer quantity) {
+        if (quantity == null || quantity <= 0) {
+            throw new IllegalArgumentException("Quantity to release must be positive, received: " + quantity);
+        }
+
+        InventoryTotal inventoryTotal = inventoryTotalRepository.findByShopIdAndProductIdWithLock(shopId, productId)
+                .orElseThrow(() -> new RuntimeException(
+                        "Inventory total not found for shop " + shopId + " and product " + productId));
+
+        if (quantity > inventoryTotal.getReservedStock()) {
+            throw new IllegalStateException("Cannot release " + quantity + " units - only "
+                    + inventoryTotal.getReservedStock() + " are currently reserved for shop " + shopId
+                    + " product " + productId);
+        }
+
+        inventoryTotal.setReservedStock(inventoryTotal.getReservedStock() - quantity);
+        inventoryTotal.setLastUpdated(LocalDateTime.now());
+        InventoryTotal saved = inventoryTotalRepository.save(inventoryTotal);
+
+        log.info("Released reservation of {} units for shop {} product {}. Reserved now {}",
+                quantity, shopId, productId, saved.getReservedStock());
+        return saved;
+    }
+
+    /**
+     * Converts an existing reservation into an actual, permanent stock reduction - used when
+     * a PENDING online order is CONFIRMED (paid) and the units it reserved are now genuinely
+     * gone from the shelf.
+     */
+    public InventoryTotal commitReservedStock(Long shopId, Long productId, Integer quantity) {
+        if (quantity == null || quantity <= 0) {
+            throw new IllegalArgumentException("Quantity to commit must be positive, received: " + quantity);
+        }
+
+        InventoryTotal inventoryTotal = inventoryTotalRepository.findByShopIdAndProductIdWithLock(shopId, productId)
+                .orElseThrow(() -> new RuntimeException(
+                        "Inventory total not found for shop " + shopId + " and product " + productId));
+
+        if (quantity > inventoryTotal.getReservedStock()) {
+            throw new IllegalStateException("Cannot commit " + quantity + " units - only "
+                    + inventoryTotal.getReservedStock() + " are currently reserved for shop " + shopId
+                    + " product " + productId);
+        }
+
+        inventoryTotal.setReservedStock(inventoryTotal.getReservedStock() - quantity);
+        inventoryTotal.setTotalstock(inventoryTotal.getTotalstock() - quantity);
+        inventoryTotal.setLastUpdated(LocalDateTime.now());
+        InventoryTotal saved = inventoryTotalRepository.save(inventoryTotal);
+
+        log.info("Committed reservation of {} units for shop {} product {}. Total stock now {}",
+                quantity, shopId, productId, saved.getTotalstock());
+        return saved;
+    }
+
+    /**
+     * The single authoritative "how much is our inventory worth" figure - used by both
+     * ControlAccountReconciliationService (to compare against the 1200 GL balance) and
+     * AnalyticsController's dashboard, so the two can never disagree with each other the way
+     * they did while the dashboard summed the separate, effectively-dead InventoryItem pool.
+     * Values on-hand InventoryTotal quantity at each (shop, product) pair's latest received
+     * lot cost (ShopInventory is a cost/history source only here, never a quantity source).
+     * A pair with stock but no receipt lot on record is valued at zero rather than a guessed
+     * cost - the master accounting rule "never manufacture a cost."
+     */
+    @Transactional(readOnly = true)
+    public BigDecimal calculateTotalInventoryValue() {
+        return inventoryTotalRepository.findAllWithShopAndProduct().stream()
+                .map(this::valueAtLatestLotCost)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal valueAtLatestLotCost(InventoryTotal inventoryTotal) {
+        if (inventoryTotal.getTotalstock() == null || inventoryTotal.getTotalstock() <= 0) {
+            return BigDecimal.ZERO;
+        }
+        return shopInventoryRepository
+                .findFirstByShopAndProductOrderByIdDesc(inventoryTotal.getShop(), inventoryTotal.getProduct())
+                .map(lot -> lot.getUnitPrice().multiply(BigDecimal.valueOf(inventoryTotal.getTotalstock())))
+                .orElse(BigDecimal.ZERO);
     }
 
     /**

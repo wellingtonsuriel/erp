@@ -7,8 +7,10 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 /**
- * InventoryTotal entity tracking the running total stock per product per shop.
- * This table is updated whenever stock is added or reduced.
+ * InventoryTotal entity tracking the running total stock per product per shop - the single
+ * authoritative operational stock balance for both POS and online sales (see
+ * ShopInventoryService's class comment). ShopInventory remains an immutable receipt/lot
+ * history used only for cost lookup, never as a current-quantity source.
  */
 @Entity
 @Table(name = "inventory_total",
@@ -36,10 +38,23 @@ public class InventoryTotal {
     @Builder.Default
     private Integer totalstock = 0;
 
+    /** Stock committed to a not-yet-finalized order (currently: a PENDING online order) but
+     * not yet physically removed from the shelf. Always &lt;= totalstock. */
+    @Column(name = "reserved_stock", nullable = false, columnDefinition = "INT NOT NULL DEFAULT 0")
+    @Builder.Default
+    private Integer reservedStock = 0;
+
     @Column(name = "last_updated")
     @Builder.Default
     private LocalDateTime lastUpdated = LocalDateTime.now();
 
     @Version
     private Long version; // Optimistic locking for concurrent updates
+
+    /** totalstock minus whatever is already committed to a pending order. */
+    public int getAvailableStock() {
+        int total = totalstock != null ? totalstock : 0;
+        int reserved = reservedStock != null ? reservedStock : 0;
+        return total - reserved;
+    }
 }
