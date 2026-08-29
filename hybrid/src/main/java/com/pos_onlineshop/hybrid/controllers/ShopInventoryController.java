@@ -14,11 +14,21 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Back-office inventory administration - distinct from the cashier/POS terminal flow
+ * (POSController, InventoryTransferController), which authenticates via a Cashier id in the
+ * request body rather than a bearer token, per SecurityConfiguration's documented "POS/
+ * checkout has never required a token" exemption. This controller has no such cashier-session
+ * dependency and previously had no access control of any kind - createShopInventory() posts
+ * directly to the GL (STOCK_RECEIPT), so leaving it open was exactly the "financial endpoint
+ * behind permitAll" gap security hardening is meant to close.
+ */
 @RestController
 @RequestMapping("/api/shop-inventory")
 @RequiredArgsConstructor
@@ -96,6 +106,7 @@ public class ShopInventoryController {
      * Delete inventory record
      */
     @DeleteMapping("/shop/{shopId}/product/{productId}")
+    @PreAuthorize("hasAuthority('INVENTORY_ADJUST') or hasRole('ADMIN')")
     public ResponseEntity<Void> deleteInventory(
             @PathVariable Long shopId,
             @PathVariable Long productId) {
@@ -127,6 +138,7 @@ public class ShopInventoryController {
      * Reduce stock (for sales or transfers)
      */
     @PostMapping("/shop/{shopId}/product/{productId}/reduce-stock")
+    @PreAuthorize("hasAuthority('INVENTORY_ADJUST') or hasRole('ADMIN')")
     public ResponseEntity<ShopInventoryResponse> reduceStock(
             @PathVariable Long shopId,
             @PathVariable Long productId,
@@ -180,6 +192,7 @@ public class ShopInventoryController {
      * - Use PATCH endpoint to update metadata (prices, thresholds, etc.)
      */
     @PostMapping
+    @PreAuthorize("hasAuthority('INVENTORY_ADJUST') or hasRole('ADMIN')")
     public ResponseEntity<ShopInventoryResponse> createShopInventory(
             @Valid @RequestBody CreateShopInventoryRequest request) {
 
@@ -200,6 +213,7 @@ public class ShopInventoryController {
      * Update existing shop inventory with partial updates
      */
     @PatchMapping("/shop/{shopId}/product/{productId}")
+    @PreAuthorize("hasAuthority('INVENTORY_ADJUST') or hasRole('ADMIN')")
     public ResponseEntity<ShopInventoryResponse> updateShopInventory(
             @PathVariable Long shopId,
             @PathVariable Long productId,
