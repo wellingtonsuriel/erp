@@ -25,6 +25,8 @@ import java.time.LocalDate;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -35,6 +37,8 @@ class ControlAccountReconciliationServiceTest {
     @Mock private SupplierInvoiceRepository supplierInvoiceRepository;
     @Mock private CustomerInvoiceRepository customerInvoiceRepository;
     @Mock private ShopInventoryService shopInventoryService;
+    @Mock private com.pos_onlineshop.hybrid.controlAccountReconciliation.ControlAccountReconciliationRunRepository controlAccountReconciliationRunRepository;
+    @Mock private com.pos_onlineshop.hybrid.controlAccountReconciliation.ControlAccountReconciliationLineRepository controlAccountReconciliationLineRepository;
 
     private ControlAccountReconciliationService service;
 
@@ -46,7 +50,8 @@ class ControlAccountReconciliationServiceTest {
     @BeforeEach
     void setUp() {
         service = new ControlAccountReconciliationService(accountRepository, journalLineRepository,
-                supplierInvoiceRepository, customerInvoiceRepository, shopInventoryService);
+                supplierInvoiceRepository, customerInvoiceRepository, shopInventoryService,
+                controlAccountReconciliationRunRepository, controlAccountReconciliationLineRepository);
 
         accountsPayable = Account.builder().id(1L).code("2100").name("Accounts Payable")
                 .accountType(AccountType.LIABILITY).normalBalance(DebitCredit.CREDIT).controlAccount(true).active(true).build();
@@ -55,9 +60,9 @@ class ControlAccountReconciliationServiceTest {
         inventoryAsset = Account.builder().id(3L).code("1200").name("Inventory Asset")
                 .accountType(AccountType.ASSET).normalBalance(DebitCredit.DEBIT).controlAccount(true).active(true).build();
 
-        when(accountRepository.findByCode("2100")).thenReturn(java.util.Optional.of(accountsPayable));
-        when(accountRepository.findByCode("1100")).thenReturn(java.util.Optional.of(accountsReceivable));
-        when(accountRepository.findByCode("1200")).thenReturn(java.util.Optional.of(inventoryAsset));
+        org.mockito.Mockito.lenient().when(accountRepository.findByCode("2100")).thenReturn(java.util.Optional.of(accountsPayable));
+        org.mockito.Mockito.lenient().when(accountRepository.findByCode("1100")).thenReturn(java.util.Optional.of(accountsReceivable));
+        org.mockito.Mockito.lenient().when(accountRepository.findByCode("1200")).thenReturn(java.util.Optional.of(inventoryAsset));
     }
 
     private SupplierInvoice supplierInvoice(BigDecimal total, BigDecimal paid) {
@@ -169,5 +174,63 @@ class ControlAccountReconciliationServiceTest {
                 .filter(l -> "1200".equals(l.getAccountCode())).findFirst().orElseThrow();
         assertFalse(invLine.isMatched());
         assertEquals(0, new BigDecimal("600.00").compareTo(invLine.getVariance()));
+    }
+
+    @Test
+    void runAndPersistSavesEveryLineOfTheReportAsAHistoryRecord() {
+        when(journalLineRepository.aggregateBeforeDate(asOfDate.plusDays(1), null)).thenReturn(List.<Object[]>of(
+                new Object[]{1L, BigDecimal.ZERO, new BigDecimal("500.00")}));
+        when(supplierInvoiceRepository.findByStatusIn(List.of(SupplierInvoiceStatus.POSTED, SupplierInvoiceStatus.PARTIALLY_PAID)))
+                .thenReturn(List.of(supplierInvoice(new BigDecimal("450.00"), BigDecimal.ZERO)));
+        when(customerInvoiceRepository.findByStatusIn(List.of(CustomerInvoiceStatus.POSTED, CustomerInvoiceStatus.PARTIALLY_PAID)))
+                .thenReturn(List.of());
+        when(shopInventoryService.calculateTotalInventoryValue()).thenReturn(BigDecimal.ZERO);
+        when(controlAccountReconciliationRunRepository.save(any(com.pos_onlineshop.hybrid.controlAccountReconciliation.ControlAccountReconciliationRun.class)))
+                .thenAnswer(inv -> {
+                    com.pos_onlineshop.hybrid.controlAccountReconciliation.ControlAccountReconciliationRun r = inv.getArgument(0);
+                    if (r.getId() == null) r.setId(10L);
+                    return r;
+                });
+        when(controlAccountReconciliationLineRepository.saveAll(anyList())).thenAnswer(inv -> inv.getArgument(0));
+
+        var response = service.runAndPersist(asOfDate, "admin1");
+
+        assertEquals(10L, response.getId());
+        assertEquals("admin1", response.getPerformedBy());
+        assertEquals(3, response.getLines().size());
+        var apLine = response.getLines().stream().filter(l -> "2100".equals(l.getAccountCode())).findFirst().orElseThrow();
+        assertFalse(apLine.isMatched());
+        assertEquals(0, new BigDecimal("50.00").compareTo(apLine.getVariance()));
+    }
+
+    @Test
+    void resolveLineRecordsTheReasonAndMarksItResolved() {
+        var line = com.pos_onlineshop.hybrid.controlAccountReconciliation.ControlAccountReconciliationLine.builder()
+                .id(5L).run(com.pos_onlineshop.hybrid.controlAccountReconciliation.ControlAccountReconciliationRun.builder().id(10L).build())
+                .accountCode("2100").accountName("Accounts Payable").subledgerName("Supplier invoice subledger")
+                .glBalance(new BigDecimal("500.00")).subledgerBalance(new BigDecimal("450.00"))
+                .variance(new BigDecimal("50.00")).matched(false).resolved(false).build();
+        when(controlAccountReconciliationLineRepository.findById(5L)).thenReturn(java.util.Optional.of(line));
+        when(controlAccountReconciliationLineRepository.save(any(com.pos_onlineshop.hybrid.controlAccountReconciliation.ControlAccountReconciliationLine.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        var response = service.resolveLine(5L, "Known timing difference - invoice posted next day", "admin1");
+
+        assertTrue(response.isResolved());
+        assertEquals("Known timing difference - invoice posted next day", response.getResolutionReason());
+        assertEquals("admin1", response.getResolvedBy());
+        assertNotNull(response.getResolvedAt());
+    }
+
+    @Test
+    void resolveLineRejectsAnAlreadyResolvedLine() {
+        var line = com.pos_onlineshop.hybrid.controlAccountReconciliation.ControlAccountReconciliationLine.builder()
+                .id(5L).run(com.pos_onlineshop.hybrid.controlAccountReconciliation.ControlAccountReconciliationRun.builder().id(10L).build())
+                .accountCode("2100").accountName("Accounts Payable").subledgerName("Supplier invoice subledger")
+                .glBalance(BigDecimal.ZERO).subledgerBalance(BigDecimal.ZERO).variance(BigDecimal.ZERO)
+                .matched(true).resolved(true).build();
+        when(controlAccountReconciliationLineRepository.findById(5L)).thenReturn(java.util.Optional.of(line));
+
+        assertThrows(IllegalStateException.class, () -> service.resolveLine(5L, "reason", "admin1"));
     }
 }
