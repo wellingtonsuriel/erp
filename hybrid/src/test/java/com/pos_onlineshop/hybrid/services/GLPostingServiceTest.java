@@ -242,7 +242,7 @@ class GLPostingServiceTest {
 
         JournalEntry result = glPostingService.postManual(
                 "MANUAL-JOURNAL-7", LocalDate.of(2026, 8, 15), "Accrual correction",
-                "MANUAL_JOURNAL", 7L, specs, "accountant1");
+                GLSourceModule.MANUAL, "MANUAL_JOURNAL", 7L, specs, "accountant1");
 
         assertEquals(2, result.getLines().size());
         assertEquals(GLSourceModule.MANUAL, result.getSourceModule());
@@ -264,7 +264,7 @@ class GLPostingServiceTest {
 
         assertThrows(JournalImbalanceException.class, () -> glPostingService.postManual(
                 "MANUAL-JOURNAL-8", LocalDate.of(2026, 8, 15), "Bad accrual",
-                "MANUAL_JOURNAL", 8L, specs, "accountant1"));
+                GLSourceModule.MANUAL, "MANUAL_JOURNAL", 8L, specs, "accountant1"));
     }
 
     @Test
@@ -282,7 +282,7 @@ class GLPostingServiceTest {
 
         assertThrows(JournalImbalanceException.class, () -> glPostingService.postManual(
                 "MANUAL-JOURNAL-9", LocalDate.of(2026, 8, 15), "Bad manual entry",
-                "MANUAL_JOURNAL", 9L, specs, "accountant1"));
+                GLSourceModule.MANUAL, "MANUAL_JOURNAL", 9L, specs, "accountant1"));
     }
 
     @Test
@@ -292,7 +292,7 @@ class GLPostingServiceTest {
 
         JournalEntry result = glPostingService.postManual(
                 "MANUAL-JOURNAL-7", LocalDate.of(2026, 8, 15), "Accrual correction",
-                "MANUAL_JOURNAL", 7L, List.of(), "accountant1");
+                GLSourceModule.MANUAL, "MANUAL_JOURNAL", 7L, List.of(), "accountant1");
 
         assertSame(existing, result);
         verify(journalEntryRepository, never()).save(any());

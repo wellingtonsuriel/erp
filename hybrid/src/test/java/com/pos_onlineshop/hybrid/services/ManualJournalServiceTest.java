@@ -7,6 +7,7 @@ import com.pos_onlineshop.hybrid.currency.CurrencyRepository;
 import com.pos_onlineshop.hybrid.dtos.*;
 import com.pos_onlineshop.hybrid.enums.AccountType;
 import com.pos_onlineshop.hybrid.enums.DebitCredit;
+import com.pos_onlineshop.hybrid.enums.GLSourceModule;
 import com.pos_onlineshop.hybrid.enums.ManualJournalStatus;
 import com.pos_onlineshop.hybrid.gl.ManualLineSpec;
 import com.pos_onlineshop.hybrid.journalEntry.JournalEntry;
@@ -170,7 +171,7 @@ class ManualJournalServiceTest {
 
         JournalEntry postedEntry = JournalEntry.builder().id(50L).entryNumber(10L).build();
         when(glPostingService.postManual(eq("MANUAL-JOURNAL-5"), eq(journal.getEntryDate()),
-                eq("Accrual correction"), eq("MANUAL_JOURNAL"), eq(5L), anyList(), eq("manager1")))
+                eq("Accrual correction"), eq(GLSourceModule.MANUAL), eq("MANUAL_JOURNAL"), eq(5L), anyList(), eq("manager1")))
                 .thenReturn(postedEntry);
 
         ManualJournalActionRequest request = new ManualJournalActionRequest();
@@ -182,7 +183,7 @@ class ManualJournalServiceTest {
         assertEquals(10L, response.getPostedJournalEntryNumber());
 
         ArgumentCaptor<List<ManualLineSpec>> captor = ArgumentCaptor.forClass(List.class);
-        verify(glPostingService).postManual(anyString(), any(), anyString(), anyString(), anyLong(), captor.capture(), anyString());
+        verify(glPostingService).postManual(anyString(), any(), anyString(), eq(GLSourceModule.MANUAL), anyString(), anyLong(), captor.capture(), anyString());
         assertEquals(2, captor.getValue().size());
     }
 

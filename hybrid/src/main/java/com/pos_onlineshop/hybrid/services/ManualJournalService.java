@@ -6,6 +6,7 @@ import com.pos_onlineshop.hybrid.currency.Currency;
 import com.pos_onlineshop.hybrid.currency.CurrencyRepository;
 import com.pos_onlineshop.hybrid.dtos.*;
 import com.pos_onlineshop.hybrid.enums.DebitCredit;
+import com.pos_onlineshop.hybrid.enums.GLSourceModule;
 import com.pos_onlineshop.hybrid.gl.ManualLineSpec;
 import com.pos_onlineshop.hybrid.journalEntry.JournalEntry;
 import com.pos_onlineshop.hybrid.manualJournal.ManualJournal;
@@ -133,6 +134,7 @@ public class ManualJournalService {
                 "MANUAL-JOURNAL-" + journal.getId(),
                 journal.getEntryDate(),
                 journal.getDescription(),
+                GLSourceModule.MANUAL,
                 "MANUAL_JOURNAL",
                 journal.getId(),
                 specs,
