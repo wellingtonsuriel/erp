@@ -51,6 +51,7 @@ class SalesReturnServiceTest {
     @Mock private ShopInventoryService shopInventoryService;
     @Mock private GLPostingService glPostingService;
     @Mock private CurrencyService currencyService;
+    @Mock private InventoryValuationService inventoryValuationService;
 
     private SalesReturnService service;
     private Currency usd;
@@ -68,7 +69,8 @@ class SalesReturnServiceTest {
     @BeforeEach
     void setUp() {
         service = new SalesReturnService(salesReturnRepository, salesReturnLineRepository, orderRepository,
-                orderLineRepository, userAccountRepository, accountRepository, shopInventoryService, glPostingService, currencyService);
+                orderLineRepository, userAccountRepository, accountRepository, shopInventoryService, glPostingService,
+                currencyService, inventoryValuationService);
 
         usd = Currency.builder().id(1L).code("USD").build();
         lenient().when(currencyService.getBaseCurrency()).thenReturn(usd);
@@ -166,6 +168,8 @@ class SalesReturnServiceTest {
         assertEquals(0, new BigDecimal("2.00").compareTo(response.getTotalTaxReversed()));
         assertEquals(0, new BigDecimal("12.00").compareTo(response.getTotalCostReversed()));
         verify(shopInventoryService).addStock(1L, 1L, 2);
+        verify(inventoryValuationService).restoreCostLayer(eq(shop), eq(product), eq(2),
+                eq(new BigDecimal("6.00")), eq(usd), eq(InventoryMovementType.SALE_RETURN), anyString(), eq(LocalDate.of(2026, 8, 15)));
 
         List<ManualLineSpec> specs = captor.getValue();
         BigDecimal totalDebits = specs.stream().map(ManualLineSpec::debitAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -195,5 +199,6 @@ class SalesReturnServiceTest {
         assertNull(response.getTotalCostReversed());
         List<ManualLineSpec> specs = captor.getValue();
         assertTrue(specs.stream().noneMatch(s -> s.account() == inventory || s.account() == cogs));
+        verify(inventoryValuationService, never()).restoreCostLayer(any(), any(), anyInt(), any(), any(), any(), anyString(), any());
     }
 }

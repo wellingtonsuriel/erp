@@ -8,6 +8,7 @@ import com.pos_onlineshop.hybrid.dtos.SalesReturnLineRequest;
 import com.pos_onlineshop.hybrid.dtos.SalesReturnLineResponse;
 import com.pos_onlineshop.hybrid.dtos.SalesReturnResponse;
 import com.pos_onlineshop.hybrid.enums.GLSourceModule;
+import com.pos_onlineshop.hybrid.enums.InventoryMovementType;
 import com.pos_onlineshop.hybrid.enums.OrderStatus;
 import com.pos_onlineshop.hybrid.enums.PaymentMethod;
 import com.pos_onlineshop.hybrid.enums.SalesChannel;
@@ -65,6 +66,7 @@ public class SalesReturnService {
     private final ShopInventoryService shopInventoryService;
     private final GLPostingService glPostingService;
     private final CurrencyService currencyService;
+    private final InventoryValuationService inventoryValuationService;
 
     @Transactional(readOnly = true)
     public List<SalesReturnResponse> findAll() {
@@ -132,7 +134,18 @@ public class SalesReturnService {
             totalGross = totalGross.add(lineGross);
             totalTax = totalTax.add(lineTax);
 
+            // Quantity dimension: InventoryTotal goes back up regardless of whether the cost
+            // is known (the units are physically back on the shelf either way).
             shopInventoryService.addStock(order.getShop().getId(), orderLine.getProduct().getId(), lineRequest.getQuantityReturned());
+
+            // Valuation dimension: restore a real cost layer at the price the units left at
+            // (never at selling price - see the class comment), only when that cost is known.
+            if (orderLine.getUnitCost() != null) {
+                inventoryValuationService.restoreCostLayer(order.getShop(), orderLine.getProduct(),
+                        lineRequest.getQuantityReturned(), orderLine.getUnitCost(), order.getCurrency(),
+                        InventoryMovementType.SALE_RETURN, "SALES_RETURN-" + request.getReturnNumber(),
+                        request.getReturnDate());
+            }
         }
 
         SalesReturn salesReturn = SalesReturn.builder()

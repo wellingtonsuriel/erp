@@ -63,6 +63,7 @@ public class OrderService {
     private final ZimraService zimraService;
     private final SellingPriceService sellingPriceService;
     private final GLPostingService glPostingService;
+    private final InventoryValuationService inventoryValuationService;
 
     @Transactional
     public Order createOrderFromCart(UserAccount user, String shippingAddress,
@@ -198,11 +199,14 @@ public class OrderService {
      * data doesn't actually make. If/when a real credit-order flow is added, that call site
      * should emit ONLINE_ORDER_UNPAID against 1100 Accounts Receivable instead.
      *
-     * costAmount is deliberately left null: the online-channel stock pool (InventoryItem) has
-     * no cost field at all (confirmed by inspection - quantity/reservedQuantity/reorderLevel
-     * only), so there is no reliable cost source for online COGS. Posting a guessed cost - or
-     * worse, the selling price - would misstate margin. The NET/TAX/GROSS lines still post
-     * correctly; the COGS/Inventory pair is simply absent until Product gains a real cost field.
+     * costAmount is deliberately left null here: revenue is recognized at checkout/payment
+     * time (this method), but the stock backing this order is only reserved at this point,
+     * not yet physically committed (see createOrderFromCart) - so there is nothing to cost
+     * yet. COGS is posted separately, in its own journal entry, when the reservation is
+     * actually committed - see postOnlineOrderCogsToGeneralLedger, called from
+     * updateOrderStatus's CONFIRMED branch. This mirrors the master accounting rule that a
+     * reservation alone must never touch the GL: only an actual physical stock reduction
+     * recognizes COGS.
      */
     private void postOnlineOrderToGeneralLedger(Order savedOrder, PaymentMethod paymentMethod) {
         Currency currency = savedOrder.getCurrency();
@@ -231,6 +235,66 @@ public class OrderService {
                 .netAmount(net)
                 .taxAmount(tax)
                 .costAmount(null)
+                .postedBy("system")
+                .build();
+
+        glPostingService.post(event);
+    }
+
+    /**
+     * Posts COGS/Inventory for an online order at the moment its reservation is actually
+     * committed to a physical stock reduction (see updateOrderStatus's CONFIRMED branch) -
+     * a separate journal entry from postOnlineOrderToGeneralLedger's revenue/tax entry, since
+     * the two happen at genuinely different times for this channel. Reuses the
+     * ONLINE_ORDER_PAID posting rule (its COST line pair is exactly Dr 5000 COGS / Cr 1200
+     * Inventory) with GROSS/NET/TAX left at zero, so only the cost pair posts - see
+     * GLPostingService.post's "amount <= 0 is skipped" behavior. Real FIFO cost, never
+     * guessed: if any line's cost layers don't fully cover its quantity (see
+     * InventoryValuationService.CostResult.fullyCosted), no COGS entry is posted at all for
+     * this order rather than posting a partial, understated one.
+     */
+    private void postOnlineOrderCogsToGeneralLedger(Order order) {
+        BigDecimal totalCost = BigDecimal.ZERO;
+        boolean fullyCosted = true;
+        for (OrderLine line : order.getOrderLines()) {
+            InventoryValuationService.CostResult result = inventoryValuationService.getCostForSale(
+                    order.getShop(), line.getProduct(), line.getQuantity(), "ORDER-" + order.getId());
+            if (result.isFullyCosted()) {
+                line.setUnitCost(result.getTotalCost().divide(
+                        BigDecimal.valueOf(line.getQuantity()), 4, java.math.RoundingMode.HALF_UP));
+                totalCost = totalCost.add(result.getTotalCost());
+            } else {
+                fullyCosted = false;
+            }
+        }
+
+        if (!fullyCosted || totalCost.compareTo(BigDecimal.ZERO) <= 0) {
+            if (!fullyCosted) {
+                log.warn("Online order {} confirmed with incomplete cost layer coverage - COGS not posted", order.getId());
+            }
+            return;
+        }
+
+        Currency currency = order.getCurrency();
+        Currency baseCurrency = currencyService.getBaseCurrency();
+        BigDecimal exchangeRate = currency != null && !currency.equals(baseCurrency)
+                ? currencyService.getExchangeRate(currency, baseCurrency) : BigDecimal.ONE;
+
+        FinancialEvent event = FinancialEvent.builder()
+                .eventType(FinancialEventType.ONLINE_ORDER_PAID)
+                .sourceModule(GLSourceModule.ORDER)
+                .sourceReferenceType("ORDER")
+                .sourceReferenceId(order.getId())
+                .idempotencyKey("ONLINE-ORDER-COGS-" + order.getId())
+                .eventDate(java.time.LocalDate.now())
+                .description("Online order " + order.getId() + " fulfilled - COGS")
+                .shop(order.getShop())
+                .currency(currency)
+                .exchangeRate(exchangeRate)
+                .grossAmount(BigDecimal.ZERO)
+                .netAmount(BigDecimal.ZERO)
+                .taxAmount(BigDecimal.ZERO)
+                .costAmount(totalCost)
                 .postedBy("system")
                 .build();
 
@@ -341,6 +405,7 @@ public class OrderService {
                 for (OrderLine line : order.getOrderLines()) {
                     shopInventoryService.commitReservedStock(order.getShop().getId(), line.getProduct().getId(), line.getQuantity());
                 }
+                postOnlineOrderCogsToGeneralLedger(order);
             } else if (order.getSalesChannel() == SalesChannel.ONLINE) {
                 legacyConfirmWithoutShop(order);
             }

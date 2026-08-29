@@ -49,6 +49,7 @@ class OrderServiceTest {
     @Mock private ZimraService zimraService;
     @Mock private SellingPriceService sellingPriceService;
     @Mock private GLPostingService glPostingService;
+    @Mock private InventoryValuationService inventoryValuationService;
 
     private OrderService service;
 
@@ -62,7 +63,8 @@ class OrderServiceTest {
     void setUp() {
         service = new OrderService(orderRepository, orderLineRepository, cartService, inventoryService,
                 accountancyService, currencyService, productService, messagingTemplate, customersRepository,
-                orderMapper, shopInventoryService, shopRepository, zimraService, sellingPriceService, glPostingService);
+                orderMapper, shopInventoryService, shopRepository, zimraService, sellingPriceService, glPostingService,
+                inventoryValuationService);
 
         user = UserAccount.builder().id(1L).username("customer1").password("x").email("c1@test.com").build();
         currency = Currency.builder().id(1L).code("USD").build();
@@ -156,10 +158,33 @@ class OrderServiceTest {
         Order order = pendingOnlineOrder();
         when(orderRepository.findById(100L)).thenReturn(Optional.of(order));
         when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(inventoryValuationService.getCostForSale(eq(onlineShop), eq(product), eq(5), anyString()))
+                .thenReturn(InventoryValuationService.CostResult.builder()
+                        .totalCost(new BigDecimal("50.00")).quantityCosted(5).quantityRequested(5)
+                        .fullyCosted(true).build());
 
         service.updateOrderStatus(100L, OrderStatus.CONFIRMED);
 
         verify(shopInventoryService).commitReservedStock(10L, 1L, 5);
+        verify(glPostingService, times(1)).post(any());
+    }
+
+    @Test
+    void confirmingAPendingOnlineOrderSkipsCogsPostingWhenCostLayersDontFullyCoverIt() {
+        Order order = pendingOnlineOrder();
+        when(orderRepository.findById(100L)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(inventoryValuationService.getCostForSale(eq(onlineShop), eq(product), eq(5), anyString()))
+                .thenReturn(InventoryValuationService.CostResult.builder()
+                        .totalCost(BigDecimal.ZERO).quantityCosted(0).quantityRequested(5)
+                        .fullyCosted(false).build());
+
+        service.updateOrderStatus(100L, OrderStatus.CONFIRMED);
+
+        verify(shopInventoryService).commitReservedStock(10L, 1L, 5);
+        // Exactly one post() - the confirm transition doesn't re-post the revenue entry, and
+        // the COGS entry is skipped since cost layers didn't fully cover the quantity.
+        verify(glPostingService, never()).post(argThat(event -> "ONLINE-ORDER-COGS-100".equals(event.getIdempotencyKey())));
     }
 
     @Test

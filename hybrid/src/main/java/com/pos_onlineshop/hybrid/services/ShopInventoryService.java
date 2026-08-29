@@ -8,6 +8,7 @@ import com.pos_onlineshop.hybrid.dtos.ShopInventoryResponse;
 import com.pos_onlineshop.hybrid.dtos.UpdateShopInventoryRequest;
 import com.pos_onlineshop.hybrid.enums.FinancialEventType;
 import com.pos_onlineshop.hybrid.enums.GLSourceModule;
+import com.pos_onlineshop.hybrid.enums.InventoryMovementType;
 import com.pos_onlineshop.hybrid.gl.FinancialEvent;
 import com.pos_onlineshop.hybrid.inventoryTotal.InventoryTotal;
 import com.pos_onlineshop.hybrid.inventoryTotal.InventoryTotalRepository;
@@ -25,6 +26,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -58,6 +60,7 @@ public class ShopInventoryService {
     private final InventoryTotalRepository inventoryTotalRepository;
     private final GLPostingService glPostingService;
     private final CurrencyService currencyService;
+    private final InventoryValuationService inventoryValuationService;
 
     /**
      * Get inventory for a specific shop and product
@@ -301,6 +304,9 @@ public class ShopInventoryService {
         inventoryTotal.setLastUpdated(LocalDateTime.now());
         InventoryTotal saved = inventoryTotalRepository.save(inventoryTotal);
 
+        inventoryValuationService.recordReservationMovement(inventoryTotal.getShop(), inventoryTotal.getProduct(),
+                InventoryMovementType.RESERVATION, quantity, "SHOP-" + shopId + "-PRODUCT-" + productId, LocalDate.now());
+
         log.info("Reserved {} units for shop {} product {}. Reserved now {}, available now {}",
                 quantity, shopId, productId, saved.getReservedStock(), saved.getAvailableStock());
         return saved;
@@ -328,6 +334,9 @@ public class ShopInventoryService {
         inventoryTotal.setReservedStock(inventoryTotal.getReservedStock() - quantity);
         inventoryTotal.setLastUpdated(LocalDateTime.now());
         InventoryTotal saved = inventoryTotalRepository.save(inventoryTotal);
+
+        inventoryValuationService.recordReservationMovement(inventoryTotal.getShop(), inventoryTotal.getProduct(),
+                InventoryMovementType.RESERVATION_RELEASE, quantity, "SHOP-" + shopId + "-PRODUCT-" + productId, LocalDate.now());
 
         log.info("Released reservation of {} units for shop {} product {}. Reserved now {}",
                 quantity, shopId, productId, saved.getReservedStock());
@@ -369,26 +378,13 @@ public class ShopInventoryService {
      * ControlAccountReconciliationService (to compare against the 1200 GL balance) and
      * AnalyticsController's dashboard, so the two can never disagree with each other the way
      * they did while the dashboard summed the separate, effectively-dead InventoryItem pool.
-     * Values on-hand InventoryTotal quantity at each (shop, product) pair's latest received
-     * lot cost (ShopInventory is a cost/history source only here, never a quantity source).
-     * A pair with stock but no receipt lot on record is valued at zero rather than a guessed
-     * cost - the master accounting rule "never manufacture a cost."
+     * Delegates to InventoryValuationService's real FIFO cost-layer valuation - kept as a
+     * thin wrapper here (rather than migrating every caller) purely for backward compatibility
+     * with existing call sites; new code should call InventoryValuationService directly.
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public BigDecimal calculateTotalInventoryValue() {
-        return inventoryTotalRepository.findAllWithShopAndProduct().stream()
-                .map(this::valueAtLatestLotCost)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
-
-    private BigDecimal valueAtLatestLotCost(InventoryTotal inventoryTotal) {
-        if (inventoryTotal.getTotalstock() == null || inventoryTotal.getTotalstock() <= 0) {
-            return BigDecimal.ZERO;
-        }
-        return shopInventoryRepository
-                .findFirstByShopAndProductOrderByIdDesc(inventoryTotal.getShop(), inventoryTotal.getProduct())
-                .map(lot -> lot.getUnitPrice().multiply(BigDecimal.valueOf(inventoryTotal.getTotalstock())))
-                .orElse(BigDecimal.ZERO);
+        return inventoryValuationService.getTotalInventoryValue();
     }
 
     /**
@@ -458,13 +454,16 @@ public class ShopInventoryService {
                     ") exceeds maximum stock limit (" + request.getMaxStock() + ")");
         }
 
-        // Always create a new inventory record (for audit trail)
+        // Always create a new inventory record (for audit trail). remainingQuantity starts
+        // equal to quantity - this lot is a fresh, untouched FIFO cost layer (see
+        // ShopInventory's class comment).
         ShopInventory shopInventory = ShopInventory.builder()
                 .shop(shop)
                 .product(product)
                 .suppliers(supplier)
                 .currency(currency)
                 .quantity(request.getQuantity())
+                .remainingQuantity(request.getQuantity())
                 .unitPrice(request.getUnitPrice())
                 .expiryDate(request.getExpiryDate())
                 .reorderLevel(request.getReorderLevel())
@@ -479,6 +478,8 @@ public class ShopInventoryService {
             addStock(shop.getId(), product.getId(), initialQuantity);
             log.info("Created shop inventory record for shop {} and product {}: quantity = {}",
                     shop.getCode(), product.getName(), initialQuantity);
+            inventoryValuationService.recordReceiptMovement(shop, product, initialQuantity,
+                    request.getUnitPrice(), "SHOP_INVENTORY-" + savedInventory.getId(), LocalDate.now());
             postStockReceiptToGeneralLedger(savedInventory, initialQuantity);
         } else {
             log.info("Created shop inventory record for shop {} and product {} with zero quantity",

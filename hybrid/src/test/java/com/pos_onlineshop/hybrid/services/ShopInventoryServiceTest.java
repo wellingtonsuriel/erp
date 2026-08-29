@@ -8,7 +8,6 @@ import com.pos_onlineshop.hybrid.products.Product;
 import com.pos_onlineshop.hybrid.products.ProductRepository;
 import com.pos_onlineshop.hybrid.shop.Shop;
 import com.pos_onlineshop.hybrid.shop.ShopRepository;
-import com.pos_onlineshop.hybrid.shopInventory.ShopInventory;
 import com.pos_onlineshop.hybrid.shopInventory.ShopInventoryRepository;
 import com.pos_onlineshop.hybrid.suppliers.SuppliersRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +34,7 @@ class ShopInventoryServiceTest {
     @Mock private InventoryTotalRepository inventoryTotalRepository;
     @Mock private GLPostingService glPostingService;
     @Mock private CurrencyService currencyService;
+    @Mock private InventoryValuationService inventoryValuationService;
 
     private ShopInventoryService service;
 
@@ -44,7 +44,8 @@ class ShopInventoryServiceTest {
     @BeforeEach
     void setUp() {
         service = new ShopInventoryService(shopInventoryRepository, shopRepository, productRepository,
-                suppliersRepository, currencyRepository, inventoryTotalRepository, glPostingService, currencyService);
+                suppliersRepository, currencyRepository, inventoryTotalRepository, glPostingService, currencyService,
+                inventoryValuationService);
 
         shop = Shop.builder().id(1L).code("SHOP-001").name("Main Shop").build();
         product = Product.builder().id(1L).name("Widget").build();
@@ -154,34 +155,14 @@ class ShopInventoryServiceTest {
     }
 
     @Test
-    void calculateTotalInventoryValueValuesOnHandStockAtLatestLotCostAcrossAllPairs() {
-        Shop shop2 = Shop.builder().id(2L).code("SHOP-002").name("Second Shop").build();
-        Product product2 = Product.builder().id(2L).name("Gadget").build();
-
-        InventoryTotal pairOne = InventoryTotal.builder().shop(shop).product(product).totalstock(40).reservedStock(0).build();
-        InventoryTotal pairTwo = InventoryTotal.builder().shop(shop2).product(product2).totalstock(5).reservedStock(0).build();
-
-        when(inventoryTotalRepository.findAllWithShopAndProduct()).thenReturn(List.of(pairOne, pairTwo));
-        when(shopInventoryRepository.findFirstByShopAndProductOrderByIdDesc(shop, product))
-                .thenReturn(Optional.of(ShopInventory.builder().quantity(100).unitPrice(new BigDecimal("10.00")).build()));
-        when(shopInventoryRepository.findFirstByShopAndProductOrderByIdDesc(shop2, product2))
-                .thenReturn(Optional.empty()); // no receipt lot on record for this pair
+    void calculateTotalInventoryValueDelegatesToInventoryValuationService() {
+        // The real FIFO cost-layer valuation logic now lives entirely in
+        // InventoryValuationServiceTest - this only verifies the delegation itself.
+        when(inventoryValuationService.getTotalInventoryValue()).thenReturn(new BigDecimal("400.00"));
 
         BigDecimal total = service.calculateTotalInventoryValue();
 
-        // 40 units at 10.00 = 400.00 for pair one; pair two has no known cost so values at 0
-        // rather than a guessed cost - never manufacture a cost.
         assertEquals(0, new BigDecimal("400.00").compareTo(total));
-    }
-
-    @Test
-    void calculateTotalInventoryValueSkipsPairsWithNoStockOnHand() {
-        InventoryTotal zeroStock = InventoryTotal.builder().shop(shop).product(product).totalstock(0).reservedStock(0).build();
-        when(inventoryTotalRepository.findAllWithShopAndProduct()).thenReturn(List.of(zeroStock));
-
-        BigDecimal total = service.calculateTotalInventoryValue();
-
-        assertEquals(0, BigDecimal.ZERO.compareTo(total));
         verifyNoInteractions(shopInventoryRepository);
     }
 }

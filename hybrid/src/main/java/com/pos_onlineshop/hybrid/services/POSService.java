@@ -19,7 +19,6 @@ import com.pos_onlineshop.hybrid.orders.OrderRepository;
 import com.pos_onlineshop.hybrid.products.Product;
 import com.pos_onlineshop.hybrid.selling_price.SellingPrice;
 import com.pos_onlineshop.hybrid.shop.Shop;
-import com.pos_onlineshop.hybrid.shopInventory.ShopInventory;
 import com.pos_onlineshop.hybrid.userAccount.UserAccount;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -47,6 +46,7 @@ public class POSService {
     private final GLPostingService glPostingService;
     private final CurrencyService currencyService;
     private final com.pos_onlineshop.hybrid.journalEntry.JournalEntryRepository journalEntryRepository;
+    private final InventoryValuationService inventoryValuationService;
 
     @Transactional
     public Order processQuickSale(List<QuickSaleItem> items, PaymentMethod paymentMethod,
@@ -68,11 +68,6 @@ public class POSService {
                 .status(OrderStatus.COMPLETED)
                 .receiptNumber(generateReceiptNumber())
                 .build();
-
-        // Tracks whether a real per-line cost was found for every line, so the GL event only
-        // carries a COGS figure when it is fully known - never a partial, understated one.
-        BigDecimal totalCost = BigDecimal.ZERO;
-        boolean costKnownForAllLines = true;
 
         for (QuickSaleItem item : items) {
             Product product = productService.findById(item.getProductId())
@@ -100,16 +95,6 @@ public class POSService {
 
             // Remove from shop inventory using the corrected method
             shopInventoryService.reduceStock(shop.getId(), item.getProductId(), item.getQuantity());
-
-            // Cost basis for COGS: the latest received lot's unit cost - the same "most recent
-            // lot" valuation convention every stock report in this codebase already uses.
-            Optional<ShopInventory> latestLot = shopInventoryService.getInventory(shop, product);
-            if (latestLot.isPresent() && latestLot.get().getUnitPrice() != null) {
-                orderLine.setUnitCost(latestLot.get().getUnitPrice());
-                totalCost = totalCost.add(latestLot.get().getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())));
-            } else {
-                costKnownForAllLines = false;
-            }
         }
 
         if (paymentMethod == PaymentMethod.CASH && cashGiven != null) {
@@ -118,6 +103,26 @@ public class POSService {
         }
 
         Order savedOrder = orderRepository.save(order);
+
+        // Cost basis for COGS: real FIFO consumption of this shop's cost layers, computed
+        // after the order has an id so each consumed unit's audit movement carries a real
+        // reference. Tracks whether a real per-line cost was found for every line, so the GL
+        // event only carries a COGS figure when it is fully known - never a partial,
+        // understated one.
+        BigDecimal totalCost = BigDecimal.ZERO;
+        boolean costKnownForAllLines = true;
+        for (OrderLine orderLine : savedOrder.getOrderLines()) {
+            InventoryValuationService.CostResult costResult = inventoryValuationService.getCostForSale(
+                    shop, orderLine.getProduct(), orderLine.getQuantity(), "ORDER-" + savedOrder.getId());
+            if (costResult.isFullyCosted()) {
+                orderLine.setUnitCost(costResult.getTotalCost().divide(
+                        BigDecimal.valueOf(orderLine.getQuantity()), 4, java.math.RoundingMode.HALF_UP));
+                totalCost = totalCost.add(costResult.getTotalCost());
+            } else {
+                costKnownForAllLines = false;
+            }
+        }
+
         accountancyService.createOrderAccountingEntries(savedOrder);
         accountancyService.createPaymentAccountingEntries(savedOrder);
 

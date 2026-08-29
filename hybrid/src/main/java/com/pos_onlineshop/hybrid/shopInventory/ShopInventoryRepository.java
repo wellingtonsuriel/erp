@@ -37,4 +37,28 @@ public interface ShopInventoryRepository extends JpaRepository<ShopInventory, Lo
 
     @Query("SELECT si.product FROM ShopInventory si WHERE si.shop.id = :shopId")
     List<Product> findProductsByShopId(@Param("shopId") Long shopId);
+
+    /**
+     * Every lot for a (shop, product) pair, oldest first, locked for write - the FIFO
+     * consumption/backfill order. Includes lots with remainingQuantity == null (not yet
+     * backfilled) and == 0 (fully consumed) so callers can distinguish and handle both; see
+     * InventoryValuationService.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT si FROM ShopInventory si WHERE si.shop.id = :shopId AND si.product.id = :productId ORDER BY si.id ASC")
+    List<ShopInventory> findAllByShopIdAndProductIdOrderByIdAscWithLock(
+            @Param("shopId") Long shopId, @Param("productId") Long productId);
+
+    /**
+     * Read-only variant of the above, for valuation reads that don't need to mutate layers
+     * (e.g. a report) and shouldn't hold a write lock.
+     */
+    @Query("SELECT si FROM ShopInventory si WHERE si.shop.id = :shopId AND si.product.id = :productId ORDER BY si.id ASC")
+    List<ShopInventory> findAllByShopIdAndProductIdOrderByIdAsc(
+            @Param("shopId") Long shopId, @Param("productId") Long productId);
+
+    /** Every distinct (shop, product) pair that has at least one lot - the driving set for a
+     * full inventory valuation sweep. */
+    @Query("SELECT DISTINCT si.shop.id, si.product.id FROM ShopInventory si")
+    List<Object[]> findDistinctShopProductPairs();
 }
