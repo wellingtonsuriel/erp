@@ -217,16 +217,29 @@ public class ControlAccountReconciliationService {
      * InventoryTotal on-hand balance at each pair's latest received lot cost.
      */
     private ControlAccountReconciliationReport.Line reconcileInventory(Map<Long, Totals> cumulative) {
-        Account account = accountByCode(INVENTORY_ASSET_CODE);
-        Totals t = cumulative.getOrDefault(account.getId(), Totals.ZERO);
-        BigDecimal glBalance = t.debit().subtract(t.credit()); // 1200 is debit-normal (ASSET)
-
+        BigDecimal glBalance = inventoryAssetGlBalance(cumulative);
         BigDecimal subledgerBalance = shopInventoryService.calculateTotalInventoryValue();
 
-        return line(account, "InventoryTotal live on-hand balance (valued at latest lot unit cost)",
+        return line(accountByCode(INVENTORY_ASSET_CODE),
+                "InventoryTotal live on-hand balance (real FIFO cost-layer valuation - see InventoryValuationService)",
                 glBalance, subledgerBalance,
                 "Inventory subledger is always a live on-hand snapshot, not as-of-date - "
                         + "InventoryTotal has no historical point-in-time query, unlike the GL side.");
+    }
+
+    private BigDecimal inventoryAssetGlBalance(Map<Long, Totals> cumulative) {
+        Account account = accountByCode(INVENTORY_ASSET_CODE);
+        Totals t = cumulative.getOrDefault(account.getId(), Totals.ZERO);
+        return t.debit().subtract(t.credit()); // 1200 is debit-normal (ASSET)
+    }
+
+    /** The 1200 Inventory Asset GL balance as of a date - exposed for InventoryReportController's
+     * dedicated reconciliation view, which needs the GL figure alongside quantity detail this
+     * class's own generate() doesn't return (it only reports the aggregate variance line). */
+    @Transactional(readOnly = true)
+    public BigDecimal getInventoryAssetGlBalance(LocalDate asOfDate) {
+        Map<Long, Totals> cumulative = toTotalsMap(journalLineRepository.aggregateBeforeDate(asOfDate.plusDays(1), null));
+        return inventoryAssetGlBalance(cumulative);
     }
 
     private Account accountByCode(String code) {

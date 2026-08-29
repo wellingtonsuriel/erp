@@ -7,6 +7,7 @@ import com.pos_onlineshop.hybrid.dtos.BalanceSheetReport;
 import com.pos_onlineshop.hybrid.dtos.CashFlowReport;
 import com.pos_onlineshop.hybrid.dtos.ControlAccountReconciliationReport;
 import com.pos_onlineshop.hybrid.dtos.CustomerStatementReport;
+import com.pos_onlineshop.hybrid.dtos.InventoryReconciliationReport;
 import com.pos_onlineshop.hybrid.dtos.LegacyGlReconciliationReport;
 import com.pos_onlineshop.hybrid.dtos.ProfitAndLossReport;
 import com.pos_onlineshop.hybrid.dtos.SupplierStatementReport;
@@ -19,6 +20,7 @@ import com.pos_onlineshop.hybrid.services.CashFlowService;
 import com.pos_onlineshop.hybrid.services.ControlAccountReconciliationService;
 import com.pos_onlineshop.hybrid.services.CustomerStatementService;
 import com.pos_onlineshop.hybrid.services.GeneralLedgerService;
+import com.pos_onlineshop.hybrid.services.InventoryReportService;
 import com.pos_onlineshop.hybrid.services.LegacyGlReconciliationService;
 import com.pos_onlineshop.hybrid.services.ProfitAndLossService;
 import com.pos_onlineshop.hybrid.services.SupplierStatementService;
@@ -35,8 +37,9 @@ import java.time.LocalDate;
 /**
  * /api/reports/*. Implemented: Trial Balance, AP aging, AR aging, Profit & Loss, Balance
  * Sheet, VAT Return, Cash Flow, control-account reconciliation, customer/supplier
- * statements, and the account-ledger GL detail drill-down (one account's individual posted
- * lines with a running balance - see GeneralLedgerService).
+ * statements, the account-ledger GL detail drill-down (one account's individual posted
+ * lines with a running balance - see GeneralLedgerService), and the three-way inventory
+ * reconciliation (quantity/valuation/GL - see InventoryReportService).
  */
 @RestController
 @RequestMapping("/api/reports")
@@ -56,6 +59,7 @@ public class GLReportController {
     private final CustomerStatementService customerStatementService;
     private final SupplierStatementService supplierStatementService;
     private final GeneralLedgerService generalLedgerService;
+    private final InventoryReportService inventoryReportService;
 
     @GetMapping("/trial-balance")
     public ResponseEntity<TrialBalanceReport> trialBalance(
@@ -156,5 +160,13 @@ public class GLReportController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
         }
+    }
+
+    /** The three-way inventory reconciliation view - quantity, valuation, and the GL side by
+     * side. See InventoryReconciliationReport's class comment and INVENTORY_VALUATION.md. */
+    @GetMapping("/inventory-reconciliation")
+    public ResponseEntity<InventoryReconciliationReport> inventoryReconciliation(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOfDate) {
+        return ResponseEntity.ok(inventoryReportService.getReconciliation(asOfDate != null ? asOfDate : LocalDate.now()));
     }
 }

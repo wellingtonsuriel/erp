@@ -16,4 +16,9 @@ public interface InventoryMovementRepository extends JpaRepository<InventoryMove
 
     @Query("SELECT m FROM InventoryMovement m WHERE m.shop.id = :shopId ORDER BY m.id DESC")
     List<InventoryMovement> findByShopIdOrderByIdDesc(@Param("shopId") Long shopId);
+
+    @Query("SELECT m FROM InventoryMovement m WHERE m.product.id = :productId ORDER BY m.id DESC")
+    List<InventoryMovement> findByProductIdOrderByIdDesc(@Param("productId") Long productId);
+
+    List<InventoryMovement> findAllByOrderByIdDesc();
 }
