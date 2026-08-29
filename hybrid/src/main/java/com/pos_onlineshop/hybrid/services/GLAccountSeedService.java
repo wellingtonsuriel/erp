@@ -68,6 +68,7 @@ public class GLAccountSeedService {
             new Seed("5200", "Salary and Wages Expense", EXPENSE, DEBIT, false),
             new Seed("5300", "Operating Expenses", EXPENSE, DEBIT, false),
             new Seed("5400", "Depreciation Expense", EXPENSE, DEBIT, false),
+            new Seed("5500", "Bank Charges", EXPENSE, DEBIT, false),
             new Seed("5900", "FX Gain / Loss", EXPENSE, DEBIT, false),
             new Seed("5950", "Gain / Loss on Disposal of Assets", EXPENSE, DEBIT, false)
     );
