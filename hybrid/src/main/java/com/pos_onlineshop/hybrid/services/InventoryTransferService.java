@@ -6,6 +6,7 @@ import com.pos_onlineshop.hybrid.damagedStockReceived.DamagedStockReceived;
 import com.pos_onlineshop.hybrid.damagedStockReceived.DamagedStockReceivedRepository;
 import com.pos_onlineshop.hybrid.enums.FinancialEventType;
 import com.pos_onlineshop.hybrid.enums.GLSourceModule;
+import com.pos_onlineshop.hybrid.enums.InventoryMovementType;
 import com.pos_onlineshop.hybrid.enums.TransferPriority;
 import com.pos_onlineshop.hybrid.enums.TransferStatus;
 import com.pos_onlineshop.hybrid.enums.TransferType;
@@ -54,6 +55,7 @@ public class InventoryTransferService {
     private final DamagedStockReceivedRepository damagedStockReceivedRepository;
     private final com.pos_onlineshop.hybrid.services.GLPostingService glPostingService;
     private final com.pos_onlineshop.hybrid.services.CurrencyService currencyService;
+    private final InventoryValuationService inventoryValuationService;
 
     /**
      * Initialize lazy-loaded collections so they are available after the transaction closes.
@@ -256,6 +258,23 @@ public class InventoryTransferService {
                         item.getProduct().getId(),
                         item.getRequestedQuantity());
 
+                // 1b. Consume the source shop's real FIFO cost layers for the shipped
+                // quantity now, while we know for certain it is permanently leaving this
+                // shop. This supersedes whatever estimate was manually entered on the item
+                // at addItemToTransfer time (see the field's own comment) - a real cost is
+                // now knowable, so it is used instead of a guess. If the layers don't fully
+                // cover the shipped quantity, unitCost is set from only the covered portion
+                // (never null'd to a guess) so receiveTransfer's downstream value math still
+                // has a real, if partial, cost to work with.
+                InventoryValuationService.CostResult shipCost = inventoryValuationService.consumeCostLayers(
+                        transfer.getFromShop(), item.getProduct(), item.getRequestedQuantity(),
+                        InventoryMovementType.TRANSFER_OUT, "TRANSFER-" + transfer.getId(), LocalDate.now());
+                if (shipCost.getQuantityCosted() > 0) {
+                    item.setUnitCost(shipCost.getTotalCost().divide(
+                            BigDecimal.valueOf(shipCost.getQuantityCosted()), 4, java.math.RoundingMode.HALF_UP));
+                } else {
+                    item.setUnitCost(null);
+                }
 
                 // 2. Mark as shipped in transfer item
                 item.setShippedQuantity(item.getRequestedQuantity());
@@ -337,6 +356,14 @@ public class InventoryTransferService {
 
                     if (transferItem.getUnitCost() != null) {
                         receivedValue = receivedValue.add(unitCost.multiply(BigDecimal.valueOf(receivedItem.getReceivedQuantity())));
+
+                        // Create the destination shop's cost layer at the same real FIFO cost
+                        // that was consumed from the source shop at ship time - see
+                        // shipTransfer. Never guessed: only done when a real unit cost exists.
+                        inventoryValuationService.restoreCostLayer(
+                                transfer.getToShop(), transferItem.getProduct(), receivedItem.getReceivedQuantity(),
+                                unitCost, transfer.getToShop().getDefaultCurrency(), InventoryMovementType.TRANSFER_IN,
+                                "TRANSFER_IN-" + transfer.getId(), LocalDate.now());
                     }
                     // else: no unitCost was recorded on this transfer item - this item's value is
                     // simply excluded from the GL posting below rather than guessed at.
@@ -431,6 +458,17 @@ public class InventoryTransferService {
                             transfer.getFromShop().getId(),
                             item.getProduct().getId(),
                             item.getShippedQuantity());
+
+                    // 1b. Restore the source shop's cost layer consumed at ship time (see
+                    // shipTransfer) - the units never actually left, so their cost must come
+                    // back too, not just their quantity. Skipped when unitCost is null (ship
+                    // time couldn't fully cost it either), same "never guess" rule.
+                    if (item.getUnitCost() != null) {
+                        inventoryValuationService.restoreCostLayer(
+                                transfer.getFromShop(), item.getProduct(), item.getShippedQuantity(),
+                                item.getUnitCost(), transfer.getFromShop().getDefaultCurrency(),
+                                InventoryMovementType.ADJUSTMENT_IN, "TRANSFER-CANCEL-" + transfer.getId(), LocalDate.now());
+                    }
 
                     log.debug("Reversed inventory for product {} - returned {} units to {}",
                             item.getProduct().getName(),

@@ -94,18 +94,27 @@ A new, append-only `inventory_movements` table records every quantity change (`R
 (cost layers) and `JournalEntry` (money), per the standing rule that quantity, valuation, and
 money must stay distinguishable. Currently written for: receipts (`ShopInventoryService.createShopInventory`),
 reservations/releases (`ShopInventoryService.reserveStock`/`releaseReservation`), FIFO
-consumption (`InventoryValuationService.consumeCostLayers`, covers POS/online COGS), and
-cost-layer restoration (`InventoryValuationService.restoreCostLayer`, covers sales returns).
+consumption (`InventoryValuationService.consumeCostLayers`, covers POS/online COGS and
+inter-shop transfer-out), and cost-layer restoration (`InventoryValuationService.restoreCostLayer`,
+covers sales returns, transfer-in, and restoring a cancelled in-transit transfer's source layer).
+
+## Inter-shop transfers: real FIFO cost, not a manually-carried estimate
+
+`InventoryTransferService.shipTransfer` now consumes the *source* shop's real FIFO cost
+layers for the shipped quantity at the moment of shipping (`TRANSFER_OUT`) - the point at
+which the units are genuinely, permanently leaving that shop - and overwrites
+`InventoryTransferItem.unitCost` with the real weighted cost, superseding whatever estimate
+was entered when the item was added to the transfer. `receiveTransfer` then creates the
+*destination* shop's cost layer (`TRANSFER_IN`) at that same real cost for the received
+portion, and still uses `unitCost` unmodified for the pre-existing damaged-portion write-off
+math. `cancelTransfer` restores the source shop's layer (`ADJUSTMENT_IN`) if an `IN_TRANSIT`
+transfer is cancelled before receipt, since the ship-time consumption must be undone along
+with the `InventoryTotal` reversal that already happened. Every step is skipped rather than
+guessed when a shipment's cost layers don't fully cover it (never null'd to a fabricated
+value) - see `InventoryTransferServiceTest`.
 
 ## Known limitations (disclosed, not hidden)
 
-- **Inter-shop transfers and damage write-offs still use `InventoryTransferItem.unitCost`** (a
-  value carried on the transfer request) rather than consuming the source shop's real FIFO
-  layers. This is the next planned integration - `InventoryValuationService.consumeCostLayers`/
-  `restoreCostLayer` are already general-purpose enough to support it without further schema
-  change, but the rework of `InventoryTransferService`'s ship/receive/cancel flow (including
-  partial receipts and proportional damage-vs-received cost splitting) was deferred out of
-  this slice to keep it reviewable and low-risk against existing, untested transfer code.
 - **Multi-currency line-level FX** (§16 of the inventory/accounting architecture prompt - a
   proper transaction-amount/base-amount/exchange-rate split on every JournalLine) is
   unaddressed; `JournalLine.baseAmount` remains the only authoritative monetary figure per the
