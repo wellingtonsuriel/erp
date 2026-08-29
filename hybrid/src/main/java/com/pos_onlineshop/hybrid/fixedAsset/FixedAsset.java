@@ -75,6 +75,18 @@ public class FixedAsset {
     @Builder.Default
     private FixedAssetStatus status = FixedAssetStatus.ACTIVE;
 
+    /** IAS 29 price-level-restated carrying values - null means "never restated," i.e. still
+     * carried at historical cost/depreciation. Set by Ias29RestatementService, which is also
+     * the only writer of these two fields; nothing else in this codebase reads or depreciates
+     * against them (depreciation still runs off acquisitionCost/accumulatedDepreciation) - see
+     * that service's class comment for why gross cost and accumulated depreciation are
+     * restated separately rather than as a single scaled netBookValue. */
+    @Column(name = "restated_cost", precision = 19, scale = 4)
+    private BigDecimal restatedCost;
+
+    @Column(name = "restated_accumulated_depreciation", precision = 19, scale = 4)
+    private BigDecimal restatedAccumulatedDepreciation;
+
     @Column(name = "created_at", nullable = false)
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();

@@ -59,6 +59,7 @@ public class GLAccountSeedService {
             new Seed("2900", "Cash Over / Short", EXPENSE, DEBIT, false),
             new Seed("3000", "Retained Earnings", EQUITY, CREDIT, false, false, false),
             new Seed("3900", "Opening Balance Equity", EQUITY, CREDIT, false, false, false),
+            new Seed("3910", "IAS 29 Restatement Reserve", EQUITY, CREDIT, false, false, false),
             new Seed("4000", "Sales Revenue - POS", REVENUE, CREDIT, false),
             new Seed("4010", "Sales Revenue - Online", REVENUE, CREDIT, false),
             new Seed("4020", "Sales Revenue - Credit/Wholesale", REVENUE, CREDIT, false),

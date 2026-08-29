@@ -35,7 +35,7 @@ class GLAccountSeedServiceTest {
 
         service.seed();
 
-        verify(accountRepository, times(29)).save(any(Account.class));
+        verify(accountRepository, times(30)).save(any(Account.class));
     }
 
     @Test
