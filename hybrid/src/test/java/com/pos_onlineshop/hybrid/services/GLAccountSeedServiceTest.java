@@ -74,6 +74,45 @@ class GLAccountSeedServiceTest {
     }
 
     @Test
+    void seedMarksInventoryAndEquityAccountsAsNonMonetaryOnCreation() {
+        when(accountRepository.findByCode(any())).thenReturn(Optional.empty());
+
+        service.seed();
+
+        ArgumentCaptor<Account> captor = ArgumentCaptor.forClass(Account.class);
+        verify(accountRepository, atLeastOnce()).save(captor.capture());
+        Account inventory = captor.getAllValues().stream()
+                .filter(a -> "1200".equals(a.getCode())).findFirst().orElseThrow();
+        assertFalse(inventory.isMonetary());
+
+        Account retainedEarnings = captor.getAllValues().stream()
+                .filter(a -> "3000".equals(a.getCode())).findFirst().orElseThrow();
+        assertFalse(retainedEarnings.isMonetary());
+
+        Account cash = captor.getAllValues().stream()
+                .filter(a -> "1010".equals(a.getCode())).findFirst().orElseThrow();
+        assertTrue(cash.isMonetary());
+    }
+
+    @Test
+    void seedSyncsTheMonetaryFlagOnAnAlreadyExistingInventoryAccount() {
+        Account existingInventory = Account.builder().id(77L).code("1200").name("Inventory Asset")
+                .accountType(AccountType.ASSET).normalBalance(DebitCredit.DEBIT)
+                .monetary(true) // deployed before the flag existed - defaulted true
+                .active(true).build();
+
+        when(accountRepository.findByCode(any())).thenAnswer(inv -> {
+            String code = inv.getArgument(0);
+            return "1200".equals(code) ? Optional.of(existingInventory) : Optional.empty();
+        });
+
+        service.seed();
+
+        assertFalse(existingInventory.isMonetary());
+        verify(accountRepository).save(existingInventory);
+    }
+
+    @Test
     void seedDoesNotResaveAnAlreadyCorrectlyClassifiedExistingAccount() {
         Account existingNonCogs = Account.builder().id(50L).code("5300").name("Operating Expenses")
                 .accountType(AccountType.EXPENSE).normalBalance(DebitCredit.DEBIT)

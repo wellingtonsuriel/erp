@@ -58,6 +58,17 @@ public class Account {
     @Builder.Default
     private boolean active = true;
 
+    /** IAS 29 classification: true for a monetary item (cash, receivables, payables - a
+     * fixed claim to/from currency, never restated for inflation), false for a non-monetary
+     * item (inventory, fixed assets, equity - carried at historical cost and restated using
+     * a general price index under IAS 29). Meaningless for REVENUE/EXPENSE accounts, which
+     * IAS 29 restates differently (at the period-average index, not a point-in-time one) -
+     * see GeneralPriceIndexService's class comment for what is and is not built yet. Defaults
+     * true since most of the starter chart (cash, AR, AP, VAT) is monetary. */
+    @Column(name = "is_monetary", nullable = false)
+    @Builder.Default
+    private boolean monetary = true;
+
     @Column(name = "created_at", nullable = false)
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
