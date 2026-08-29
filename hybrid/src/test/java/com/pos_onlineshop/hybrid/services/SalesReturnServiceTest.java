@@ -50,6 +50,7 @@ class SalesReturnServiceTest {
     @Mock private AccountRepository accountRepository;
     @Mock private ShopInventoryService shopInventoryService;
     @Mock private GLPostingService glPostingService;
+    @Mock private CurrencyService currencyService;
 
     private SalesReturnService service;
     private Currency usd;
@@ -67,9 +68,10 @@ class SalesReturnServiceTest {
     @BeforeEach
     void setUp() {
         service = new SalesReturnService(salesReturnRepository, salesReturnLineRepository, orderRepository,
-                orderLineRepository, userAccountRepository, accountRepository, shopInventoryService, glPostingService);
+                orderLineRepository, userAccountRepository, accountRepository, shopInventoryService, glPostingService, currencyService);
 
         usd = Currency.builder().id(1L).code("USD").build();
+        lenient().when(currencyService.getBaseCurrency()).thenReturn(usd);
         clerk = UserAccount.builder().id(1L).username("clerk1").password("x").email("clerk1@test.com").build();
         shop = Shop.builder().id(1L).name("Main Shop").build();
         product = Product.builder().id(1L).name("Widget").build();

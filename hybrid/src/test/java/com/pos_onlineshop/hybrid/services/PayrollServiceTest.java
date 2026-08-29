@@ -48,6 +48,7 @@ class PayrollServiceTest {
     @Mock private UserAccountRepository userAccountRepository;
     @Mock private AccountRepository accountRepository;
     @Mock private GLPostingService glPostingService;
+    @Mock private CurrencyService currencyService;
 
     private PayrollService service;
     private Currency usd;
@@ -61,7 +62,8 @@ class PayrollServiceTest {
     @BeforeEach
     void setUp() {
         service = new PayrollService(payrollRunRepository, payslipRepository, employeeRepository,
-                deductionTypeRepository, currencyRepository, userAccountRepository, accountRepository, glPostingService);
+                deductionTypeRepository, currencyRepository, userAccountRepository, accountRepository,
+                glPostingService, currencyService);
 
         usd = Currency.builder().id(1L).code("USD").build();
         admin = UserAccount.builder().id(1L).username("admin1").password("x").email("admin1@test.com").build();
@@ -77,6 +79,7 @@ class PayrollServiceTest {
                 .accountType(AccountType.ASSET).normalBalance(DebitCredit.DEBIT).active(true).build();
 
         lenient().when(currencyRepository.findById(1L)).thenReturn(Optional.of(usd));
+        lenient().when(currencyService.getBaseCurrency()).thenReturn(usd);
         lenient().when(userAccountRepository.findById(1L)).thenReturn(Optional.of(admin));
         lenient().when(accountRepository.findByCode("5200")).thenReturn(Optional.of(salaryExpense));
         lenient().when(accountRepository.findByCode("2400")).thenReturn(Optional.of(payrollPayable));

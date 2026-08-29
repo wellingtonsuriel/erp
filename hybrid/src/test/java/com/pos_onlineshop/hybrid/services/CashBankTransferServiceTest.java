@@ -41,6 +41,7 @@ class CashBankTransferServiceTest {
     @Mock private UserAccountRepository userAccountRepository;
     @Mock private AccountRepository accountRepository;
     @Mock private GLPostingService glPostingService;
+    @Mock private CurrencyService currencyService;
 
     private CashBankTransferService service;
     private Currency usd;
@@ -53,7 +54,7 @@ class CashBankTransferServiceTest {
     @BeforeEach
     void setUp() {
         service = new CashBankTransferService(cashBankTransferRepository, bankAccountRepository,
-                userAccountRepository, accountRepository, glPostingService);
+                userAccountRepository, accountRepository, glPostingService, currencyService);
 
         usd = Currency.builder().id(1L).code("USD").build();
         clerk = UserAccount.builder().id(1L).username("clerk1").password("x").email("clerk1@test.com").build();
@@ -67,6 +68,7 @@ class CashBankTransferServiceTest {
                 .glAccountCode("1030").currency(usd).currentBalance(new BigDecimal("200.00")).active(true).build();
 
         lenient().when(userAccountRepository.findById(1L)).thenReturn(Optional.of(clerk));
+        lenient().when(currencyService.getBaseCurrency()).thenReturn(usd);
         lenient().when(accountRepository.findByCode("1010")).thenReturn(Optional.of(cashGl));
         lenient().when(accountRepository.findByCode("1030")).thenReturn(Optional.of(bankGl));
         lenient().when(bankAccountRepository.findById(10L)).thenReturn(Optional.of(till));
@@ -105,6 +107,16 @@ class CashBankTransferServiceTest {
         request.setToAccountId(10L);
 
         assertThrows(IllegalArgumentException.class, () -> service.createTransfer(request));
+    }
+
+    @Test
+    void createTransferRejectsAccountsInDifferentCurrencies() {
+        when(cashBankTransferRepository.existsByReferenceNumber("XFER-1")).thenReturn(false);
+        Currency zwg = Currency.builder().id(2L).code("ZWG").build();
+        bank.setCurrency(zwg);
+
+        assertThrows(IllegalArgumentException.class, () -> service.createTransfer(request()));
+        verifyNoInteractions(glPostingService);
     }
 
     @Test

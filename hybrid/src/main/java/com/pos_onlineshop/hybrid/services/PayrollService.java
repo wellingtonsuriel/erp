@@ -58,6 +58,7 @@ public class PayrollService {
     private final UserAccountRepository userAccountRepository;
     private final AccountRepository accountRepository;
     private final GLPostingService glPostingService;
+    private final CurrencyService currencyService;
 
     @Transactional(readOnly = true)
     public List<PayrollRunResponse> findAll() {
@@ -181,11 +182,12 @@ public class PayrollService {
 
         String memo = "Payroll accrual " + run.getRunNumber() + " (" + run.getPeriodStart() + " to " + run.getPeriodEnd() + ")";
         Currency currency = run.getCurrency();
+        BigDecimal exchangeRate = exchangeRateToBase(currency);
         List<ManualLineSpec> specs = new ArrayList<>();
-        specs.add(new ManualLineSpec(salaryExpense, run.getTotalGrossPay(), BigDecimal.ZERO, currency, BigDecimal.ONE, null, memo));
-        specs.add(new ManualLineSpec(payrollPayable, BigDecimal.ZERO, run.getTotalNetPay(), currency, BigDecimal.ONE, null, memo));
+        specs.add(new ManualLineSpec(salaryExpense, run.getTotalGrossPay(), BigDecimal.ZERO, currency, exchangeRate, null, memo));
+        specs.add(new ManualLineSpec(payrollPayable, BigDecimal.ZERO, run.getTotalNetPay(), currency, exchangeRate, null, memo));
         if (run.getTotalDeductions().compareTo(BigDecimal.ZERO) > 0) {
-            specs.add(new ManualLineSpec(deductionsPayable, BigDecimal.ZERO, run.getTotalDeductions(), currency, BigDecimal.ONE, null, memo));
+            specs.add(new ManualLineSpec(deductionsPayable, BigDecimal.ZERO, run.getTotalDeductions(), currency, exchangeRate, null, memo));
         }
 
         return glPostingService.postManual(
@@ -201,13 +203,20 @@ public class PayrollService {
 
         String memo = "Payroll payment " + run.getRunNumber();
         Currency currency = run.getCurrency();
+        BigDecimal exchangeRate = exchangeRateToBase(currency);
         List<ManualLineSpec> specs = List.of(
-                new ManualLineSpec(payrollPayable, run.getTotalNetPay(), BigDecimal.ZERO, currency, BigDecimal.ONE, null, memo),
-                new ManualLineSpec(cashOrBank, BigDecimal.ZERO, run.getTotalNetPay(), currency, BigDecimal.ONE, null, memo));
+                new ManualLineSpec(payrollPayable, run.getTotalNetPay(), BigDecimal.ZERO, currency, exchangeRate, null, memo),
+                new ManualLineSpec(cashOrBank, BigDecimal.ZERO, run.getTotalNetPay(), currency, exchangeRate, null, memo));
 
         return glPostingService.postManual(
                 "PAYROLL-PAYMENT-" + run.getRunNumber(), java.time.LocalDate.now(), memo,
                 GLSourceModule.SYSTEM, "PAYROLL_RUN", run.getId(), specs, run.getCreatedBy().getUsername());
+    }
+
+    private BigDecimal exchangeRateToBase(Currency currency) {
+        Currency baseCurrency = currencyService.getBaseCurrency();
+        return currency == null || currency.equals(baseCurrency)
+                ? BigDecimal.ONE : currencyService.getExchangeRate(currency, baseCurrency);
     }
 
     private UserAccount resolveUser(Long userId) {

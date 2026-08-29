@@ -39,6 +39,7 @@ public class BankAccountService {
     private final ShopRepository shopRepository;
     private final AccountRepository accountRepository;
     private final OpeningBalanceService openingBalanceService;
+    private final CurrencyService currencyService;
 
     @Transactional(readOnly = true)
     public List<BankAccountResponse> findAllActive() {
@@ -106,6 +107,7 @@ public class BankAccountService {
         line.setSide(DebitCredit.DEBIT);
         line.setAmount(amount);
         line.setCurrencyId(currency.getId());
+        line.setExchangeRate(exchangeRateToBase(currency));
         line.setCostCenterShopId(shop != null ? shop.getId() : null);
         line.setMemo("Opening balance for bank account " + bankAccount.getAccountName());
 
@@ -117,6 +119,12 @@ public class BankAccountService {
         request.setLines(List.of(line));
 
         openingBalanceService.createOpeningBalance(request);
+    }
+
+    private BigDecimal exchangeRateToBase(Currency currency) {
+        Currency baseCurrency = currencyService.getBaseCurrency();
+        return currency == null || currency.equals(baseCurrency)
+                ? BigDecimal.ONE : currencyService.getExchangeRate(currency, baseCurrency);
     }
 
     private BankAccount findOrThrow(Long id) {

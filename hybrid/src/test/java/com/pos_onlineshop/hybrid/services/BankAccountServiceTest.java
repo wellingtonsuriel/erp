@@ -35,6 +35,7 @@ class BankAccountServiceTest {
     @Mock private ShopRepository shopRepository;
     @Mock private AccountRepository accountRepository;
     @Mock private OpeningBalanceService openingBalanceService;
+    @Mock private CurrencyService currencyService;
 
     private BankAccountService service;
     private Currency usd;
@@ -42,13 +43,15 @@ class BankAccountServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new BankAccountService(bankAccountRepository, currencyRepository, shopRepository, accountRepository, openingBalanceService);
+        service = new BankAccountService(bankAccountRepository, currencyRepository, shopRepository, accountRepository,
+                openingBalanceService, currencyService);
 
         usd = Currency.builder().id(1L).code("USD").build();
         bankGlAccount = Account.builder().id(1L).code("1030").name("Bank")
                 .accountType(AccountType.ASSET).normalBalance(DebitCredit.DEBIT).active(true).build();
 
         lenient().when(currencyRepository.findById(1L)).thenReturn(Optional.of(usd));
+        lenient().when(currencyService.getBaseCurrency()).thenReturn(usd);
         lenient().when(accountRepository.findByCode("1030")).thenReturn(Optional.of(bankGlAccount));
         lenient().when(bankAccountRepository.save(any(BankAccount.class))).thenAnswer(inv -> {
             BankAccount b = inv.getArgument(0);

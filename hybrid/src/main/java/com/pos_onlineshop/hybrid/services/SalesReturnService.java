@@ -64,6 +64,7 @@ public class SalesReturnService {
     private final AccountRepository accountRepository;
     private final ShopInventoryService shopInventoryService;
     private final GLPostingService glPostingService;
+    private final CurrencyService currencyService;
 
     @Transactional(readOnly = true)
     public List<SalesReturnResponse> findAll() {
@@ -174,23 +175,30 @@ public class SalesReturnService {
                 + " (" + salesReturn.getReason() + ")";
         Currency currency = order.getCurrency();
         List<ManualLineSpec> specs = new ArrayList<>();
-        specs.add(new ManualLineSpec(salesReturns, net, BigDecimal.ZERO, currency, BigDecimal.ONE, order.getShop(), memo));
+        BigDecimal exchangeRate = exchangeRateToBase(currency);
+        specs.add(new ManualLineSpec(salesReturns, net, BigDecimal.ZERO, currency, exchangeRate, order.getShop(), memo));
         if (salesReturn.getTotalTaxReversed().compareTo(BigDecimal.ZERO) > 0) {
-            specs.add(new ManualLineSpec(vatOutput, salesReturn.getTotalTaxReversed(), BigDecimal.ZERO, currency, BigDecimal.ONE, order.getShop(), memo));
+            specs.add(new ManualLineSpec(vatOutput, salesReturn.getTotalTaxReversed(), BigDecimal.ZERO, currency, exchangeRate, order.getShop(), memo));
         }
-        specs.add(new ManualLineSpec(refundAccount, BigDecimal.ZERO, salesReturn.getTotalRefundAmount(), currency, BigDecimal.ONE, order.getShop(), memo));
+        specs.add(new ManualLineSpec(refundAccount, BigDecimal.ZERO, salesReturn.getTotalRefundAmount(), currency, exchangeRate, order.getShop(), memo));
         if (totalCost != null && totalCost.compareTo(BigDecimal.ZERO) > 0) {
             Account inventory = accountRepository.findByCode(INVENTORY_ACCOUNT_CODE)
                     .orElseThrow(() -> new IllegalStateException("Chart of accounts is missing " + INVENTORY_ACCOUNT_CODE));
             Account cogs = accountRepository.findByCode(COGS_ACCOUNT_CODE)
                     .orElseThrow(() -> new IllegalStateException("Chart of accounts is missing " + COGS_ACCOUNT_CODE));
-            specs.add(new ManualLineSpec(inventory, totalCost, BigDecimal.ZERO, currency, BigDecimal.ONE, order.getShop(), memo));
-            specs.add(new ManualLineSpec(cogs, BigDecimal.ZERO, totalCost, currency, BigDecimal.ONE, order.getShop(), memo));
+            specs.add(new ManualLineSpec(inventory, totalCost, BigDecimal.ZERO, currency, exchangeRate, order.getShop(), memo));
+            specs.add(new ManualLineSpec(cogs, BigDecimal.ZERO, totalCost, currency, exchangeRate, order.getShop(), memo));
         }
 
         return glPostingService.postManual(
                 "SALES-RETURN-" + salesReturn.getId(), salesReturn.getReturnDate(), memo,
                 GLSourceModule.SYSTEM, "SALES_RETURN", salesReturn.getId(), specs, salesReturn.getCreatedBy().getUsername());
+    }
+
+    private BigDecimal exchangeRateToBase(Currency currency) {
+        Currency baseCurrency = currencyService.getBaseCurrency();
+        return currency == null || currency.equals(baseCurrency)
+                ? BigDecimal.ONE : currencyService.getExchangeRate(currency, baseCurrency);
     }
 
     private String refundAccountCodeFor(Order order) {

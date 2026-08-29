@@ -40,6 +40,7 @@ class BankChargeServiceTest {
     @Mock private UserAccountRepository userAccountRepository;
     @Mock private AccountRepository accountRepository;
     @Mock private GLPostingService glPostingService;
+    @Mock private CurrencyService currencyService;
 
     private BankChargeService service;
     private Currency usd;
@@ -50,7 +51,7 @@ class BankChargeServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new BankChargeService(bankChargeRepository, bankAccountRepository, userAccountRepository, accountRepository, glPostingService);
+        service = new BankChargeService(bankChargeRepository, bankAccountRepository, userAccountRepository, accountRepository, glPostingService, currencyService);
 
         usd = Currency.builder().id(1L).code("USD").build();
         clerk = UserAccount.builder().id(1L).username("clerk1").password("x").email("clerk1@test.com").build();
@@ -62,6 +63,7 @@ class BankChargeServiceTest {
                 .glAccountCode("1030").currency(usd).currentBalance(new BigDecimal("200.00")).active(true).build();
 
         lenient().when(userAccountRepository.findById(1L)).thenReturn(Optional.of(clerk));
+        lenient().when(currencyService.getBaseCurrency()).thenReturn(usd);
         lenient().when(accountRepository.findByCode("5500")).thenReturn(Optional.of(bankChargesExpense));
         lenient().when(accountRepository.findByCode("1030")).thenReturn(Optional.of(bankGl));
         lenient().when(bankAccountRepository.findById(11L)).thenReturn(Optional.of(bank));

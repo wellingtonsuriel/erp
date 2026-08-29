@@ -58,6 +58,7 @@ public class ExpenseService {
     private final UserAccountRepository userAccountRepository;
     private final AccountRepository accountRepository;
     private final GLPostingService glPostingService;
+    private final CurrencyService currencyService;
 
     @Transactional(readOnly = true)
     public List<ExpenseResponse> findAll() {
@@ -163,18 +164,25 @@ public class ExpenseService {
 
         String memo = "Expense " + expense.getExpenseNumber() + " (" + expense.getDescription() + ")";
         Currency currency = expense.getCurrency();
+        BigDecimal exchangeRate = exchangeRateToBase(currency);
         List<ManualLineSpec> specs = new ArrayList<>();
-        specs.add(new ManualLineSpec(expenseAccount, expense.getAmount(), BigDecimal.ZERO, currency, BigDecimal.ONE, expense.getShop(), memo));
+        specs.add(new ManualLineSpec(expenseAccount, expense.getAmount(), BigDecimal.ZERO, currency, exchangeRate, expense.getShop(), memo));
         if (expense.getTaxAmount().compareTo(BigDecimal.ZERO) > 0) {
             Account vatInput = accountRepository.findByCode(VAT_INPUT_ACCOUNT_CODE)
                     .orElseThrow(() -> new IllegalStateException("Chart of accounts is missing " + VAT_INPUT_ACCOUNT_CODE));
-            specs.add(new ManualLineSpec(vatInput, expense.getTaxAmount(), BigDecimal.ZERO, currency, BigDecimal.ONE, expense.getShop(), memo));
+            specs.add(new ManualLineSpec(vatInput, expense.getTaxAmount(), BigDecimal.ZERO, currency, exchangeRate, expense.getShop(), memo));
         }
-        specs.add(new ManualLineSpec(cashOrBank, BigDecimal.ZERO, expense.getTotalAmount(), currency, BigDecimal.ONE, expense.getShop(), memo));
+        specs.add(new ManualLineSpec(cashOrBank, BigDecimal.ZERO, expense.getTotalAmount(), currency, exchangeRate, expense.getShop(), memo));
 
         return glPostingService.postManual(
                 "EXPENSE-" + expense.getId(), expense.getExpenseDate(), memo,
                 GLSourceModule.SYSTEM, "EXPENSE", expense.getId(), specs, postedBy);
+    }
+
+    private BigDecimal exchangeRateToBase(Currency currency) {
+        Currency baseCurrency = currencyService.getBaseCurrency();
+        return currency == null || currency.equals(baseCurrency)
+                ? BigDecimal.ONE : currencyService.getExchangeRate(currency, baseCurrency);
     }
 
     private UserAccount resolveUser(Long userId) {

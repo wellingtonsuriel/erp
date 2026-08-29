@@ -40,6 +40,7 @@ public class BankChargeService {
     private final UserAccountRepository userAccountRepository;
     private final AccountRepository accountRepository;
     private final GLPostingService glPostingService;
+    private final CurrencyService currencyService;
 
     @Transactional(readOnly = true)
     public List<BankChargeResponse> findAll() {
@@ -91,13 +92,20 @@ public class BankChargeService {
 
         String memo = "Bank charge " + charge.getReferenceNumber() + " on " + bankAccount.getAccountName();
         Currency currency = charge.getCurrency();
+        BigDecimal exchangeRate = exchangeRateToBase(currency);
         List<ManualLineSpec> specs = List.of(
-                new ManualLineSpec(bankChargesExpense, charge.getAmount(), BigDecimal.ZERO, currency, BigDecimal.ONE, bankAccount.getShop(), memo),
-                new ManualLineSpec(bankGlAccount, BigDecimal.ZERO, charge.getAmount(), currency, BigDecimal.ONE, bankAccount.getShop(), memo));
+                new ManualLineSpec(bankChargesExpense, charge.getAmount(), BigDecimal.ZERO, currency, exchangeRate, bankAccount.getShop(), memo),
+                new ManualLineSpec(bankGlAccount, BigDecimal.ZERO, charge.getAmount(), currency, exchangeRate, bankAccount.getShop(), memo));
 
         return glPostingService.postManual(
                 "BANK-CHARGE-" + charge.getReferenceNumber(), charge.getChargeDate(), memo,
                 GLSourceModule.SYSTEM, "BANK_CHARGE", charge.getId(), specs, charge.getCreatedBy().getUsername());
+    }
+
+    private BigDecimal exchangeRateToBase(Currency currency) {
+        Currency baseCurrency = currencyService.getBaseCurrency();
+        return currency == null || currency.equals(baseCurrency)
+                ? BigDecimal.ONE : currencyService.getExchangeRate(currency, baseCurrency);
     }
 
     private UserAccount resolveUser(Long userId) {

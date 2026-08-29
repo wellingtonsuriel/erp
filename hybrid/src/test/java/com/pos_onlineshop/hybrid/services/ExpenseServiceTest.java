@@ -54,6 +54,7 @@ class ExpenseServiceTest {
     @Mock private UserAccountRepository userAccountRepository;
     @Mock private AccountRepository accountRepository;
     @Mock private GLPostingService glPostingService;
+    @Mock private CurrencyService currencyService;
 
     private ExpenseService service;
     private Currency currency;
@@ -68,7 +69,8 @@ class ExpenseServiceTest {
     @BeforeEach
     void setUp() {
         service = new ExpenseService(expenseRepository, expenseCategoryRepository, suppliersRepository,
-                employeeRepository, currencyRepository, shopRepository, userAccountRepository, accountRepository, glPostingService);
+                employeeRepository, currencyRepository, shopRepository, userAccountRepository, accountRepository,
+                glPostingService, currencyService);
 
         currency = Currency.builder().id(1L).code("USD").build();
         category = ExpenseCategory.builder().id(1L).name("Travel").glAccountCode("5300").active(true).build();
@@ -84,6 +86,7 @@ class ExpenseServiceTest {
                 .accountType(AccountType.ASSET).normalBalance(DebitCredit.DEBIT).active(true).build();
 
         lenient().when(currencyRepository.findById(1L)).thenReturn(Optional.of(currency));
+        lenient().when(currencyService.getBaseCurrency()).thenReturn(currency);
         lenient().when(expenseCategoryRepository.findById(1L)).thenReturn(Optional.of(category));
         lenient().when(userAccountRepository.findById(1L)).thenReturn(Optional.of(preparer));
         lenient().when(userAccountRepository.findById(2L)).thenReturn(Optional.of(approver));
