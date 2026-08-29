@@ -37,4 +37,13 @@ public interface ShopInventoryRepository extends JpaRepository<ShopInventory, Lo
 
     @Query("SELECT si.product FROM ShopInventory si WHERE si.shop.id = :shopId")
     List<Product> findProductsByShopId(@Param("shopId") Long shopId);
+
+    /** One row per (shop, product) pair - the latest by id, same "latest row wins" convention
+     * as findFirstByShopAndProductOrderByIdDesc, generalized across every pair at once. This
+     * is the correct way to value total on-hand inventory: ShopInventory rows are not
+     * decremented lots summed together, each new row supersedes the previous one for that
+     * pair (see InventoryTransferService/ShopInventoryService for where new rows are created). */
+    @Query("SELECT si FROM ShopInventory si WHERE si.id IN (" +
+            "SELECT MAX(si2.id) FROM ShopInventory si2 GROUP BY si2.shop.id, si2.product.id)")
+    List<ShopInventory> findLatestPerShopAndProduct();
 }
