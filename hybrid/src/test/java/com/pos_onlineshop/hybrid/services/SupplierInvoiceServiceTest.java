@@ -124,6 +124,25 @@ class SupplierInvoiceServiceTest {
     }
 
     @Test
+    void postingAForeignCurrencyStandaloneInvoicePersistsTheBookingRateOnTheEntity() {
+        when(suppliersRepository.findById(1L)).thenReturn(Optional.of(supplier));
+        when(shopRepository.findById(1L)).thenReturn(Optional.of(shop));
+        Currency eur = Currency.builder().id(2L).code("EUR").build();
+        when(currencyRepository.findById(2L)).thenReturn(Optional.of(eur));
+        when(currencyService.getExchangeRate(eur, currency)).thenReturn(new BigDecimal("1.08"));
+
+        CreateSupplierInvoiceRequest request = request(null);
+        request.setCurrencyId(2L);
+        SupplierInvoice invoice = service.createInvoice(request);
+        invoice.setId(4L);
+        when(supplierInvoiceRepository.findById(4L)).thenReturn(Optional.of(invoice));
+
+        service.postInvoice(4L);
+
+        assertEquals(0, new BigDecimal("1.08").compareTo(invoice.getExchangeRate()));
+    }
+
+    @Test
     void voidingAPostedStandaloneInvoiceReversesItsJournalEntry() {
         when(suppliersRepository.findById(1L)).thenReturn(Optional.of(supplier));
         when(shopRepository.findById(1L)).thenReturn(Optional.of(shop));

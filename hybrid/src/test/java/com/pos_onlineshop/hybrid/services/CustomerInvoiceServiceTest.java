@@ -141,6 +141,25 @@ class CustomerInvoiceServiceTest {
     }
 
     @Test
+    void postingAForeignCurrencyInvoicePersistsTheBookingRateOnTheEntity() {
+        Customers customer = Customers.builder().id(1L).name("Wholesale Co").build();
+        when(customersRepository.findById(1L)).thenReturn(Optional.of(customer));
+        Currency eur = Currency.builder().id(2L).code("EUR").build();
+        when(currencyRepository.findById(2L)).thenReturn(Optional.of(eur));
+        when(currencyService.getExchangeRate(eur, currency)).thenReturn(new BigDecimal("1.08"));
+
+        CreateCustomerInvoiceRequest request = request("100.00", "0.00");
+        request.setCurrencyId(2L);
+        CustomerInvoice invoice = service.createInvoice(request);
+        invoice.setId(3L);
+        when(customerInvoiceRepository.findById(3L)).thenReturn(Optional.of(invoice));
+
+        service.postInvoice(3L);
+
+        assertEquals(0, new BigDecimal("1.08").compareTo(invoice.getExchangeRate()));
+    }
+
+    @Test
     void voidingAPostedInvoiceReversesItsJournalEntry() {
         Customers customer = Customers.builder().id(1L).name("Wholesale Co").build();
         when(customersRepository.findById(1L)).thenReturn(Optional.of(customer));

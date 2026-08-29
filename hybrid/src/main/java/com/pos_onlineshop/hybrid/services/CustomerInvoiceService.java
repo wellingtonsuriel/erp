@@ -135,6 +135,16 @@ public class CustomerInvoiceService {
         if (currency != null && !currency.equals(baseCurrency)) {
             exchangeRate = currencyService.getExchangeRate(currency, baseCurrency);
         }
+        // Persisted (not just used transiently for this posting), since it was previously
+        // computed here and discarded, leaving the entity's exchangeRate field permanently at
+        // its default of 1 even for a genuinely foreign-currency invoice. This is the rate
+        // Accounts Receivable was actually booked at; realized FX gain/loss on settlement is
+        // not implemented, since it would require the reporting/reconciliation layer to
+        // aggregate JournalLine.baseAmount instead of the raw debit/creditAmount it uses
+        // today (see JournalLineRepository's aggregate* queries) - a foundational change,
+        // not something to bolt onto one posting path.
+        invoice.setExchangeRate(exchangeRate);
+        customerInvoiceRepository.save(invoice);
 
         FinancialEvent event = FinancialEvent.builder()
                 .eventType(FinancialEventType.CUSTOMER_INVOICE)

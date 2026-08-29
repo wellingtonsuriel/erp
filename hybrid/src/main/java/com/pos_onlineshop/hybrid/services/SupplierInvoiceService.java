@@ -140,6 +140,16 @@ public class SupplierInvoiceService {
         if (currency != null && !currency.equals(baseCurrency)) {
             exchangeRate = currencyService.getExchangeRate(currency, baseCurrency);
         }
+        // Persisted (not just used transiently), since it was previously computed here and
+        // discarded, leaving the entity's exchangeRate field permanently at its default of 1
+        // even for a genuinely foreign-currency invoice. This is the rate Accounts Payable
+        // was actually booked at for this standalone path (a PO-linked invoice never reaches
+        // here - its AP was already booked at goods receipt). Realized FX gain/loss on
+        // settlement is not implemented - see CustomerInvoiceService's identical comment for
+        // why: it needs the reporting layer to aggregate baseAmount, not the raw debit/credit
+        // amount it uses today.
+        invoice.setExchangeRate(exchangeRate);
+        supplierInvoiceRepository.save(invoice);
 
         FinancialEvent event = FinancialEvent.builder()
                 .eventType(FinancialEventType.PURCHASE_INVOICE)
