@@ -8,5 +8,6 @@ public enum GLSourceModule {
     TAX,
     MANUAL,
     SYSTEM,
-    OPENING_BALANCE
+    OPENING_BALANCE,
+    ACCRUAL
 }
