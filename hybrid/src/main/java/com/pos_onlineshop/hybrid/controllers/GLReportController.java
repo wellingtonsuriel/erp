@@ -5,8 +5,10 @@ import com.pos_onlineshop.hybrid.dtos.ArAgingReport;
 import com.pos_onlineshop.hybrid.dtos.BalanceSheetReport;
 import com.pos_onlineshop.hybrid.dtos.CashFlowReport;
 import com.pos_onlineshop.hybrid.dtos.ControlAccountReconciliationReport;
+import com.pos_onlineshop.hybrid.dtos.CustomerStatementReport;
 import com.pos_onlineshop.hybrid.dtos.LegacyGlReconciliationReport;
 import com.pos_onlineshop.hybrid.dtos.ProfitAndLossReport;
+import com.pos_onlineshop.hybrid.dtos.SupplierStatementReport;
 import com.pos_onlineshop.hybrid.dtos.TrialBalanceReport;
 import com.pos_onlineshop.hybrid.dtos.VatReturnReport;
 import com.pos_onlineshop.hybrid.services.ApAgingService;
@@ -14,8 +16,10 @@ import com.pos_onlineshop.hybrid.services.ArAgingService;
 import com.pos_onlineshop.hybrid.services.BalanceSheetService;
 import com.pos_onlineshop.hybrid.services.CashFlowService;
 import com.pos_onlineshop.hybrid.services.ControlAccountReconciliationService;
+import com.pos_onlineshop.hybrid.services.CustomerStatementService;
 import com.pos_onlineshop.hybrid.services.LegacyGlReconciliationService;
 import com.pos_onlineshop.hybrid.services.ProfitAndLossService;
+import com.pos_onlineshop.hybrid.services.SupplierStatementService;
 import com.pos_onlineshop.hybrid.services.TrialBalanceService;
 import com.pos_onlineshop.hybrid.services.VatReturnService;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +50,8 @@ public class GLReportController {
     private final CashFlowService cashFlowService;
     private final ControlAccountReconciliationService controlAccountReconciliationService;
     private final LegacyGlReconciliationService legacyGlReconciliationService;
+    private final CustomerStatementService customerStatementService;
+    private final SupplierStatementService supplierStatementService;
 
     @GetMapping("/trial-balance")
     public ResponseEntity<TrialBalanceReport> trialBalance(
@@ -109,5 +115,29 @@ public class GLReportController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
         return ResponseEntity.ok(legacyGlReconciliationService.generate(fromDate, toDate));
+    }
+
+    @GetMapping("/customer-statement")
+    public ResponseEntity<?> customerStatement(
+            @RequestParam Long customerId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
+        try {
+            return ResponseEntity.ok(customerStatementService.generate(customerId, fromDate, toDate));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    @GetMapping("/supplier-statement")
+    public ResponseEntity<?> supplierStatement(
+            @RequestParam Long supplierId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
+        try {
+            return ResponseEntity.ok(supplierStatementService.generate(supplierId, fromDate, toDate));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 }

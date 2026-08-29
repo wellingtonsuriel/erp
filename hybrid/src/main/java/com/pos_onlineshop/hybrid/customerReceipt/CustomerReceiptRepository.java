@@ -1,6 +1,7 @@
 package com.pos_onlineshop.hybrid.customerReceipt;
 
 import com.pos_onlineshop.hybrid.customerInvoice.CustomerInvoice;
+import com.pos_onlineshop.hybrid.customers.Customers;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -10,4 +11,6 @@ import java.util.List;
 public interface CustomerReceiptRepository extends JpaRepository<CustomerReceipt, Long> {
 
     List<CustomerReceipt> findByInvoice(CustomerInvoice invoice);
+
+    List<CustomerReceipt> findByCustomer(Customers customer);
 }
