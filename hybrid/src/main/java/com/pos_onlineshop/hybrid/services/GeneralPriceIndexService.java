@@ -63,6 +63,14 @@ public class GeneralPriceIndexService {
         return generalPriceIndexRepository.findAllByOrderByIndexDateDesc();
     }
 
+    /** Whether any reading has ever been recorded - lets a caller like period-close skip IAS
+     * 29 restatement entirely for the (typical) business that has never opted into
+     * hyperinflationary reporting, rather than failing on "no index reading exists." */
+    @Transactional(readOnly = true)
+    public boolean hasAnyReadings() {
+        return generalPriceIndexRepository.count() > 0;
+    }
+
     /** The conversion factor to restate an amount from fromDate's price level to toDate's:
      * indexAsAt(toDate) / indexAsAt(fromDate). Each date resolves to the most recently
      * published reading on or before it - see the repository query's comment for why. */

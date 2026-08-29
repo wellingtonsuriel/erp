@@ -31,9 +31,16 @@ import java.util.Map;
  * Calendar-month accounting periods. getOrCreateMonthlyPeriod exists so the system always
  * has an OPEN period to post into without a manual setup step.
  *
- * closePeriod() validates the period's trial balance, runs the revenue/expense-to-Retained-
- * Earnings sweep (see sweepRevenueAndExpenseToRetainedEarnings), then flips status to CLOSED
- * - in that order, since the sweep must post while the period is still OPEN.
+ * closePeriod() runs every period-end automation that used to be reachable only through its
+ * own explicit "/run" endpoint - accrual reversal, depreciation, FX revaluation, and (when
+ * the business has ever recorded a price index reading) IAS 29 restatement - THEN validates
+ * the period's trial balance, runs the revenue/expense-to-Retained-Earnings sweep (see
+ * sweepRevenueAndExpenseToRetainedEarnings), then flips status to CLOSED. All of that must
+ * happen in that order and while the period is still OPEN: depreciation and FX revaluation
+ * post to expense accounts that the sweep needs to catch, and every step must be able to
+ * post at all. None of this is optional or best-effort - if any step fails (e.g. an open
+ * foreign-currency invoice has no exchange rate on record), the whole close aborts rather
+ * than closing the period with an incomplete adjustment silently missing.
  */
 @Service
 @RequiredArgsConstructor
@@ -49,6 +56,11 @@ public class AccountingPeriodService {
     private final GLPostingService glPostingService;
     private final TrialBalanceService trialBalanceService;
     private final CurrencyService currencyService;
+    private final AccrualService accrualService;
+    private final AssetDepreciationService assetDepreciationService;
+    private final FxRevaluationService fxRevaluationService;
+    private final Ias29RestatementService ias29RestatementService;
+    private final GeneralPriceIndexService generalPriceIndexService;
 
     private record Totals(BigDecimal debit, BigDecimal credit) {
         static final Totals ZERO = new Totals(BigDecimal.ZERO, BigDecimal.ZERO);
@@ -86,13 +98,23 @@ public class AccountingPeriodService {
     }
 
     /**
-     * 1. Validates the period's own trial balance is balanced - always expected true (every
-     *    individual posted entry already balances by construction, per JournalValidator), but
-     *    asserted explicitly rather than assumed, per the "never silently force balance" rule
-     *    used throughout the reporting services.
-     * 2. Sweeps every REVENUE/EXPENSE account's net movement for the period into Retained
+     * 1. Reverses every accrual due for reversal on or before period end (AccrualService,
+     *    idempotent - already-reversed accruals are simply not matched again).
+     * 2. Runs straight-line depreciation for period end (AssetDepreciationService, idempotent
+     *    per asset/period via a DB-unique constraint).
+     * 3. Revalues every open foreign-currency AR/AP balance to period end's rate
+     *    (FxRevaluationService, idempotent - a balance whose rate hasn't moved is skipped).
+     * 4. Restates fixed assets to period end's price level (Ias29RestatementService,
+     *    idempotent the same way) - but ONLY when the business has ever recorded a general
+     *    price index reading; skipped entirely otherwise, since requiring one to close a
+     *    period would break every business that has never opted into IAS 29.
+     * 5. Validates the period's own trial balance is balanced - always expected true after
+     *    the steps above (every individual posted entry already balances by construction,
+     *    per JournalValidator), but asserted explicitly rather than assumed, per the "never
+     *    silently force balance" rule used throughout the reporting services.
+     * 6. Sweeps every REVENUE/EXPENSE account's net movement for the period into Retained
      *    Earnings via one idempotent GLPostingService.postManual() call (sourceModule SYSTEM).
-     * 3. Marks the period CLOSED, rejecting any further posting into it from that point on.
+     * 7. Marks the period CLOSED, rejecting any further posting into it from that point on.
      */
     @Transactional
     public AccountingPeriod closePeriod(Long periodId, String closedBy) {
@@ -105,6 +127,13 @@ public class AccountingPeriodService {
             throw new IllegalStateException(
                     "Cannot close period " + period.getName() + ": an earlier period is still OPEN - "
                             + "periods must be closed in chronological order");
+        }
+
+        accrualService.reverseDueAccruals(period.getEndDate());
+        assetDepreciationService.runMonthlyDepreciation(period.getEndDate(), closedBy);
+        fxRevaluationService.revalueOpenBalances(period.getEndDate(), closedBy);
+        if (generalPriceIndexService.hasAnyReadings()) {
+            ias29RestatementService.restateFixedAssets(period.getEndDate(), closedBy);
         }
 
         TrialBalanceReport trialBalance = trialBalanceService.generate(period.getStartDate(), period.getEndDate(), null);

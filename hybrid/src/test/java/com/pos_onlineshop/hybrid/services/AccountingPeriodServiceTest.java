@@ -38,6 +38,11 @@ class AccountingPeriodServiceTest {
     @Mock private GLPostingService glPostingService;
     @Mock private TrialBalanceService trialBalanceService;
     @Mock private CurrencyService currencyService;
+    @Mock private AccrualService accrualService;
+    @Mock private AssetDepreciationService assetDepreciationService;
+    @Mock private FxRevaluationService fxRevaluationService;
+    @Mock private Ias29RestatementService ias29RestatementService;
+    @Mock private GeneralPriceIndexService generalPriceIndexService;
 
     private AccountingPeriodService service;
 
@@ -52,7 +57,8 @@ class AccountingPeriodServiceTest {
     @BeforeEach
     void setUp() {
         service = new AccountingPeriodService(accountingPeriodRepository, accountRepository,
-                journalLineRepository, glPostingService, trialBalanceService, currencyService);
+                journalLineRepository, glPostingService, trialBalanceService, currencyService,
+                accrualService, assetDepreciationService, fxRevaluationService, ias29RestatementService, generalPriceIndexService);
 
         currency = Currency.builder().id(1L).code("USD").build();
         posRevenue = Account.builder().id(1L).code("4000").name("Sales Revenue - POS")
@@ -205,6 +211,52 @@ class AccountingPeriodServiceTest {
 
         assertEquals(PeriodStatus.CLOSED, result.getStatus());
         verifyNoInteractions(glPostingService);
+    }
+
+    @Test
+    void closePeriodRunsAccrualReversalDepreciationAndFxRevaluationBeforeTheSweep() {
+        AccountingPeriod period = openPeriod();
+        when(accountingPeriodRepository.findById(1L)).thenReturn(Optional.of(period));
+        when(trialBalanceService.generate(start, end, null)).thenReturn(balancedTrialBalance());
+        when(accountRepository.findByActiveTrue()).thenReturn(List.of());
+        when(journalLineRepository.aggregateBetween(start, end, null)).thenReturn(List.of());
+        when(accountingPeriodRepository.save(any(AccountingPeriod.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.closePeriod(1L, "admin1");
+
+        verify(accrualService).reverseDueAccruals(end);
+        verify(assetDepreciationService).runMonthlyDepreciation(end, "admin1");
+        verify(fxRevaluationService).revalueOpenBalances(end, "admin1");
+    }
+
+    @Test
+    void closePeriodSkipsIas29RestatementWhenNoPriceIndexHasEverBeenRecorded() {
+        AccountingPeriod period = openPeriod();
+        when(accountingPeriodRepository.findById(1L)).thenReturn(Optional.of(period));
+        when(trialBalanceService.generate(start, end, null)).thenReturn(balancedTrialBalance());
+        when(accountRepository.findByActiveTrue()).thenReturn(List.of());
+        when(journalLineRepository.aggregateBetween(start, end, null)).thenReturn(List.of());
+        when(accountingPeriodRepository.save(any(AccountingPeriod.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(generalPriceIndexService.hasAnyReadings()).thenReturn(false);
+
+        service.closePeriod(1L, "admin1");
+
+        verifyNoInteractions(ias29RestatementService);
+    }
+
+    @Test
+    void closePeriodRunsIas29RestatementWhenAPriceIndexHasBeenRecorded() {
+        AccountingPeriod period = openPeriod();
+        when(accountingPeriodRepository.findById(1L)).thenReturn(Optional.of(period));
+        when(trialBalanceService.generate(start, end, null)).thenReturn(balancedTrialBalance());
+        when(accountRepository.findByActiveTrue()).thenReturn(List.of());
+        when(journalLineRepository.aggregateBetween(start, end, null)).thenReturn(List.of());
+        when(accountingPeriodRepository.save(any(AccountingPeriod.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(generalPriceIndexService.hasAnyReadings()).thenReturn(true);
+
+        service.closePeriod(1L, "admin1");
+
+        verify(ias29RestatementService).restateFixedAssets(end, "admin1");
     }
 
     @Test

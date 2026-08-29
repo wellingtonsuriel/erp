@@ -91,4 +91,13 @@ class GeneralPriceIndexServiceTest {
         assertThrows(IllegalStateException.class,
                 () -> service.getConversionFactor(LocalDate.of(2020, 1, 1), LocalDate.of(2026, 1, 1)));
     }
+
+    @Test
+    void hasAnyReadingsReflectsWhetherAnyReadingHasEverBeenRecorded() {
+        when(generalPriceIndexRepository.count()).thenReturn(0L);
+        assertFalse(service.hasAnyReadings());
+
+        when(generalPriceIndexRepository.count()).thenReturn(3L);
+        assertTrue(service.hasAnyReadings());
+    }
 }
