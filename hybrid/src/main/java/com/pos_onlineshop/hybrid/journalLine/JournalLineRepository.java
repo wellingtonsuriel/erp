@@ -96,4 +96,18 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, Long> 
             "AND l.journalEntry.entryDate BETWEEN :from AND :to " +
             "GROUP BY l.journalEntry.sourceReferenceType, l.journalEntry.sourceReferenceId")
     List<Object[]> aggregateDebitsBySourceReferenceBetween(@Param("from") LocalDate from, @Param("to") LocalDate to);
+
+    /** Every individual POSTED line for one account within [from, to], oldest first (ties
+     * broken by entry id then line id, so same-day entries stay in posting order) - the raw
+     * material GeneralLedgerService's account-ledger drill-down builds a running balance
+     * from. Never returns a DRAFT/REVERSED entry's lines. */
+    @Query("SELECT l FROM JournalLine l " +
+            "WHERE l.account = :account AND l.journalEntry.status = com.pos_onlineshop.hybrid.enums.JournalStatus.POSTED " +
+            "AND l.journalEntry.entryDate BETWEEN :from AND :to " +
+            "AND (:shopId IS NULL OR l.costCenterShop.id = :shopId) " +
+            "ORDER BY l.journalEntry.entryDate ASC, l.journalEntry.id ASC, l.id ASC")
+    List<JournalLine> findLedgerLinesForAccountBetween(@Param("account") Account account,
+                                                         @Param("from") LocalDate from,
+                                                         @Param("to") LocalDate to,
+                                                         @Param("shopId") Long shopId);
 }

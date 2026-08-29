@@ -1,5 +1,6 @@
 package com.pos_onlineshop.hybrid.controllers;
 
+import com.pos_onlineshop.hybrid.dtos.AccountLedgerReport;
 import com.pos_onlineshop.hybrid.dtos.ApAgingReport;
 import com.pos_onlineshop.hybrid.dtos.ArAgingReport;
 import com.pos_onlineshop.hybrid.dtos.BalanceSheetReport;
@@ -17,6 +18,7 @@ import com.pos_onlineshop.hybrid.services.BalanceSheetService;
 import com.pos_onlineshop.hybrid.services.CashFlowService;
 import com.pos_onlineshop.hybrid.services.ControlAccountReconciliationService;
 import com.pos_onlineshop.hybrid.services.CustomerStatementService;
+import com.pos_onlineshop.hybrid.services.GeneralLedgerService;
 import com.pos_onlineshop.hybrid.services.LegacyGlReconciliationService;
 import com.pos_onlineshop.hybrid.services.ProfitAndLossService;
 import com.pos_onlineshop.hybrid.services.SupplierStatementService;
@@ -32,8 +34,9 @@ import java.time.LocalDate;
 
 /**
  * /api/reports/*. Implemented: Trial Balance, AP aging, AR aging, Profit & Loss, Balance
- * Sheet, VAT Return, Cash Flow, control-account reconciliation. Not yet implemented: GL
- * detail (see the implementation summary).
+ * Sheet, VAT Return, Cash Flow, control-account reconciliation, customer/supplier
+ * statements, and the account-ledger GL detail drill-down (one account's individual posted
+ * lines with a running balance - see GeneralLedgerService).
  */
 @RestController
 @RequestMapping("/api/reports")
@@ -52,6 +55,7 @@ public class GLReportController {
     private final LegacyGlReconciliationService legacyGlReconciliationService;
     private final CustomerStatementService customerStatementService;
     private final SupplierStatementService supplierStatementService;
+    private final GeneralLedgerService generalLedgerService;
 
     @GetMapping("/trial-balance")
     public ResponseEntity<TrialBalanceReport> trialBalance(
@@ -136,6 +140,19 @@ public class GLReportController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
         try {
             return ResponseEntity.ok(supplierStatementService.generate(supplierId, fromDate, toDate));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    @GetMapping("/account-ledger")
+    public ResponseEntity<?> accountLedger(
+            @RequestParam Long accountId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
+            @RequestParam(required = false) Long shopId) {
+        try {
+            return ResponseEntity.ok(generalLedgerService.generateAccountLedger(accountId, fromDate, toDate, shopId));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
         }
