@@ -36,12 +36,14 @@ public interface AccountancyEntryRepository extends JpaRepository<AccountancyEnt
             "WHERE ae.type = :type GROUP BY ae.referenceType")
     List<Object[]> getSummaryByReferenceType(@Param("type") EntryType type);
 
-    /** [referenceType, referenceId, sumAmount] for the DEBIT leg of every double entry in
+    /** [referenceType, referenceId, sumBaseAmount] for the DEBIT leg of every double entry in
      * range - the CREDIT leg always carries the identical amount (see
      * AccountancyEntry.createDoubleEntry), so summing only DEBIT avoids double-counting.
-     * Used by LegacyGlReconciliationService to compare this legacy ledger's totals against
-     * the real GL for the same business events - see that service's class comment. */
-    @Query("SELECT ae.referenceType, ae.referenceId, SUM(ae.amount) FROM AccountancyEntry ae " +
+     * Sums baseAmount (base currency), not the raw transaction-currency amount, to compare
+     * apples-to-apples against JournalLineRepository.aggregateDebitsBySourceReferenceBetween,
+     * which is base-currency too - see JournalValidator's class comment for why base currency
+     * is this GL's authoritative accounting value. Used by LegacyGlReconciliationService. */
+    @Query("SELECT ae.referenceType, ae.referenceId, COALESCE(SUM(ae.baseAmount), SUM(ae.amount)) FROM AccountancyEntry ae " +
             "WHERE ae.type = com.pos_onlineshop.hybrid.enums.EntryType.DEBIT " +
             "AND ae.referenceType IS NOT NULL AND ae.referenceId IS NOT NULL " +
             "AND ae.entryDate BETWEEN :from AND :to " +

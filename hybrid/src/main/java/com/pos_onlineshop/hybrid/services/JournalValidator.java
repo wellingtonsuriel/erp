@@ -15,6 +15,18 @@ import java.util.List;
  * Enforces the invariants a real GL cannot compromise on: every posted entry balances,
  * every line touches exactly one side of exactly one active account, and nothing posts
  * into a closed period or directly into a control account from a manual entry.
+ *
+ * Balance is checked in baseAmount (the base-currency value each line already carries),
+ * not the raw transaction-currency debitAmount/creditAmount. Every other line in the GL
+ * that used to read raw debit/credit for anything but display purposes (see
+ * JournalLineRepository's aggregate queries) was fixed the same way, for the same reason:
+ * a genuinely multi-currency entry - one whose lines are denominated in different
+ * currencies at different rates - only balances in base terms, never in raw terms, so a
+ * raw-amount check would either wrongly reject a valid multi-currency entry or (worse)
+ * wrongly accept lines that don't actually represent equal economic value. A same-currency
+ * entry (the overwhelming majority today) balances identically either way, since baseAmount
+ * is just rawAmount * exchangeRate with one exchangeRate shared across the entry - so this
+ * is a strict widening of what validates, not a behavior change for existing traffic.
  */
 @Component
 public class JournalValidator {
@@ -32,13 +44,18 @@ public class JournalValidator {
 
         for (JournalLine line : lines) {
             validateLine(entry, line);
-            totalDebits = totalDebits.add(nvl(line.getDebitAmount()));
-            totalCredits = totalCredits.add(nvl(line.getCreditAmount()));
+            BigDecimal base = nvl(line.getBaseAmount());
+            boolean isDebitLine = nvl(line.getDebitAmount()).compareTo(BigDecimal.ZERO) > 0;
+            if (isDebitLine) {
+                totalDebits = totalDebits.add(base);
+            } else {
+                totalCredits = totalCredits.add(base);
+            }
         }
 
         if (totalDebits.compareTo(totalCredits) != 0) {
             throw new JournalImbalanceException(
-                    "Journal entry does not balance: debits=" + totalDebits + " credits=" + totalCredits);
+                    "Journal entry does not balance in base currency: debits=" + totalDebits + " credits=" + totalCredits);
         }
 
         if (entry.getAccountingPeriod() == null || !entry.getAccountingPeriod().acceptsPosting()) {

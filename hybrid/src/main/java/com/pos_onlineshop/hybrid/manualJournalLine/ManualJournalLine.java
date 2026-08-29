@@ -55,4 +55,14 @@ public class ManualJournalLine {
 
     @Column(length = 300)
     private String memo;
+
+    /** Not persisted - derived the same way GLPostingService.postManual() computes the real
+     * JournalLine.baseAmount at post time, so ManualJournal.validateBalance()'s draft-level
+     * check agrees with JournalValidator's post-time check (base currency, not raw
+     * transaction-currency amounts - see JournalValidator's class comment for why). */
+    public BigDecimal getBaseAmount() {
+        BigDecimal amount = debitAmount != null && debitAmount.compareTo(BigDecimal.ZERO) > 0 ? debitAmount : creditAmount;
+        BigDecimal rate = exchangeRate != null ? exchangeRate : BigDecimal.ONE;
+        return (amount == null ? BigDecimal.ZERO : amount).multiply(rate);
+    }
 }

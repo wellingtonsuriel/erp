@@ -171,4 +171,42 @@ class JournalValidatorTest {
 
         assertDoesNotThrow(() -> validator.validate(entry));
     }
+
+    @Test
+    void anEntryThatBalancesInBaseCurrencyButNotInRawAmountsIsAccepted() {
+        // 100 USD @ rate 1.0 = 100 base; 8000 ZWG @ rate 0.0125 = 100 base - genuinely
+        // multi-currency, raw amounts (100 vs 8000) never match, but the economic value does.
+        JournalEntry entry = entryWithPeriod(openPeriod(), GLSourceModule.MANUAL);
+        JournalLine usdLine = JournalLine.builder()
+                .account(account("1030", false, true))
+                .debitAmount(new BigDecimal("100.00")).creditAmount(BigDecimal.ZERO)
+                .exchangeRate(BigDecimal.ONE).baseAmount(new BigDecimal("100.00")).build();
+        JournalLine zwgLine = JournalLine.builder()
+                .account(account("3900", false, true))
+                .debitAmount(BigDecimal.ZERO).creditAmount(new BigDecimal("8000.00"))
+                .exchangeRate(new BigDecimal("0.0125")).baseAmount(new BigDecimal("100.00")).build();
+        entry.addLine(usdLine);
+        entry.addLine(zwgLine);
+
+        assertDoesNotThrow(() -> validator.validate(entry));
+    }
+
+    @Test
+    void anEntryThatBalancesInRawAmountsButNotInBaseCurrencyIsRejected() {
+        // Same raw amount (100) on both sides, but different rates - the economic value does
+        // NOT actually match (100 base vs 50 base), so this must be rejected, not accepted.
+        JournalEntry entry = entryWithPeriod(openPeriod(), GLSourceModule.MANUAL);
+        JournalLine debitLine = JournalLine.builder()
+                .account(account("1030", false, true))
+                .debitAmount(new BigDecimal("100.00")).creditAmount(BigDecimal.ZERO)
+                .exchangeRate(BigDecimal.ONE).baseAmount(new BigDecimal("100.00")).build();
+        JournalLine creditLine = JournalLine.builder()
+                .account(account("3900", false, true))
+                .debitAmount(BigDecimal.ZERO).creditAmount(new BigDecimal("100.00"))
+                .exchangeRate(new BigDecimal("0.50")).baseAmount(new BigDecimal("50.00")).build();
+        entry.addLine(debitLine);
+        entry.addLine(creditLine);
+
+        assertThrows(JournalImbalanceException.class, () -> validator.validate(entry));
+    }
 }

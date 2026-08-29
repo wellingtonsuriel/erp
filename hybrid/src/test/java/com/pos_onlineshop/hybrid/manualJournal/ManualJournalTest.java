@@ -68,6 +68,36 @@ class ManualJournalTest {
     }
 
     @Test
+    void validateBalanceAcceptsLinesThatBalanceInBaseCurrencyButNotInRawAmounts() {
+        Currency zwg = Currency.builder().id(2L).code("ZWG").build();
+        ManualJournal journal = ManualJournal.builder()
+                .entryDate(LocalDate.now()).description("Multi-currency test").createdBy(preparer).build();
+        journal.addLine(ManualJournalLine.builder().account(cash)
+                .debitAmount(new BigDecimal("100.00")).creditAmount(BigDecimal.ZERO)
+                .currency(currency).exchangeRate(BigDecimal.ONE).build());
+        journal.addLine(ManualJournalLine.builder().account(expense)
+                .debitAmount(BigDecimal.ZERO).creditAmount(new BigDecimal("8000.00"))
+                .currency(zwg).exchangeRate(new BigDecimal("0.0125")).build());
+
+        assertDoesNotThrow(journal::validateBalance);
+    }
+
+    @Test
+    void validateBalanceRejectsLinesThatBalanceInRawAmountsButNotInBaseCurrency() {
+        Currency zwg = Currency.builder().id(2L).code("ZWG").build();
+        ManualJournal journal = ManualJournal.builder()
+                .entryDate(LocalDate.now()).description("Multi-currency test").createdBy(preparer).build();
+        journal.addLine(ManualJournalLine.builder().account(cash)
+                .debitAmount(new BigDecimal("100.00")).creditAmount(BigDecimal.ZERO)
+                .currency(currency).exchangeRate(BigDecimal.ONE).build());
+        journal.addLine(ManualJournalLine.builder().account(expense)
+                .debitAmount(BigDecimal.ZERO).creditAmount(new BigDecimal("100.00"))
+                .currency(zwg).exchangeRate(new BigDecimal("0.50")).build());
+
+        assertThrows(JournalImbalanceException.class, journal::validateBalance);
+    }
+
+    @Test
     void submitTransitionsDraftToSubmittedAndValidatesBalance() {
         ManualJournal journal = balancedDraft();
         journal.submit(preparer);

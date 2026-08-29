@@ -23,8 +23,10 @@ import java.util.Map;
  * the same business events, joined on (sourceReferenceType, sourceReferenceId) /
  * (referenceType, referenceId). This is diagnostic tooling for the parallel-posting period,
  * not a migration step: it does not touch either ledger, and does not decide which side is
- * "right" - a variance here is a finding to investigate, most plausibly a currency
- * conversion difference (AccountancyEntry historically converted at whatever rate
+ * "right" - a variance here is a finding to investigate. Both sides compare in base-currency
+ * amounts (AccountancyEntry.baseAmount vs JournalLine.baseAmount, the GL's own authoritative
+ * value - see JournalValidator's class comment), so a remaining variance is most plausibly a
+ * genuine conversion discrepancy (AccountancyEntry historically converted at whatever rate
  * CurrencyService returned at write time, independently of the GL's own conversion for the
  * same event) or an event type the two systems genuinely don't both cover (e.g. legacy's
  * separate "PAYMENT" and "REFUND" reference types for what the GL posts as a single "ORDER"

@@ -115,7 +115,10 @@ public class ManualJournal {
     }
 
     /** At least two lines, each with exactly one of debit/credit set, and total debits ==
-     * total credits. Run at submit() and again at post() as defense in depth. */
+     * total credits IN BASE CURRENCY (ManualJournalLine.getBaseAmount(), matching
+     * JournalValidator's post-time check - a genuinely multi-currency draft only balances in
+     * base terms, never in raw terms; a same-currency draft balances identically either way).
+     * Run at submit() and again at post() as defense in depth. */
     public void validateBalance() {
         if (lines == null || lines.size() < 2) {
             throw new JournalImbalanceException(
@@ -136,12 +139,15 @@ public class ManualJournal {
                         "Each manual journal line must have exactly one of debit/credit set, not "
                                 + (hasDebit ? "both" : "neither"));
             }
-            totalDebits = totalDebits.add(debit);
-            totalCredits = totalCredits.add(credit);
+            if (hasDebit) {
+                totalDebits = totalDebits.add(line.getBaseAmount());
+            } else {
+                totalCredits = totalCredits.add(line.getBaseAmount());
+            }
         }
         if (totalDebits.compareTo(totalCredits) != 0) {
             throw new JournalImbalanceException(
-                    "Manual journal does not balance: debits=" + totalDebits + " credits=" + totalCredits);
+                    "Manual journal does not balance in base currency: debits=" + totalDebits + " credits=" + totalCredits);
         }
     }
 

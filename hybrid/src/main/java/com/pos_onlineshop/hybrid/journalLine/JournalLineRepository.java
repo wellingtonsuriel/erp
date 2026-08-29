@@ -10,6 +10,16 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+/**
+ * Every aggregate query here sums JournalLine.baseAmount (grouped by which side - debit or
+ * credit - each line is on), never the raw transaction-currency debitAmount/creditAmount.
+ * baseAmount is the authoritative accounting value throughout this GL - see JournalValidator's
+ * class comment for why a raw-amount sum cannot correctly represent a genuinely multi-currency
+ * entry. Every report/reconciliation service that consumes these queries (TrialBalanceService,
+ * BalanceSheetService, CashFlowService, ProfitAndLossService, VatReturnService,
+ * ControlAccountReconciliationService, AccountingPeriodService's period-close sweep) inherits
+ * this correction automatically, with no change needed on their side.
+ */
 @Repository
 public interface JournalLineRepository extends JpaRepository<JournalLine, Long> {
 
@@ -17,22 +27,25 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, Long> 
 
     boolean existsByAccount(Account account);
 
-    @Query("SELECT COALESCE(SUM(l.debitAmount), 0) FROM JournalLine l " +
+    @Query("SELECT COALESCE(SUM(CASE WHEN l.debitAmount > 0 THEN l.baseAmount ELSE 0 END), 0) FROM JournalLine l " +
             "WHERE l.account = :account AND l.journalEntry.entryDate BETWEEN :from AND :to " +
             "AND l.journalEntry.status = com.pos_onlineshop.hybrid.enums.JournalStatus.POSTED")
     BigDecimal sumDebitsForAccountBetween(@Param("account") Account account,
                                            @Param("from") LocalDate from,
                                            @Param("to") LocalDate to);
 
-    @Query("SELECT COALESCE(SUM(l.creditAmount), 0) FROM JournalLine l " +
+    @Query("SELECT COALESCE(SUM(CASE WHEN l.creditAmount > 0 THEN l.baseAmount ELSE 0 END), 0) FROM JournalLine l " +
             "WHERE l.account = :account AND l.journalEntry.entryDate BETWEEN :from AND :to " +
             "AND l.journalEntry.status = com.pos_onlineshop.hybrid.enums.JournalStatus.POSTED")
     BigDecimal sumCreditsForAccountBetween(@Param("account") Account account,
                                             @Param("from") LocalDate from,
                                             @Param("to") LocalDate to);
 
-    /** Per-account [accountId, sumDebit, sumCredit] for all POSTED activity strictly before beforeDate. */
-    @Query("SELECT l.account.id, COALESCE(SUM(l.debitAmount), 0), COALESCE(SUM(l.creditAmount), 0) " +
+    /** Per-account [accountId, sumDebit, sumCredit] (base currency) for all POSTED activity
+     * strictly before beforeDate. */
+    @Query("SELECT l.account.id, " +
+            "COALESCE(SUM(CASE WHEN l.debitAmount > 0 THEN l.baseAmount ELSE 0 END), 0), " +
+            "COALESCE(SUM(CASE WHEN l.creditAmount > 0 THEN l.baseAmount ELSE 0 END), 0) " +
             "FROM JournalLine l " +
             "WHERE l.journalEntry.status = com.pos_onlineshop.hybrid.enums.JournalStatus.POSTED " +
             "AND l.journalEntry.entryDate < :beforeDate " +
@@ -40,8 +53,11 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, Long> 
             "GROUP BY l.account.id")
     List<Object[]> aggregateBeforeDate(@Param("beforeDate") LocalDate beforeDate, @Param("shopId") Long shopId);
 
-    /** Per-account [accountId, sumDebit, sumCredit] for all POSTED activity within [from, to]. */
-    @Query("SELECT l.account.id, COALESCE(SUM(l.debitAmount), 0), COALESCE(SUM(l.creditAmount), 0) " +
+    /** Per-account [accountId, sumDebit, sumCredit] (base currency) for all POSTED activity
+     * within [from, to]. */
+    @Query("SELECT l.account.id, " +
+            "COALESCE(SUM(CASE WHEN l.debitAmount > 0 THEN l.baseAmount ELSE 0 END), 0), " +
+            "COALESCE(SUM(CASE WHEN l.creditAmount > 0 THEN l.baseAmount ELSE 0 END), 0) " +
             "FROM JournalLine l " +
             "WHERE l.journalEntry.status = com.pos_onlineshop.hybrid.enums.JournalStatus.POSTED " +
             "AND l.journalEntry.entryDate BETWEEN :from AND :to " +
@@ -49,11 +65,13 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, Long> 
             "GROUP BY l.account.id")
     List<Object[]> aggregateBetween(@Param("from") LocalDate from, @Param("to") LocalDate to, @Param("shopId") Long shopId);
 
-    /** [sourceReferenceType, sumDebit, sumCredit] for POSTED lines against one of the given
-     * accounts within [from, to] - used by CashFlowService to break down cash-account activity
-     * by the business event that moved it, since JournalEntry does not store a FinancialEventType. */
+    /** [sourceReferenceType, sumDebit, sumCredit] (base currency) for POSTED lines against one
+     * of the given accounts within [from, to] - used by CashFlowService to break down
+     * cash-account activity by the business event that moved it, since JournalEntry does not
+     * store a FinancialEventType. */
     @Query("SELECT COALESCE(l.journalEntry.sourceReferenceType, 'OTHER'), " +
-            "COALESCE(SUM(l.debitAmount), 0), COALESCE(SUM(l.creditAmount), 0) " +
+            "COALESCE(SUM(CASE WHEN l.debitAmount > 0 THEN l.baseAmount ELSE 0 END), 0), " +
+            "COALESCE(SUM(CASE WHEN l.creditAmount > 0 THEN l.baseAmount ELSE 0 END), 0) " +
             "FROM JournalLine l " +
             "WHERE l.account.id IN :accountIds " +
             "AND l.journalEntry.status = com.pos_onlineshop.hybrid.enums.JournalStatus.POSTED " +
@@ -65,11 +83,13 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, Long> 
                                                                @Param("to") LocalDate to,
                                                                @Param("shopId") Long shopId);
 
-    /** [sourceReferenceType, sourceReferenceId, sumDebits] per business event in range - total
-     * debits of a balanced entry equals its gross value (e.g. the Cash debit of a POS sale),
-     * making it comparable to AccountancyEntryRepository.aggregateDebitsByReferenceBetween's
-     * legacy-side DEBIT total for the same event. Used by LegacyGlReconciliationService. */
-    @Query("SELECT l.journalEntry.sourceReferenceType, l.journalEntry.sourceReferenceId, SUM(l.debitAmount) " +
+    /** [sourceReferenceType, sourceReferenceId, sumDebits] (base currency) per business event
+     * in range - total debits of a balanced entry equals its gross value (e.g. the Cash debit
+     * of a POS sale), making it comparable to
+     * AccountancyEntryRepository.aggregateDebitsByReferenceBetween's legacy-side DEBIT total
+     * (also base currency) for the same event. Used by LegacyGlReconciliationService. */
+    @Query("SELECT l.journalEntry.sourceReferenceType, l.journalEntry.sourceReferenceId, " +
+            "SUM(CASE WHEN l.debitAmount > 0 THEN l.baseAmount ELSE 0 END) " +
             "FROM JournalLine l " +
             "WHERE l.journalEntry.status = com.pos_onlineshop.hybrid.enums.JournalStatus.POSTED " +
             "AND l.journalEntry.sourceReferenceType IS NOT NULL AND l.journalEntry.sourceReferenceId IS NOT NULL " +
