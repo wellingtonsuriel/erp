@@ -7,5 +7,6 @@ public enum GLSourceModule {
     TRANSFER,
     TAX,
     MANUAL,
-    SYSTEM
+    SYSTEM,
+    OPENING_BALANCE
 }
