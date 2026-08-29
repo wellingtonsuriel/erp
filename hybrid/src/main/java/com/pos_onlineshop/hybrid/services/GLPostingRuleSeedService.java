@@ -125,6 +125,10 @@ public class GLPostingRuleSeedService {
         seedRule(FinancialEventType.CUSTOMER_RECEIPT_CASH, "Customer receipt via physical cash",
                 line("1010", DebitCredit.DEBIT, AmountSource.GROSS, 1),
                 line("1100", DebitCredit.CREDIT, AmountSource.GROSS, 2));
+
+        seedRule(FinancialEventType.CUSTOMER_CREDIT_NOTE, "Credit note against a customer invoice",
+                line("4900", DebitCredit.DEBIT, AmountSource.GROSS, 1),
+                line("1100", DebitCredit.CREDIT, AmountSource.GROSS, 2));
     }
 
     private record LineSpec(String accountCode, DebitCredit side, AmountSource source, int sequence, ShopRole shopRole) {

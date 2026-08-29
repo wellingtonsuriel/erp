@@ -37,5 +37,11 @@ public enum FinancialEventType {
     CUSTOMER_RECEIPT,
     /** Customer receipt via physical cash. */
     CUSTOMER_RECEIPT_CASH,
+    /** A credit note reducing a CustomerInvoice's outstanding balance without cash changing
+     * hands (a return, pricing correction, or goodwill write-down) - see
+     * CustomerCreditNoteService. Always standalone like CUSTOMER_INVOICE itself: no
+     * order-linked case, no inventory/COGS side to reverse (the original invoice never posted
+     * one either). */
+    CUSTOMER_CREDIT_NOTE,
     MANUAL_ENTRY
 }
