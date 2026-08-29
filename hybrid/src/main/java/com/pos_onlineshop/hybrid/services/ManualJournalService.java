@@ -45,6 +45,7 @@ public class ManualJournalService {
     private final UserAccountRepository userAccountRepository;
     private final GLPostingService glPostingService;
     private final CurrencyService currencyService;
+    private final AuditLogService auditLogService;
 
     public List<ManualJournalResponse> findAll() {
         return manualJournalRepository.findAllByOrderByIdDesc().stream()
@@ -108,14 +109,20 @@ public class ManualJournalService {
         ManualJournal journal = findOrThrow(id);
         UserAccount approvedBy = resolveUser(request.getUserId());
         journal.approve(approvedBy);
-        return toResponse(manualJournalRepository.save(journal));
+        ManualJournalResponse response = toResponse(manualJournalRepository.save(journal));
+        auditLogService.record("MANUAL_JOURNAL", id, com.pos_onlineshop.hybrid.enums.AuditAction.APPROVE,
+                approvedBy.getUsername(), "Manual journal " + journal.getDescription() + " approved");
+        return response;
     }
 
     public ManualJournalResponse reject(Long id, RejectManualJournalRequest request) {
         ManualJournal journal = findOrThrow(id);
         UserAccount rejectedBy = resolveUser(request.getUserId());
         journal.reject(rejectedBy, request.getReason());
-        return toResponse(manualJournalRepository.save(journal));
+        ManualJournalResponse response = toResponse(manualJournalRepository.save(journal));
+        auditLogService.record("MANUAL_JOURNAL", id, com.pos_onlineshop.hybrid.enums.AuditAction.REJECT,
+                rejectedBy.getUsername(), "Manual journal " + journal.getDescription() + " rejected: " + request.getReason());
+        return response;
     }
 
     public ManualJournalResponse post(Long id, ManualJournalActionRequest request) {
@@ -142,7 +149,10 @@ public class ManualJournalService {
 
         journal.markPosted(entry);
         log.info("Manual journal {} posted as GL entry #{}", journal.getId(), entry.getEntryNumber());
-        return toResponse(manualJournalRepository.save(journal));
+        ManualJournalResponse response = toResponse(manualJournalRepository.save(journal));
+        auditLogService.record("MANUAL_JOURNAL", id, com.pos_onlineshop.hybrid.enums.AuditAction.POST,
+                postedByUser.getUsername(), "Manual journal " + journal.getDescription() + " posted as GL entry #" + entry.getEntryNumber());
+        return response;
     }
 
     private UserAccount resolveUser(Long userId) {

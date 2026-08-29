@@ -61,6 +61,7 @@ public class AccountingPeriodService {
     private final FxRevaluationService fxRevaluationService;
     private final Ias29RestatementService ias29RestatementService;
     private final GeneralPriceIndexService generalPriceIndexService;
+    private final AuditLogService auditLogService;
 
     private record Totals(BigDecimal debit, BigDecimal credit) {
         static final Totals ZERO = new Totals(BigDecimal.ZERO, BigDecimal.ZERO);
@@ -150,7 +151,10 @@ public class AccountingPeriodService {
         period.setClosedBy(closedBy);
         period.setClosingJournalEntry(closingEntry);
         period.setCloseCount(period.getCloseCount() + 1);
-        return accountingPeriodRepository.save(period);
+        AccountingPeriod saved = accountingPeriodRepository.save(period);
+        auditLogService.record("ACCOUNTING_PERIOD", periodId, com.pos_onlineshop.hybrid.enums.AuditAction.PERIOD_CLOSE,
+                closedBy, "Period " + period.getName() + " closed (close #" + period.getCloseCount() + ")");
+        return saved;
     }
 
     /**
@@ -289,6 +293,9 @@ public class AccountingPeriodService {
         period.setStatus(PeriodStatus.OPEN);
         period.setClosedAt(null);
         period.setClosedBy(null);
-        return accountingPeriodRepository.save(period);
+        AccountingPeriod saved = accountingPeriodRepository.save(period);
+        auditLogService.record("ACCOUNTING_PERIOD", periodId, com.pos_onlineshop.hybrid.enums.AuditAction.PERIOD_REOPEN,
+                reopenedBy, "Period " + period.getName() + " reopened");
+        return saved;
     }
 }

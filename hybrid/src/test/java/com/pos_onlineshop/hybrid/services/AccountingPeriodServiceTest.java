@@ -43,6 +43,7 @@ class AccountingPeriodServiceTest {
     @Mock private FxRevaluationService fxRevaluationService;
     @Mock private Ias29RestatementService ias29RestatementService;
     @Mock private GeneralPriceIndexService generalPriceIndexService;
+    @Mock private AuditLogService auditLogService;
 
     private AccountingPeriodService service;
 
@@ -58,7 +59,8 @@ class AccountingPeriodServiceTest {
     void setUp() {
         service = new AccountingPeriodService(accountingPeriodRepository, accountRepository,
                 journalLineRepository, glPostingService, trialBalanceService, currencyService,
-                accrualService, assetDepreciationService, fxRevaluationService, ias29RestatementService, generalPriceIndexService);
+                accrualService, assetDepreciationService, fxRevaluationService, ias29RestatementService,
+                generalPriceIndexService, auditLogService);
 
         currency = Currency.builder().id(1L).code("USD").build();
         posRevenue = Account.builder().id(1L).code("4000").name("Sales Revenue - POS")

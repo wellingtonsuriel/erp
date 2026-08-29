@@ -43,6 +43,7 @@ class ManualJournalServiceTest {
     @Mock private UserAccountRepository userAccountRepository;
     @Mock private GLPostingService glPostingService;
     @Mock private CurrencyService currencyService;
+    @Mock private AuditLogService auditLogService;
 
     private ManualJournalService service;
     private Account expense;
@@ -54,7 +55,7 @@ class ManualJournalServiceTest {
     @BeforeEach
     void setUp() {
         service = new ManualJournalService(manualJournalRepository, accountRepository, currencyRepository,
-                shopRepository, userAccountRepository, glPostingService, currencyService);
+                shopRepository, userAccountRepository, glPostingService, currencyService, auditLogService);
 
         expense = Account.builder().id(2L).code("5300").name("Operating Expenses")
                 .accountType(AccountType.EXPENSE).normalBalance(DebitCredit.DEBIT).build();
