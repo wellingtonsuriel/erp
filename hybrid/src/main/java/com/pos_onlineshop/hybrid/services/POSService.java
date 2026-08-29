@@ -105,6 +105,7 @@ public class POSService {
             // lot" valuation convention every stock report in this codebase already uses.
             Optional<ShopInventory> latestLot = shopInventoryService.getInventory(shop, product);
             if (latestLot.isPresent() && latestLot.get().getUnitPrice() != null) {
+                orderLine.setUnitCost(latestLot.get().getUnitPrice());
                 totalCost = totalCost.add(latestLot.get().getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())));
             } else {
                 costKnownForAllLines = false;

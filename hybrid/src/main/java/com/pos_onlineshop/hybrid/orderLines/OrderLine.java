@@ -65,6 +65,13 @@ public class OrderLine {
     @Builder.Default
     private BigDecimal taxAmount = BigDecimal.ZERO;
 
+    /** Per-unit cost basis at the moment of sale (the latest-received-lot unit cost POSService
+     * used for this line's share of COGS) - null when the cost wasn't known at sale time (see
+     * POSService.processQuickSale's costKnownForAllLines). Lets SalesReturnService reverse
+     * COGS/inventory accurately for a partial return instead of guessing from today's cost. */
+    @Column(name = "unit_cost", precision = 19, scale = 4)
+    private BigDecimal unitCost;
+
     @Column(name = "product_name", nullable = false)
     private String productName;
 
