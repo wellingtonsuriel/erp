@@ -1,8 +1,10 @@
 package com.pos_onlineshop.hybrid.employee;
 
+import com.pos_onlineshop.hybrid.currency.Currency;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -10,9 +12,10 @@ import java.time.LocalDateTime;
  * A minimal HR record - deliberately separate from UserAccount (login credentials/roles are
  * an authentication concern; being a paid employee is an HR concern, and the two don't
  * always coincide - an employee may never log in, and a system user may not be an employee
- * at all). Built here because ExpenseService needs a real employee reference for
- * reimbursements rather than a free-text name; extended with salary/allowance/deduction
- * fields when payroll is built on top of it.
+ * at all). Originally built for ExpenseService (a real employee reference for
+ * reimbursements, not a free-text name); baseSalary/salaryCurrency were added for
+ * PayrollService - null on an employee not on payroll (e.g. one only ever reimbursed for
+ * expenses).
  */
 @Entity
 @Table(name = "employees")
@@ -20,6 +23,8 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@EqualsAndHashCode(exclude = {"salaryCurrency"})
+@ToString(exclude = {"salaryCurrency"})
 public class Employee {
 
     @Id
@@ -38,6 +43,13 @@ public class Employee {
     @Column(name = "hire_date")
     private LocalDate hireDate;
 
+    @Column(name = "base_salary", precision = 19, scale = 4)
+    private BigDecimal baseSalary;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "salary_currency_id")
+    private Currency salaryCurrency;
+
     @Column(nullable = false)
     @Builder.Default
     private boolean active = true;
@@ -45,4 +57,8 @@ public class Employee {
     @Column(name = "created_at", nullable = false)
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    public boolean isPayrollEligible() {
+        return active && baseSalary != null && baseSalary.compareTo(BigDecimal.ZERO) > 0;
+    }
 }
