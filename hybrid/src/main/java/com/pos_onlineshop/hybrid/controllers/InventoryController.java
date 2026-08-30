@@ -3,6 +3,7 @@ package com.pos_onlineshop.hybrid.controllers;
 import com.pos_onlineshop.hybrid.dtos.*;
 import com.pos_onlineshop.hybrid.inventory.InventoryItem;
 import com.pos_onlineshop.hybrid.services.InventoryService;
+import com.pos_onlineshop.hybrid.services.InventoryValuationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -24,6 +25,7 @@ import java.util.Map;
 public class InventoryController {
 
     private final InventoryService inventoryService;
+    private final InventoryValuationService inventoryValuationService;
 
     @GetMapping("/product/{productId}")
     public ResponseEntity<InventoryItem> getInventoryByProduct(@PathVariable Long productId) {
@@ -90,9 +92,14 @@ public class InventoryController {
         return inventoryService.findLowStockItems();
     }
 
+    /**
+     * The real FIFO cost-layer total, not the deprecated InventoryItem pool's figure (which is
+     * always ~zero since that pool is never populated in normal operation - see
+     * InventoryService.calculateTotalInventoryValue's deprecation note).
+     */
     @GetMapping("/total-value")
     public ResponseEntity<BigDecimal> getTotalInventoryValue() {
-        return ResponseEntity.ok(inventoryService.calculateTotalInventoryValue());
+        return ResponseEntity.ok(inventoryValuationService.getTotalInventoryValue());
     }
 
     @PutMapping("/product/{productId}/reorder-level")
