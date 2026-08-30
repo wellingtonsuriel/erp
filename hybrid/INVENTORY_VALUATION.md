@@ -113,6 +113,22 @@ with the `InventoryTotal` reversal that already happened. Every step is skipped 
 guessed when a shipment's cost layers don't fully cover it (never null'd to a fabricated
 value) - see `InventoryTransferServiceTest`.
 
+## Reporting sweep: no other place still computes value independently
+
+A dedicated audit for any report/controller outside `InventoryValuationService` that
+independently priced stock found three live, non-deprecated `InventoryService` methods the
+original FIFO migration had missed: `generateStockSummaryReport`, `generateShopStockReport`, and
+`generateStockValueReport` (`GET /reports/stock-summary`, `/reports/shop/{shopId}/stock`,
+`/reports/stock-value`) were still pricing the *entire* on-hand quantity at
+`ShopInventory.findFirstByShopAndProductOrderByIdDesc`'s price - the exact "latest lot" bug FIFO
+replaced everywhere else. All three (and their shared `calculateShopStockValue` helper) now
+delegate to `InventoryValuationService`. Separately, `GET /api/inventory/total-value` was calling
+the deprecated `InventoryService.calculateTotalInventoryValue()` (the never-populated
+`InventoryItem` pool, effectively always ~zero) instead of the real figure; it now calls
+`InventoryValuationService.getTotalInventoryValue()` directly. `AnalyticsController`,
+`ControlAccountReconciliationService`, and `InventoryReportService` were checked and already
+delegated correctly.
+
 ## Reporting API and reconciliation
 
 `GET /api/inventory/balances|valuation|movements` (`InventoryReportController`) and
