@@ -113,14 +113,59 @@ with the `InventoryTotal` reversal that already happened. Every step is skipped 
 guessed when a shipment's cost layers don't fully cover it (never null'd to a fabricated
 value) - see `InventoryTransferServiceTest`.
 
+## Reporting API and reconciliation
+
+`GET /api/inventory/balances|valuation|movements` (`InventoryReportController`) and
+`GET /api/reports/inventory-reconciliation` (`GLReportController`, backed by
+`InventoryReportService`) expose the three dimensions - quantity, FIFO valuation, and the GL's
+1200 Inventory Asset balance (via `ControlAccountReconciliationService.getInventoryAssetGlBalance`)
+- as separate figures, never merged into one number. The reconciliation report states a
+variance rather than hiding one when inventory value and the GL balance disagree. The erp-frontend
+app's `/admin/accounting/inventory-reconciliation` page renders this: on-hand/reserved/available,
+inventory value vs. GL inventory asset vs. variance, and a Reconciled/variance badge, plus a
+drill-down into the three underlying reports.
+
+## Automated verification of the accounting invariants
+
+`InventoryAccountingAcceptanceTest` wires real `ShopInventoryService` +
+`InventoryValuationService` instances together (hand-rolled in-memory fakes for the
+repositories) and transcribes the architecture prompt's worked acceptance example end to end:
+receive 100 @ $10 -> sell 60 -> reserve 10 online -> fulfill the reservation, asserting on-hand/
+reserved/available quantity, FIFO valuation, and COGS at each step, and that a reservation alone
+never posts to the GL.
+
+`InventoryConcurrencySafetyTest` is the one guarantee a mocked-repository test cannot prove: it
+uses a real H2 database (`@DataJpaTest`, since MySQL is unreachable in this development
+environment) and fires ten threads at `ShopInventoryService.reserveStock` for the same
+`InventoryTotal` row simultaneously, asserting `reservedStock` never exceeds `totalstock` - i.e.
+that the `@Lock(PESSIMISTIC_WRITE)` read-check-write sequence is actually race-free under real
+concurrent transactions, not just correct when called from one thread.
+
+## Idempotency on retry
+
+`InventoryValuationService.consumeCostLayers` and `restoreCostLayer` check for an existing
+`InventoryMovement`/`ShopInventory` record keyed on `(shop, product, movementType, reference)` (or
+`sourceReference`) before mutating, and return the already-recorded outcome on a match instead of
+consuming or restoring a layer a second time - the same replay-returns-the-existing-result pattern
+`GLPostingService.post` already uses for the GL side. Every call site now scopes `reference` to one
+financially-significant event (one order line, one transfer item, one return line) rather than
+sharing a reference across an entire order/transfer/return, since a shared reference would make
+legitimate repeat lines of the same order/transfer wrongly dedupe against each other. This closes a
+real gap: previously, a retried `postOnlineOrderCogsToGeneralLedger` (e.g. a repeated CONFIRMED
+transition) would double-consume FIFO layers even though `GLPostingService`'s own idempotency key
+already blocked the resulting journal entry from posting twice - an inventory/GL divergence that
+would have gone undetected until a reconciliation run caught it.
+
 ## Known limitations (disclosed, not hidden)
 
 - **Multi-currency line-level FX** (§16 of the inventory/accounting architecture prompt - a
   proper transaction-amount/base-amount/exchange-rate split on every JournalLine) is
   unaddressed; `JournalLine.baseAmount` remains the only authoritative monetary figure per the
-  existing FX model documented in `FX.md`.
-- **No dedicated frontend reconciliation view yet** - `ControlAccountReconciliationService`
-  and its existing `/admin/accounting/reconciliation` UI already compare inventory valuation
-  against the GL for 1200 Inventory Asset (now backed by real FIFO), but a purpose-built
-  "quantity vs. valuation vs. GL" drill-down view (on-hand / reserved / available alongside
-  inventory value and GL balance) has not been built.
+  existing FX model documented in `FX.md`. Deliberately deferred - the prompt is explicit that
+  FX must not be bolted onto an unproven foundation.
+- **No client-supplied idempotency key for whole-request retries.** The idempotency guards
+  above stop *layers* from being double-consumed/restored, but nothing yet stops a client from
+  resubmitting an entire POS sale or online order as a brand-new `Order` (a fresh ID each time,
+  so the reference-based guard can't recognize it as the same request). Closing that gap needs
+  a client-supplied idempotency key threaded through order creation itself, which is a separate,
+  larger change to the API contract, not an inventory/valuation concern.
