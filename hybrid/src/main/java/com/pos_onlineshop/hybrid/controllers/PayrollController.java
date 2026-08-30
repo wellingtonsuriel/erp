@@ -2,6 +2,7 @@ package com.pos_onlineshop.hybrid.controllers;
 
 import com.pos_onlineshop.hybrid.dtos.*;
 import com.pos_onlineshop.hybrid.gl.GLPostingException;
+import com.pos_onlineshop.hybrid.security.AuthenticatedActorResolver;
 import com.pos_onlineshop.hybrid.services.DeductionTypeService;
 import com.pos_onlineshop.hybrid.services.PayrollService;
 import jakarta.validation.Valid;
@@ -10,12 +11,18 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
+/**
+ * The acting user is always resolved from the JWT-authenticated principal, never the request
+ * body - see {@link AuthenticatedActorResolver}.
+ */
 @RestController
 @RequestMapping("/api/payroll")
 @RequiredArgsConstructor
@@ -24,6 +31,7 @@ public class PayrollController {
 
     private final PayrollService payrollService;
     private final DeductionTypeService deductionTypeService;
+    private final AuthenticatedActorResolver actorResolver;
 
     @GetMapping("/runs")
     @PreAuthorize("hasAuthority('GL_VIEW') or hasRole('ADMIN')")
@@ -43,14 +51,27 @@ public class PayrollController {
 
     @PostMapping("/runs")
     @PreAuthorize("hasAuthority('GL_MANUAL_JOURNAL') or hasRole('ADMIN')")
-    public ResponseEntity<?> processRun(@Valid @RequestBody ProcessPayrollRequest request) {
+    public ResponseEntity<?> processRun(@Valid @RequestBody ProcessPayrollRequest request,
+                                         @AuthenticationPrincipal UserDetails userDetails) {
+        try {
+            request.setUserId(actorResolver.requireActingUserId(userDetails));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", e.getMessage()));
+        }
         return runCreate(() -> payrollService.processPayroll(request));
     }
 
     @PostMapping("/runs/{id}/pay")
     @PreAuthorize("hasAuthority('GL_APPROVE') or hasAuthority('GL_ADMIN') or hasRole('ADMIN')")
-    public ResponseEntity<?> payRun(@PathVariable Long id, @Valid @RequestBody PayPayrollRunRequest request) {
-        return runTransition(() -> payrollService.payRun(id, request.getUserId()));
+    public ResponseEntity<?> payRun(@PathVariable Long id, @Valid @RequestBody PayPayrollRunRequest request,
+                                     @AuthenticationPrincipal UserDetails userDetails) {
+        Long userId;
+        try {
+            userId = actorResolver.requireActingUserId(userDetails);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", e.getMessage()));
+        }
+        return runTransition(() -> payrollService.payRun(id, userId));
     }
 
     @GetMapping("/deduction-types")
