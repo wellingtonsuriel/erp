@@ -39,6 +39,7 @@ public class InventoryService {
     private final ShopRepository shopRepository;
     private final ShopInventoryRepository shopInventoryRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final InventoryValuationService inventoryValuationService;
 
     // ==================== Deprecated InventoryItem pool ====================
     // The methods below operate on InventoryItem, a global stock counter independent of
@@ -342,17 +343,20 @@ public class InventoryService {
         for (InventoryTotal it : inventoryTotals) {
             Product product = it.getProduct();
 
-            // Look up unit price and reorder info from latest ShopInventory record
+            // Reorder/min/max stock thresholds aren't part of FIFO cost layers - still read
+            // from the most recent ShopInventory record for display purposes only.
             Optional<ShopInventory> siOpt = shopInventoryRepository
                     .findFirstByShopAndProductOrderByIdDesc(shop, product);
 
-            BigDecimal unitPrice = siOpt.map(ShopInventory::getUnitPrice).orElse(BigDecimal.ZERO);
             Integer reorderLevel = siOpt.map(ShopInventory::getReorderLevel).orElse(null);
             Integer minStock = siOpt.map(ShopInventory::getMinStock).orElse(null);
             Integer maxStock = siOpt.map(ShopInventory::getMaxStock).orElse(null);
 
             int currentStock = it.getTotalstock();
-            BigDecimal productValue = unitPrice.multiply(BigDecimal.valueOf(currentStock));
+            // Real FIFO valuation, not the most-recently-received lot's price applied to the
+            // whole on-hand quantity - see calculateShopStockValue's comment.
+            BigDecimal productValue = inventoryValuationService.getInventoryValue(shop, product);
+            BigDecimal unitPrice = inventoryValuationService.getUnitCost(shop, product).orElse(BigDecimal.ZERO);
 
             // Determine stock status
             String stockStatus;
@@ -435,10 +439,9 @@ public class InventoryService {
             Product product = it.getProduct();
             int stock = it.getTotalstock();
 
-            Optional<ShopInventory> siOpt = shopInventoryRepository
-                    .findFirstByShopAndProductOrderByIdDesc(shop, product);
-            BigDecimal unitPrice = siOpt.map(ShopInventory::getUnitPrice).orElse(BigDecimal.ZERO);
-            BigDecimal lineValue = unitPrice.multiply(BigDecimal.valueOf(stock));
+            // Real FIFO valuation, not the most-recently-received lot's price applied to the
+            // whole on-hand quantity - see calculateShopStockValue's comment.
+            BigDecimal lineValue = inventoryValuationService.getInventoryValue(shop, product);
 
             grandTotalValue = grandTotalValue.add(lineValue);
             grandTotalUnits += stock;
@@ -515,13 +518,17 @@ public class InventoryService {
 
     // ==================== Private Helpers ====================
 
+    /**
+     * Real FIFO cost-layer value of a shop's on-hand stock - delegates to
+     * InventoryValuationService rather than pricing every unit at the most recently received
+     * lot's cost (the approximation this reporting section used before, which understates or
+     * overstates value whenever a product has multiple cost layers at different prices; see
+     * INVENTORY_VALUATION.md).
+     */
     private BigDecimal calculateShopStockValue(Shop shop, List<InventoryTotal> shopItems) {
         BigDecimal total = BigDecimal.ZERO;
         for (InventoryTotal it : shopItems) {
-            Optional<ShopInventory> siOpt = shopInventoryRepository
-                    .findFirstByShopAndProductOrderByIdDesc(shop, it.getProduct());
-            BigDecimal unitPrice = siOpt.map(ShopInventory::getUnitPrice).orElse(BigDecimal.ZERO);
-            total = total.add(unitPrice.multiply(BigDecimal.valueOf(it.getTotalstock())));
+            total = total.add(inventoryValuationService.getInventoryValue(shop, it.getProduct()));
         }
         return total;
     }
