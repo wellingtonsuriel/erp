@@ -268,7 +268,8 @@ public class InventoryTransferService {
                 // has a real, if partial, cost to work with.
                 InventoryValuationService.CostResult shipCost = inventoryValuationService.consumeCostLayers(
                         transfer.getFromShop(), item.getProduct(), item.getRequestedQuantity(),
-                        InventoryMovementType.TRANSFER_OUT, "TRANSFER-" + transfer.getId(), LocalDate.now());
+                        InventoryMovementType.TRANSFER_OUT,
+                        "TRANSFER-" + transfer.getId() + "-ITEM-" + item.getId(), LocalDate.now());
                 if (shipCost.getQuantityCosted() > 0) {
                     item.setUnitCost(shipCost.getTotalCost().divide(
                             BigDecimal.valueOf(shipCost.getQuantityCosted()), 4, java.math.RoundingMode.HALF_UP));
@@ -363,7 +364,7 @@ public class InventoryTransferService {
                         inventoryValuationService.restoreCostLayer(
                                 transfer.getToShop(), transferItem.getProduct(), receivedItem.getReceivedQuantity(),
                                 unitCost, transfer.getToShop().getDefaultCurrency(), InventoryMovementType.TRANSFER_IN,
-                                "TRANSFER_IN-" + transfer.getId(), LocalDate.now());
+                                "TRANSFER_IN-" + transfer.getId() + "-ITEM-" + transferItem.getId(), LocalDate.now());
                     }
                     // else: no unitCost was recorded on this transfer item - this item's value is
                     // simply excluded from the GL posting below rather than guessed at.
@@ -467,7 +468,8 @@ public class InventoryTransferService {
                         inventoryValuationService.restoreCostLayer(
                                 transfer.getFromShop(), item.getProduct(), item.getShippedQuantity(),
                                 item.getUnitCost(), transfer.getFromShop().getDefaultCurrency(),
-                                InventoryMovementType.ADJUSTMENT_IN, "TRANSFER-CANCEL-" + transfer.getId(), LocalDate.now());
+                                InventoryMovementType.ADJUSTMENT_IN,
+                                "TRANSFER-CANCEL-" + transfer.getId() + "-ITEM-" + item.getId(), LocalDate.now());
                     }
 
                     log.debug("Reversed inventory for product {} - returned {} units to {}",

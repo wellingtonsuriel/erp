@@ -179,13 +179,25 @@ public class InventoryValuationService {
     }
 
     /** General-purpose FIFO consumption for any quantity-reducing movement that needs a real
-     * cost (sale, transfer-out, damage, adjustment-out). */
+     * cost (sale, transfer-out, damage, adjustment-out). Idempotent on (shop, product,
+     * movementType, reference): every call site scopes reference to one financially-significant
+     * event (one order line, one transfer item, one damage report - never shared across several
+     * events), so a movement already recorded under that exact key means this exact consumption
+     * already happened. A retry (e.g. a client resubmitting the same request) must not consume
+     * the same layers twice - that would double-deplete stock no longer on the shelf and double
+     * the resulting COGS, exactly the "duplicate postings on retry" failure this mirrors
+     * GLPostingService.post's own idempotency check to prevent. */
     @Transactional
     public CostResult consumeCostLayers(Shop shop, Product product, int quantity,
                                          InventoryMovementType movementType, String reference,
                                          LocalDate transactionDate) {
         if (quantity <= 0) {
             throw new IllegalArgumentException("Quantity to cost must be positive, received: " + quantity);
+        }
+
+        Optional<CostResult> replay = replayIfAlreadyRecorded(shop, product, quantity, movementType, reference);
+        if (replay.isPresent()) {
+            return replay.get();
         }
 
         backfillLayersIfNeeded(shop, product);
@@ -252,6 +264,18 @@ public class InventoryValuationService {
         }
         if (unitCost == null) {
             throw new IllegalArgumentException("Cannot restore a cost layer without a known unit cost");
+        }
+
+        // Idempotent on (shop, product, sourceReference): a retry (e.g. a sales return or
+        // transfer-receipt request resubmitted after a timeout) must return the layer already
+        // created rather than inserting a second one - see consumeCostLayers' matching guard.
+        Optional<ShopInventory> existing = shopInventoryRepository
+                .findFirstByShopIdAndProductIdAndSourceReference(shop.getId(), product.getId(), sourceReference);
+        if (existing.isPresent()) {
+            log.warn("Cost layer restoration for shop {} product {} reference '{}' already recorded - "
+                            + "skipping duplicate layer creation (idempotent replay)",
+                    shop.getId(), product.getId(), sourceReference);
+            return existing.get();
         }
 
         ShopInventory lot = ShopInventory.builder()
@@ -345,6 +369,46 @@ public class InventoryValuationService {
             throw new IllegalArgumentException("recordReservationMovement only accepts RESERVATION/RESERVATION_RELEASE, got " + movementType);
         }
         recordMovement(shop, product, movementType, quantity, null, reference, transactionDate);
+    }
+
+    /** If a movement already exists for this exact (shop, product, movementType, reference),
+     * the FIFO consumption it represents already happened - reconstructs the CostResult that
+     * call would have returned from the recorded movement rather than consuming layers a second
+     * time. A quantity mismatch against the recorded movement is logged (it means the retry's
+     * request differs from what was originally recorded, which is unexpected for a genuine
+     * retry) but the original recorded outcome is still what is returned - never re-consumed. */
+    private Optional<CostResult> replayIfAlreadyRecorded(Shop shop, Product product, int quantity,
+                                                           InventoryMovementType movementType, String reference) {
+        Optional<InventoryMovement> existing = inventoryMovementRepository
+                .findFirstByShopIdAndProductIdAndMovementTypeAndReference(shop.getId(), product.getId(), movementType, reference);
+        if (existing.isEmpty()) {
+            return Optional.empty();
+        }
+
+        InventoryMovement movement = existing.get();
+        if (!movement.getQuantity().equals(quantity)) {
+            log.warn("Inventory movement {} {} for shop {} product {} reference '{}' was already recorded "
+                            + "with quantity {} but this call requested {} - returning the originally recorded "
+                            + "outcome rather than consuming layers again",
+                    movementType, movement.getId(), shop.getId(), product.getId(), reference,
+                    movement.getQuantity(), quantity);
+        } else {
+            log.warn("Inventory movement {} for shop {} product {} reference '{}' already recorded - "
+                            + "skipping duplicate FIFO consumption (idempotent replay)",
+                    movementType, shop.getId(), product.getId(), reference);
+        }
+
+        boolean fullyCosted = movement.getUnitCost() != null;
+        BigDecimal totalCost = fullyCosted
+                ? movement.getUnitCost().multiply(BigDecimal.valueOf(movement.getQuantity()))
+                : BigDecimal.ZERO;
+
+        return Optional.of(CostResult.builder()
+                .totalCost(totalCost)
+                .quantityCosted(fullyCosted ? movement.getQuantity() : 0)
+                .quantityRequested(quantity)
+                .fullyCosted(fullyCosted)
+                .build());
     }
 
     private int remaining(ShopInventory lot) {

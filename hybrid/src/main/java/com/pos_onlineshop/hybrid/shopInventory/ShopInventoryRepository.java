@@ -61,4 +61,13 @@ public interface ShopInventoryRepository extends JpaRepository<ShopInventory, Lo
      * full inventory valuation sweep. */
     @Query("SELECT DISTINCT si.shop.id, si.product.id FROM ShopInventory si")
     List<Object[]> findDistinctShopProductPairs();
+
+    /**
+     * Finds a previously system-restored layer by the reference that created it - the
+     * idempotent-replay lookup for InventoryValuationService.restoreCostLayer: if a lot with
+     * this exact (shop, product, sourceReference) already exists, that restoration already
+     * happened and a retry must return it rather than inserting a second layer.
+     */
+    Optional<ShopInventory> findFirstByShopIdAndProductIdAndSourceReference(
+            Long shopId, Long productId, String sourceReference);
 }

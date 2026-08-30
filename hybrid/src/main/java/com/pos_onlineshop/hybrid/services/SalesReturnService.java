@@ -143,7 +143,8 @@ public class SalesReturnService {
             if (orderLine.getUnitCost() != null) {
                 inventoryValuationService.restoreCostLayer(order.getShop(), orderLine.getProduct(),
                         lineRequest.getQuantityReturned(), orderLine.getUnitCost(), order.getCurrency(),
-                        InventoryMovementType.SALE_RETURN, "SALES_RETURN-" + request.getReturnNumber(),
+                        InventoryMovementType.SALE_RETURN,
+                        "SALES_RETURN-" + request.getReturnNumber() + "-LINE-" + orderLine.getId(),
                         request.getReturnDate());
             }
         }

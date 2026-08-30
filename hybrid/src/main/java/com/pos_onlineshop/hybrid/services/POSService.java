@@ -113,7 +113,8 @@ public class POSService {
         boolean costKnownForAllLines = true;
         for (OrderLine orderLine : savedOrder.getOrderLines()) {
             InventoryValuationService.CostResult costResult = inventoryValuationService.getCostForSale(
-                    shop, orderLine.getProduct(), orderLine.getQuantity(), "ORDER-" + savedOrder.getId());
+                    shop, orderLine.getProduct(), orderLine.getQuantity(),
+                    "ORDER-" + savedOrder.getId() + "-LINE-" + orderLine.getId());
             if (costResult.isFullyCosted()) {
                 orderLine.setUnitCost(costResult.getTotalCost().divide(
                         BigDecimal.valueOf(orderLine.getQuantity()), 4, java.math.RoundingMode.HALF_UP));

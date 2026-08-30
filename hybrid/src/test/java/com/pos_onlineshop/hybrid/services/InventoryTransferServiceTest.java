@@ -91,7 +91,7 @@ class InventoryTransferServiceTest {
         when(transferRepository.findById(100L)).thenReturn(Optional.of(transfer));
         when(shopInventoryService.isInStock(1L, 1L, 20)).thenReturn(true);
         when(inventoryValuationService.consumeCostLayers(fromShop, product, 20, InventoryMovementType.TRANSFER_OUT,
-                "TRANSFER-100", LocalDate.now()))
+                "TRANSFER-100-ITEM-10", LocalDate.now()))
                 .thenReturn(InventoryValuationService.CostResult.builder()
                         .totalCost(new BigDecimal("140.00")).quantityCosted(20).quantityRequested(20)
                         .fullyCosted(true).build());
@@ -111,7 +111,7 @@ class InventoryTransferServiceTest {
         when(transferRepository.findById(100L)).thenReturn(Optional.of(transfer));
         when(shopInventoryService.isInStock(1L, 1L, 20)).thenReturn(true);
         when(inventoryValuationService.consumeCostLayers(fromShop, product, 20, InventoryMovementType.TRANSFER_OUT,
-                "TRANSFER-100", LocalDate.now()))
+                "TRANSFER-100-ITEM-10", LocalDate.now()))
                 .thenReturn(InventoryValuationService.CostResult.builder()
                         .totalCost(new BigDecimal("50.00")).quantityCosted(10).quantityRequested(20)
                         .fullyCosted(false).build());
@@ -130,7 +130,7 @@ class InventoryTransferServiceTest {
         when(transferRepository.findById(100L)).thenReturn(Optional.of(transfer));
         when(shopInventoryService.isInStock(1L, 1L, 20)).thenReturn(true);
         when(inventoryValuationService.consumeCostLayers(fromShop, product, 20, InventoryMovementType.TRANSFER_OUT,
-                "TRANSFER-100", LocalDate.now()))
+                "TRANSFER-100-ITEM-10", LocalDate.now()))
                 .thenReturn(InventoryValuationService.CostResult.builder()
                         .totalCost(BigDecimal.ZERO).quantityCosted(0).quantityRequested(20)
                         .fullyCosted(false).build());
@@ -158,7 +158,7 @@ class InventoryTransferServiceTest {
 
         verify(shopInventoryService).addStock(2L, 1L, 20);
         verify(inventoryValuationService).restoreCostLayer(toShop, product, 20, new BigDecimal("7.00"),
-                currency, InventoryMovementType.TRANSFER_IN, "TRANSFER_IN-100", LocalDate.now());
+                currency, InventoryMovementType.TRANSFER_IN, "TRANSFER_IN-100-ITEM-10", LocalDate.now());
     }
 
     @Test
@@ -192,7 +192,7 @@ class InventoryTransferServiceTest {
 
         verify(shopInventoryService).addStock(1L, 1L, 20);
         verify(inventoryValuationService).restoreCostLayer(fromShop, product, 20, new BigDecimal("7.00"),
-                currency, InventoryMovementType.ADJUSTMENT_IN, "TRANSFER-CANCEL-100", LocalDate.now());
+                currency, InventoryMovementType.ADJUSTMENT_IN, "TRANSFER-CANCEL-100-ITEM-10", LocalDate.now());
     }
 
     @Test

@@ -159,6 +159,61 @@ class InventoryValuationServiceTest {
     }
 
     // ------------------------------------------------------------------
+    // Idempotency (retry safety - Section 21)
+    // ------------------------------------------------------------------
+
+    @Test
+    void consumeCostLayersSkipsFifoConsumptionWhenTheSameReferenceWasAlreadyRecorded() {
+        InventoryMovement existing = InventoryMovement.builder().id(9L).shop(shop).product(product)
+                .movementType(InventoryMovementType.SALE).quantity(60)
+                .unitCost(new BigDecimal("10.00")).reference("ORDER-1-LINE-5")
+                .transactionDate(LocalDate.of(2026, 1, 1)).build();
+        when(inventoryMovementRepository.findFirstByShopIdAndProductIdAndMovementTypeAndReference(
+                1L, 1L, InventoryMovementType.SALE, "ORDER-1-LINE-5")).thenReturn(Optional.of(existing));
+
+        InventoryValuationService.CostResult result = service.getCostForSale(shop, product, 60, "ORDER-1-LINE-5");
+
+        assertTrue(result.isFullyCosted());
+        assertEquals(60, result.getQuantityCosted());
+        assertEquals(0, new BigDecimal("600.00").compareTo(result.getTotalCost()));
+        // No layers were touched and no new movement was written - this was a pure replay.
+        verifyNoInteractions(shopInventoryRepository);
+        verify(inventoryMovementRepository, never()).save(any());
+    }
+
+    @Test
+    void consumeCostLayersDoesNotDedupeDifferentLinesOfTheSameOrderForTheSameProduct() {
+        // Two order lines for the same product in the same order must each get their own
+        // reference (see POSService/OrderService) - otherwise the second line's consumption
+        // would be wrongly treated as a duplicate of the first and silently skipped.
+        ShopInventory lotA = lot(1L, 100, 100, "10.00");
+        when(shopInventoryRepository.findAllByShopIdAndProductIdOrderByIdAscWithLock(1L, 1L)).thenReturn(List.of(lotA));
+        when(inventoryMovementRepository.findFirstByShopIdAndProductIdAndMovementTypeAndReference(
+                eq(1L), eq(1L), eq(InventoryMovementType.SALE), anyString())).thenReturn(Optional.empty());
+
+        service.getCostForSale(shop, product, 20, "ORDER-1-LINE-5");
+        service.getCostForSale(shop, product, 30, "ORDER-1-LINE-6");
+
+        assertEquals(50, lotA.getRemainingQuantity());
+        verify(inventoryMovementRepository, times(2)).save(any());
+    }
+
+    @Test
+    void restoreCostLayerSkipsCreatingASecondLotWhenTheSameSourceReferenceWasAlreadyRecorded() {
+        ShopInventory existingLot = lot(3L, 5, 5, "6.00");
+        existingLot.setSourceReference("SALES_RETURN-RET-1-LINE-9");
+        when(shopInventoryRepository.findFirstByShopIdAndProductIdAndSourceReference(1L, 1L, "SALES_RETURN-RET-1-LINE-9"))
+                .thenReturn(Optional.of(existingLot));
+
+        ShopInventory result = service.restoreCostLayer(shop, product, 5, new BigDecimal("6.00"), currency,
+                InventoryMovementType.SALE_RETURN, "SALES_RETURN-RET-1-LINE-9", LocalDate.of(2026, 8, 15));
+
+        assertSame(existingLot, result);
+        verify(shopInventoryRepository, never()).save(any());
+        verify(inventoryMovementRepository, never()).save(any());
+    }
+
+    // ------------------------------------------------------------------
     // Valuation reads
     // ------------------------------------------------------------------
 

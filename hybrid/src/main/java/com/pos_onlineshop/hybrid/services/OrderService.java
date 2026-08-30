@@ -258,7 +258,8 @@ public class OrderService {
         boolean fullyCosted = true;
         for (OrderLine line : order.getOrderLines()) {
             InventoryValuationService.CostResult result = inventoryValuationService.getCostForSale(
-                    order.getShop(), line.getProduct(), line.getQuantity(), "ORDER-" + order.getId());
+                    order.getShop(), line.getProduct(), line.getQuantity(),
+                    "ORDER-" + order.getId() + "-LINE-" + line.getId());
             if (result.isFullyCosted()) {
                 line.setUnitCost(result.getTotalCost().divide(
                         BigDecimal.valueOf(line.getQuantity()), 4, java.math.RoundingMode.HALF_UP));
