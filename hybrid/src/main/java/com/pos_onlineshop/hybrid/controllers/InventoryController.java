@@ -1,7 +1,6 @@
 package com.pos_onlineshop.hybrid.controllers;
 
 import com.pos_onlineshop.hybrid.dtos.*;
-import com.pos_onlineshop.hybrid.inventory.InventoryItem;
 import com.pos_onlineshop.hybrid.services.InventoryService;
 import com.pos_onlineshop.hybrid.services.InventoryValuationService;
 import lombok.RequiredArgsConstructor;
@@ -13,9 +12,20 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
 
+/**
+ * The product/{id}, availability, add/remove/reserve/release, check, low-stock, and
+ * reorder-level endpoints that used to live here were removed: they operated on the
+ * deprecated global InventoryItem pool, which is never populated by normal operation (see
+ * InventoryService's class comment) - the endpoints always returned 404/empty/no-op results.
+ * That pool's underlying InventoryService methods are still used internally, but only as a
+ * narrow legacy fallback for orders placed before shop-scoped inventory existed (see
+ * OrderService.legacyConfirmWithoutShop/legacyRestoreWithoutShop) - never as a general-purpose
+ * inventory API. The real, shop-scoped, authoritative equivalents are ShopInventoryController
+ * (read/adjust a specific shop's InventoryTotal-backed record) and InventoryAdjustmentController
+ * (GL-integrated stock-count corrections); real-time balances/valuation/movements live below and
+ * in InventoryReportController.
+ */
 @RestController
 @RequestMapping("/api/inventory")
 @RequiredArgsConstructor
@@ -27,71 +37,6 @@ public class InventoryController {
     private final InventoryService inventoryService;
     private final InventoryValuationService inventoryValuationService;
 
-    @GetMapping("/product/{productId}")
-    public ResponseEntity<InventoryItem> getInventoryByProduct(@PathVariable Long productId) {
-        return inventoryService.findByProductId(productId)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    @GetMapping("/product/{productId}/availability")
-    public ResponseEntity<Map<String, Integer>> getProductAvailability(@PathVariable Long productId) {
-        return ResponseEntity.ok(inventoryService.getChannelInventory(productId));
-    }
-
-    @PostMapping("/product/{productId}/add")
-    public ResponseEntity<Void> addStock(
-            @PathVariable Long productId,
-            @RequestBody StockUpdateRequest request) {
-        inventoryService.addStock(productId, request.getQuantity());
-        return ResponseEntity.ok().build();
-    }
-
-    @PostMapping("/product/{productId}/remove")
-    public ResponseEntity<Void> removeStock(
-            @PathVariable Long productId,
-            @RequestBody StockUpdateRequest request) {
-        try {
-            inventoryService.removeStock(productId, request.getQuantity());
-            return ResponseEntity.ok().build();
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().build();
-        }
-    }
-
-    @PostMapping("/product/{productId}/reserve")
-    public ResponseEntity<Void> reserveStock(
-            @PathVariable Long productId,
-            @RequestBody StockUpdateRequest request) {
-        try {
-            inventoryService.reserveInventory(productId, request.getQuantity());
-            return ResponseEntity.ok().build();
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().build();
-        }
-    }
-
-    @PostMapping("/product/{productId}/release")
-    public ResponseEntity<Void> releaseReservation(
-            @PathVariable Long productId,
-            @RequestBody StockUpdateRequest request) {
-        inventoryService.releaseReservation(productId, request.getQuantity());
-        return ResponseEntity.ok().build();
-    }
-
-    @GetMapping("/check/{productId}")
-    public ResponseEntity<Boolean> checkStock(
-            @PathVariable Long productId,
-            @RequestParam Integer quantity) {
-        boolean inStock = inventoryService.isInStock(productId, quantity);
-        return ResponseEntity.ok(inStock);
-    }
-
-    @GetMapping("/low-stock")
-    public List<InventoryItem> getLowStockItems() {
-        return inventoryService.findLowStockItems();
-    }
-
     /**
      * The real FIFO cost-layer total, not the deprecated InventoryItem pool's figure (which is
      * always ~zero since that pool is never populated in normal operation - see
@@ -100,14 +45,6 @@ public class InventoryController {
     @GetMapping("/total-value")
     public ResponseEntity<BigDecimal> getTotalInventoryValue() {
         return ResponseEntity.ok(inventoryValuationService.getTotalInventoryValue());
-    }
-
-    @PutMapping("/product/{productId}/reorder-level")
-    public ResponseEntity<Void> updateReorderLevel(
-            @PathVariable Long productId,
-            @RequestBody ReorderLevelRequest request) {
-        inventoryService.updateReorderLevel(productId, request.getReorderLevel());
-        return ResponseEntity.ok().build();
     }
 
     // ==================== Stock Reporting Endpoints ====================

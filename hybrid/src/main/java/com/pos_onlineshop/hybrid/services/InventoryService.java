@@ -45,33 +45,15 @@ public class InventoryService {
     // The methods below operate on InventoryItem, a global stock counter independent of
     // InventoryTotal (the authoritative per-shop model - see ShopInventoryService's class
     // comment). OrderService no longer calls these for new orders; retained only for
-    // historical pre-hardening orders. Do not add new callers - use ShopInventoryService's
+    // historical pre-hardening orders (see OrderService.legacyConfirmWithoutShop/
+    // legacyRestoreWithoutShop) - never as a general-purpose inventory API (a REST controller
+    // that once re-exposed these as one has been removed - see InventoryController's class
+    // comment). Do not add new callers - use ShopInventoryService's
     // reserveStock/releaseReservation/commitReservedStock/addStock/reduceStock/isInStock
-    // instead, all of which are shop-scoped against InventoryTotal.
-
-    @Deprecated
-    public InventoryItem initializeInventory(Product product, Integer initialQuantity) {
-        log.info("Initializing inventory for product: {}", product.getName());
-
-        InventoryItem inventory = InventoryItem.builder()
-                .product(product)
-                .quantity(initialQuantity)
-                .reservedQuantity(0)
-                .reorderLevel(10)
-                .build();
-
-        return inventoryRepository.save(inventory);
-    }
-
-    @Deprecated
-    public Optional<InventoryItem> findByProduct(Product product) {
-        return inventoryRepository.findByProduct(product);
-    }
-
-    @Deprecated
-    public Optional<InventoryItem> findByProductId(Long productId) {
-        return inventoryRepository.findByProductIdWithLock(productId);
-    }
+    // instead, all of which are shop-scoped against InventoryTotal. Read-only accessors with
+    // no remaining caller at all (initializeInventory, findByProduct(Id), reserveInventory,
+    // isInStock, findLowStockItems, calculateTotalInventoryValue, updateReorderLevel,
+    // getChannelInventory) have been removed entirely rather than left as unreachable code.
 
     @Deprecated
     @Transactional
@@ -99,21 +81,6 @@ public class InventoryService {
 
     @Deprecated
     @Transactional
-    public void reserveInventory(Long productId, Integer quantity) {
-        InventoryItem inventory = inventoryRepository.findByProductIdWithLock(productId)
-                .orElseThrow(() -> new RuntimeException("Inventory not found for product: " + productId));
-
-        if (inventory.getAvailableQuantity() < quantity) {
-            throw new RuntimeException("Insufficient available inventory");
-        }
-
-        inventory.setReservedQuantity(inventory.getReservedQuantity() + quantity);
-        inventoryRepository.save(inventory);
-        broadcastInventoryUpdate(productId, inventory.getQuantity());
-    }
-
-    @Deprecated
-    @Transactional
     public void releaseReservation(Long productId, Integer quantity) {
         InventoryItem inventory = inventoryRepository.findByProductIdWithLock(productId)
                 .orElseThrow(() -> new RuntimeException("Inventory not found for product: " + productId));
@@ -121,46 +88,6 @@ public class InventoryService {
         inventory.setReservedQuantity(Math.max(0, inventory.getReservedQuantity() - quantity));
         inventoryRepository.save(inventory);
         broadcastInventoryUpdate(productId, inventory.getQuantity());
-    }
-
-    @Deprecated
-    public boolean isInStock(Long productId, Integer quantity) {
-        return inventoryRepository.findByProductIdWithLock(productId)
-                .map(inventory -> inventory.getAvailableQuantity() >= quantity)
-                .orElse(false);
-    }
-
-    @Deprecated
-    public List<InventoryItem> findLowStockItems() {
-        return inventoryRepository.findItemsNeedingReorder();
-    }
-
-    /** @deprecated use ShopInventoryService.calculateTotalInventoryValue() - this sums the
-     * deprecated InventoryItem pool, which is never populated in normal operation. */
-    @Deprecated
-    public BigDecimal calculateTotalInventoryValue() {
-        return inventoryRepository.calculateTotalInventoryValue();
-    }
-
-    @Deprecated
-    public void updateReorderLevel(Long productId, Integer newLevel) {
-        InventoryItem inventory = inventoryRepository.findByProductIdWithLock(productId)
-                .orElseThrow(() -> new RuntimeException("Inventory not found for product: " + productId));
-
-        inventory.setReorderLevel(newLevel);
-        inventoryRepository.save(inventory);
-    }
-
-    @Deprecated
-    public Map<String, Integer> getChannelInventory(Long productId) {
-        InventoryItem item = inventoryRepository.findByProductIdWithLock(productId)
-                .orElseThrow(() -> new RuntimeException("Inventory not found"));
-
-        return Map.of(
-                "total", item.getQuantity(),
-                "available", item.getAvailableQuantity(),
-                "reserved", item.getReservedQuantity()
-        );
     }
 
     // ==================== Stock Reporting Methods ====================
