@@ -61,7 +61,7 @@ class NotificationServiceTest {
         when(notificationRepository.findById(10L)).thenReturn(Optional.of(notification));
         when(notificationRepository.save(any(Notification.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        NotificationResponse response = service.markRead(10L);
+        NotificationResponse response = service.markRead(10L, 1L);
 
         assertTrue(response.isRead());
         assertNotNull(response.getReadAt());
@@ -73,8 +73,18 @@ class NotificationServiceTest {
                 .type(NotificationType.INFO).title("Title").message("Message").read(true).build();
         when(notificationRepository.findById(10L)).thenReturn(Optional.of(notification));
 
-        service.markRead(10L);
+        service.markRead(10L, 1L);
 
+        verify(notificationRepository, never()).save(any());
+    }
+
+    @Test
+    void markReadRejectsANotificationBelongingToSomeoneElse() {
+        Notification notification = Notification.builder().id(10L).recipient(recipient)
+                .type(NotificationType.INFO).title("Title").message("Message").read(false).build();
+        when(notificationRepository.findById(10L)).thenReturn(Optional.of(notification));
+
+        assertThrows(IllegalArgumentException.class, () -> service.markRead(10L, 999L));
         verify(notificationRepository, never()).save(any());
     }
 

@@ -1,5 +1,6 @@
 package com.pos_onlineshop.hybrid.userAccount;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.pos_onlineshop.hybrid.enums.Role;
 import jakarta.persistence.*;
 import lombok.*;
@@ -24,6 +25,7 @@ public class UserAccount {
     private String username;
 
     @Column(nullable = false)
+    @JsonIgnore
     private String password;
 
     @Column(nullable = false, unique = true)

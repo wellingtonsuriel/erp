@@ -61,8 +61,15 @@ public class NotificationService {
         return notificationRepository.countByRecipientAndReadFalse(resolveUser(userId));
     }
 
-    public NotificationResponse markRead(Long notificationId) {
+    /**
+     * @param actingUserId the authenticated caller's own id - a notification belonging to
+     *                     anyone else is reported as not found rather than acted on, so one
+     *                     account can never read the existence or contents of another
+     *                     account's notification through this call.
+     */
+    public NotificationResponse markRead(Long notificationId, Long actingUserId) {
         Notification notification = notificationRepository.findById(notificationId)
+                .filter(n -> n.getRecipient().getId().equals(actingUserId))
                 .orElseThrow(() -> new IllegalArgumentException("Notification not found: " + notificationId));
         if (!notification.isRead()) {
             notification.setRead(true);

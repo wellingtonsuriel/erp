@@ -77,7 +77,7 @@ public class CurrencyController {
                     .displayOrder(request.getDisplayOrder())
                     .build();
 
-            Currency updated = currencyService.updateCurrency(id, currencyDetails);
+            Currency updated = currencyService.updateCurrency(id, currencyDetails, request.getBaseCurrency());
             return ResponseEntity.ok(updated);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();

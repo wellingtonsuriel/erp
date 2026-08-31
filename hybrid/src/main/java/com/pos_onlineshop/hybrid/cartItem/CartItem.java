@@ -1,5 +1,6 @@
 package com.pos_onlineshop.hybrid.cartItem;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.pos_onlineshop.hybrid.cart.Cart;
 import com.pos_onlineshop.hybrid.products.Product;
 import jakarta.persistence.*;
@@ -22,6 +23,7 @@ public class CartItem {
 
     @ManyToOne
     @JoinColumn(name = "cart_id", nullable = false)
+    @JsonIgnore
     private Cart cart;
 
     @ManyToOne

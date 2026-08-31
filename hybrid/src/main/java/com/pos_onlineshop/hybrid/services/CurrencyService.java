@@ -29,15 +29,28 @@ public class CurrencyService {
             throw new RuntimeException("Currency already exists: " + currency.getCode());
         }
 
-        // Only one base currency allowed
-        if (currency.isBaseCurrency()) {
-            currencyRepository.findByBaseCurrencyTrue()
-                    .ifPresent(existing -> {
-                        existing.setBaseCurrency(false);
-                        currencyRepository.save(existing);
-                    });
+        // Creating a currency must never silently reassign which currency is base - that is
+        // a deliberate, separate action (see promoteToBaseCurrency) so it can't happen as an
+        // accidental side effect of an unrelated create call. The very first currency ever
+        // created is the one exception: there is nothing yet to silently demote.
+        if (currency.isBaseCurrency() && currencyRepository.findByBaseCurrencyTrue().isPresent()) {
+            throw new IllegalArgumentException(
+                    "A base currency already exists - use the update endpoint to explicitly reassign it");
         }
 
+        return currencyRepository.save(currency);
+    }
+
+    /** The only way to reassign the base currency - demotes whichever currency currently
+     * holds it, explicitly and only when the caller asked for exactly this. */
+    public Currency promoteToBaseCurrency(Currency currency) {
+        currencyRepository.findByBaseCurrencyTrue()
+                .filter(existing -> !existing.getId().equals(currency.getId()))
+                .ifPresent(existing -> {
+                    existing.setBaseCurrency(false);
+                    currencyRepository.save(existing);
+                });
+        currency.setBaseCurrency(true);
         return currencyRepository.save(currency);
     }
 
@@ -85,17 +98,20 @@ public class CurrencyService {
         return currencyRepository.findAllActiveOrdered();
     }
 
-    public Currency updateCurrency(Long id, Currency currencyDetails) {
-        return currencyRepository.findById(id)
-                .map(currency -> {
-                    currency.setName(currencyDetails.getName());
-                    currency.setSymbol(currencyDetails.getSymbol());
-                    currency.setDecimalPlaces(currencyDetails.getDecimalPlaces());
-                    currency.setActive(currencyDetails.isActive());
-                    currency.setDisplayOrder(currencyDetails.getDisplayOrder());
-                    return currencyRepository.save(currency);
-                })
+    public Currency updateCurrency(Long id, Currency currencyDetails, Boolean promoteToBase) {
+        Currency currency = currencyRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Currency not found"));
+
+        currency.setName(currencyDetails.getName());
+        currency.setSymbol(currencyDetails.getSymbol());
+        currency.setDecimalPlaces(currencyDetails.getDecimalPlaces());
+        currency.setActive(currencyDetails.isActive());
+        currency.setDisplayOrder(currencyDetails.getDisplayOrder());
+
+        if (Boolean.TRUE.equals(promoteToBase)) {
+            return promoteToBaseCurrency(currency);
+        }
+        return currencyRepository.save(currency);
     }
 
     // Exchange rate management
