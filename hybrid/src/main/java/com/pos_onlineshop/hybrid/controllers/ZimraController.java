@@ -17,6 +17,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -32,6 +33,7 @@ public class ZimraController {
     private final ZimraService zimraService;
     private final ShopRepository shopRepository;
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/fiscalise/order/{orderId}")
     @Operation(summary = "Fiscalise an order", description = "Send order to fiscal device for ZIMRA compliance")
     public ResponseEntity<FiscalisationResponse> fiscaliseOrder(
@@ -48,6 +50,7 @@ public class ZimraController {
         }
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/fiscalise/sale/{saleId}")
     @Operation(summary = "Fiscalise a sale", description = "Send sale to fiscal device for ZIMRA compliance")
     public ResponseEntity<FiscalisationResponse> fiscaliseSale(
@@ -139,6 +142,7 @@ public class ZimraController {
         }
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/retry-failed")
     @Operation(summary = "Retry failed fiscalisations", description = "Retry all failed fiscalisation attempts")
     public ResponseEntity<List<FiscalisationResponse>> retryFailed() {
