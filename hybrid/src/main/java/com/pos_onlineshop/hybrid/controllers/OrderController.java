@@ -6,8 +6,11 @@ import com.pos_onlineshop.hybrid.dtos.OrderResponse;
 import com.pos_onlineshop.hybrid.dtos.UpdateOrderRequest;
 import com.pos_onlineshop.hybrid.enums.OrderStatus;
 import com.pos_onlineshop.hybrid.enums.SalesChannel;
+import com.pos_onlineshop.hybrid.idempotency.IdempotencyConflictException;
+import com.pos_onlineshop.hybrid.idempotency.IdempotentRequest;
 import com.pos_onlineshop.hybrid.orders.Order;
 import com.pos_onlineshop.hybrid.services.CurrencyService;
+import com.pos_onlineshop.hybrid.services.IdempotencyService;
 import com.pos_onlineshop.hybrid.services.OrderService;
 import com.pos_onlineshop.hybrid.services.UserAccountService;
 import com.pos_onlineshop.hybrid.userAccount.UserAccount;
@@ -17,6 +20,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -28,6 +32,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/orders")
@@ -36,15 +41,44 @@ import java.util.Map;
 @CrossOrigin(origins = "*")
 public class OrderController {
 
+    private static final String CREATE_ORDER_ENDPOINT = "POST /api/orders";
+
     private final OrderService orderService;
     private final UserAccountService userAccountService;
     private final CurrencyService currencyService;
+    private final IdempotencyService idempotencyService;
 
+    /**
+     * Accepts an optional Idempotency-Key header so a client retrying after a timeout/dropped
+     * connection cannot create a second order (and reserve stock a second time) for the same
+     * intended checkout - GL-level posting idempotency alone does not cover this, since the
+     * duplicate Order row and its stock reservation would already exist before any GL posting
+     * happens. A repeated request with the same key and the same body replays the original
+     * response; the same key with a different body, or a second request racing the first, is
+     * rejected with 409 rather than silently proceeding.
+     */
     @PostMapping
     @PreAuthorize("hasRole('USER')")
-    public ResponseEntity<Order> createOrder(
+    public ResponseEntity<?> createOrder(
             @AuthenticationPrincipal UserDetails userDetails,
-            @RequestBody CreateOrderRequest request) {
+            @RequestBody CreateOrderRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+
+        boolean idempotent = idempotencyKey != null && !idempotencyKey.isBlank();
+        if (idempotent) {
+            try {
+                Optional<IdempotentRequest> replay = idempotencyService.begin(CREATE_ORDER_ENDPOINT, idempotencyKey, request);
+                if (replay.isPresent()) {
+                    IdempotentRequest record = replay.get();
+                    return ResponseEntity.status(record.getResponseStatus())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .body(record.getResponseBody());
+                }
+            } catch (IdempotencyConflictException e) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
+            }
+        }
+
         UserAccount user = userAccountService.findByUsername(userDetails.getUsername())
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
@@ -59,8 +93,14 @@ public class OrderController {
                     request.getSalesChannel() != null ? request.getSalesChannel() : SalesChannel.ONLINE,
                     orderCurrency
             );
+            if (idempotent) {
+                idempotencyService.complete(CREATE_ORDER_ENDPOINT, idempotencyKey, HttpStatus.CREATED.value(), order);
+            }
             return ResponseEntity.status(HttpStatus.CREATED).body(order);
         } catch (RuntimeException e) {
+            if (idempotent) {
+                idempotencyService.abandon(CREATE_ORDER_ENDPOINT, idempotencyKey);
+            }
             return ResponseEntity.badRequest().build();
         }
     }
