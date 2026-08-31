@@ -48,8 +48,10 @@ public class IdempotentRequest {
     @Column(name = "response_status")
     private Integer responseStatus;
 
-    @Lob
-    @Column(name = "response_body")
+    // Explicit LONGTEXT rather than relying on @Lob's default JDBC-type inference, which
+    // mapped this to MySQL TINYTEXT (255 bytes) - nowhere near enough for a serialized
+    // response body of any entity with a handful of nested fields (e.g. a full Order).
+    @Column(name = "response_body", columnDefinition = "LONGTEXT")
     private String responseBody;
 
     @Column(name = "created_at", nullable = false)
