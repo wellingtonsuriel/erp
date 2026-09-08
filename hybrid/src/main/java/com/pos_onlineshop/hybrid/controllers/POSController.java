@@ -9,32 +9,55 @@ import com.pos_onlineshop.hybrid.orders.Order;
 import com.pos_onlineshop.hybrid.products.Product;
 import com.pos_onlineshop.hybrid.services.CashierService;
 import com.pos_onlineshop.hybrid.services.POSService;
-import com.pos_onlineshop.hybrid.services.UserAccountService;
-import com.pos_onlineshop.hybrid.userAccount.UserAccount;
-import lombok.Data;
-import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
-import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.List;
 
+/**
+ * The audit's P0-2 finding: every endpoint here previously had no authentication at all, and
+ * quickSale/voidTransaction resolved "which cashier is acting" from a client-supplied
+ * request.getCashierId() - meaning any caller could process a sale, or void one, as any cashier
+ * simply by naming a different ID, with no way to detect the impersonation. Every endpoint now
+ * requires an authenticated cashier (class-level @PreAuthorize("hasRole('CASHIER')") - see
+ * CashierUserDetailsService for how a JWT actually gets that role), and every operation that
+ * needs to know "who is really doing this" resolves it from the authenticated principal via
+ * requireAuthenticatedCashier, never from the request body. A client-supplied cashierId
+ * (still present in QuickSaleRequest/CashDrawerRequest/VoidTransactionRequest for backward
+ * compatibility) is simply ignored for identity purposes now.
+ */
 @RestController
 @RequestMapping("/api/pos")
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*")
+@PreAuthorize("hasRole('CASHIER')")
 public class POSController {
 
     private final POSService posService;
     private final CashierService cashierService;
 
+    private Cashier requireAuthenticatedCashier(UserDetails principal) {
+        if (principal == null) {
+            throw new AccessDeniedException("Authentication required");
+        }
+        return cashierService.findByUsername(principal.getUsername())
+                .orElseThrow(() -> new AccessDeniedException("Authenticated principal is not a cashier"));
+    }
+
     @PostMapping("/quick-sale")
-    public ResponseEntity<Order> quickSale(@RequestBody QuickSaleRequest request) {
+    public ResponseEntity<Order> quickSale(@RequestBody QuickSaleRequest request,
+                                            @AuthenticationPrincipal UserDetails principal) {
         try {
-            // Get active session for cashier
-            CashierSession session = cashierService.getActiveSession(request.getCashierId())
+            Cashier actingCashier = requireAuthenticatedCashier(principal);
+
+            // The session - and therefore every downstream stock/GL effect - belongs to
+            // whoever actually authenticated, never to a cashier ID named in the request body.
+            CashierSession session = cashierService.getActiveSession(actingCashier.getId())
                     .orElseThrow(() -> new RuntimeException("No active session for cashier"));
 
             Order order = posService.processQuickSale(
@@ -72,11 +95,10 @@ public class POSController {
     }
 
     @PostMapping("/open-cash-drawer")
-    public ResponseEntity<Void> openCashDrawer(@RequestBody CashDrawerRequest request) {
-        Cashier cashier = cashierService.findById(request.getCashierId())
-                .orElseThrow(() -> new RuntimeException("Cashier not found"));
+    public ResponseEntity<Void> openCashDrawer(@AuthenticationPrincipal UserDetails principal) {
+        Cashier actingCashier = requireAuthenticatedCashier(principal);
 
-        if (!cashierService.hasPermission(cashier, Permission.OPEN_CASH_DRAWER)) {
+        if (!cashierService.hasPermission(actingCashier, Permission.OPEN_CASH_DRAWER)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
@@ -93,17 +115,16 @@ public class POSController {
     @PostMapping("/void-transaction/{orderId}")
     public ResponseEntity<Void> voidTransaction(
             @PathVariable Long orderId,
-            @RequestBody VoidTransactionRequest request) {
-        Cashier cashier = cashierService.findById(request.getCashierId())
-                .orElseThrow(() -> new RuntimeException("Cashier not found"));
+            @RequestBody VoidTransactionRequest request,
+            @AuthenticationPrincipal UserDetails principal) {
+        Cashier actingCashier = requireAuthenticatedCashier(principal);
 
-        if (!cashierService.hasPermission(cashier, Permission.VOID_TRANSACTION)) {
+        if (!cashierService.hasPermission(actingCashier, Permission.VOID_TRANSACTION)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
         posService.voidTransaction(orderId, request.getReason());
         return ResponseEntity.ok().build();
     }
-
 
 }

@@ -15,6 +15,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -22,10 +23,21 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * The audit's P1-4 finding: the entire cross-shop transfer lifecycle previously had no
+ * authorization - anyone could create/approve/ship/receive/cancel transfers of real physical
+ * stock. Class-level default requires inventory-transfer authority for every mutating endpoint
+ * (mapped to the existing AccountingPermission.INVENTORY_TRANSFER, with the same
+ * hasRole('ADMIN')/hasRole('MANAGER') fallback used throughout the codebase for principals that
+ * predate/fall outside the AccountingPermission grant model - see UserAccountService/
+ * CashierUserDetailsService). Read endpoints are overridden to the equivalent INVENTORY_VIEW-or-
+ * any-staff-role check, since viewing transfer status is normal day-to-day cashier/staff activity.
+ */
 @RestController
 @RequestMapping("/api/inventory-transfers")
 @RequiredArgsConstructor
 @Slf4j
+@PreAuthorize("hasAuthority('INVENTORY_TRANSFER') or hasRole('ADMIN') or hasRole('MANAGER')")
 public class InventoryTransferController {
 
     private final InventoryTransferService transferService;
@@ -69,6 +81,7 @@ public class InventoryTransferController {
      * Get transfer by ID
      */
     @GetMapping("/{transferId}")
+    @PreAuthorize("hasAuthority('INVENTORY_VIEW') or hasRole('ADMIN') or hasRole('MANAGER') or hasRole('CASHIER')")
     public ResponseEntity<InventoryTransfer> getTransfer(@PathVariable Long transferId) {
         Optional<InventoryTransfer> transfer = transferService.findById(transferId);
         return transfer.map(ResponseEntity::ok)
@@ -79,6 +92,7 @@ public class InventoryTransferController {
      * Get transfer by transfer number
      */
     @GetMapping("/number/{transferNumber}")
+    @PreAuthorize("hasAuthority('INVENTORY_VIEW') or hasRole('ADMIN') or hasRole('MANAGER') or hasRole('CASHIER')")
     public ResponseEntity<InventoryTransfer> getTransferByNumber(@PathVariable String transferNumber) {
         Optional<InventoryTransfer> transfer = transferService.findByTransferNumber(transferNumber);
         return transfer.map(ResponseEntity::ok)
@@ -89,6 +103,7 @@ public class InventoryTransferController {
      * Get transfers for a specific shop (both outgoing and incoming)
      */
     @GetMapping("/shop/{shopId}")
+    @PreAuthorize("hasAuthority('INVENTORY_VIEW') or hasRole('ADMIN') or hasRole('MANAGER') or hasRole('CASHIER')")
     public ResponseEntity<Page<InventoryTransfer>> getTransfersForShop(
             @PathVariable Long shopId,
             Pageable pageable) {
@@ -101,6 +116,7 @@ public class InventoryTransferController {
      * Get outgoing transfers from a shop
      */
     @GetMapping("/shop/{shopId}/outgoing")
+    @PreAuthorize("hasAuthority('INVENTORY_VIEW') or hasRole('ADMIN') or hasRole('MANAGER') or hasRole('CASHIER')")
     public ResponseEntity<Page<InventoryTransfer>> getOutgoingTransfers(
             @PathVariable Long shopId,
             Pageable pageable) {
@@ -113,6 +129,7 @@ public class InventoryTransferController {
      * Get incoming transfers to a shop
      */
     @GetMapping("/shop/{shopId}/incoming")
+    @PreAuthorize("hasAuthority('INVENTORY_VIEW') or hasRole('ADMIN') or hasRole('MANAGER') or hasRole('CASHIER')")
     public ResponseEntity<Page<InventoryTransfer>> getIncomingTransfers(
             @PathVariable Long shopId,
             Pageable pageable) {
@@ -125,6 +142,7 @@ public class InventoryTransferController {
      * Get transfers by status
      */
     @GetMapping("/status/{status}")
+    @PreAuthorize("hasAuthority('INVENTORY_VIEW') or hasRole('ADMIN') or hasRole('MANAGER') or hasRole('CASHIER')")
     public ResponseEntity<List<InventoryTransfer>> getTransfersByStatus(@PathVariable TransferStatus status) {
         List<InventoryTransfer> transfers = transferService.findByStatus(status);
         return ResponseEntity.ok(transfers);
@@ -134,6 +152,7 @@ public class InventoryTransferController {
      * Get overdue transfers
      */
     @GetMapping("/overdue")
+    @PreAuthorize("hasAuthority('INVENTORY_VIEW') or hasRole('ADMIN') or hasRole('MANAGER') or hasRole('CASHIER')")
     public ResponseEntity<List<InventoryTransfer>> getOverdueTransfers() {
         List<InventoryTransfer> transfers = transferService.findOverdueTransfers();
         return ResponseEntity.ok(transfers);
@@ -143,6 +162,7 @@ public class InventoryTransferController {
      * Get transfers by date range
      */
     @GetMapping("/date-range")
+    @PreAuthorize("hasAuthority('INVENTORY_VIEW') or hasRole('ADMIN') or hasRole('MANAGER') or hasRole('CASHIER')")
     public ResponseEntity<List<InventoryTransfer>> getTransfersByDateRange(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
@@ -450,6 +470,7 @@ public class InventoryTransferController {
      * Get transfer inventory impact summary
      */
     @GetMapping("/{transferId}/inventory-impact")
+    @PreAuthorize("hasAuthority('INVENTORY_VIEW') or hasRole('ADMIN') or hasRole('MANAGER') or hasRole('CASHIER')")
     public ResponseEntity<TransferInventoryImpact> getTransferInventoryImpact(@PathVariable Long transferId) {
         try {
             Optional<InventoryTransfer> transferOpt = transferService.findById(transferId);
@@ -489,6 +510,7 @@ public class InventoryTransferController {
      * Get transfer history with inventory changes
      */
     @GetMapping("/{transferId}/history")
+    @PreAuthorize("hasAuthority('INVENTORY_VIEW') or hasRole('ADMIN') or hasRole('MANAGER') or hasRole('CASHIER')")
     public ResponseEntity<TransferHistory> getTransferHistory(@PathVariable Long transferId) {
         try {
             Optional<InventoryTransfer> transferOpt = transferService.findById(transferId);

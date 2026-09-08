@@ -6,12 +6,14 @@ import com.pos_onlineshop.hybrid.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -22,16 +24,17 @@ import java.util.List;
 import static org.springframework.security.config.http.SessionCreationPolicy.STATELESS;
 
 /**
- * NOTE on WHITE_LIST_URL: "/**" is still permitAll here, unchanged from before - narrowing
- * it is a larger, separate change that needs frontend coordination (most existing endpoints,
- * including POS/checkout, have never required a token and the frontend has never sent one).
- * What this class now does that it didn't before: @EnableMethodSecurity means every
- * @PreAuthorize annotation already written across the codebase (UserAccountController,
- * SupplierController, and the newly-added GL/AP/AR/procurement/report controllers) actually
- * gets enforced instead of being silently ignored, and JwtAuthenticationFilter means a
- * request that DOES carry a valid "Authorization: Bearer <token>" header is authenticated
- * with real roles/authorities before those checks run - see JwtAuthenticationFilter's class
- * comment for why this doesn't change behavior for requests that don't send a token.
+ * NOTE on WHITE_LIST_URL: this used to include the literal pattern "/**", which matched every
+ * URL and made .anyRequest().authenticated() below unreachable dead code - the entire HTTP
+ * layer permitted anonymous access regardless of any @PreAuthorize annotation (audit finding
+ * P0-1/"global permit-all"). That was only safe in the narrow sense that login never issued a
+ * real token anyway (see CashierUserDetailsService/AuthController's class comments) - now that
+ * it does, every endpoint requires authentication by default, and only the small set of
+ * endpoints below - login/registration entry points, the WebSocket handshake, health checks,
+ * and API documentation - are genuinely meant to be reachable without one. Every controller in
+ * this codebase was re-audited before this change landed to make sure each one carries the
+ * @PreAuthorize it actually needs (see e.g. POSController, InventoryTransferController,
+ * SellingPriceController, ShopController, ZimraController's class comments for what changed).
  */
 @Configuration
 @EnableWebSecurity
@@ -43,9 +46,21 @@ public class SecurityConfiguration {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
     private static final String[] WHITE_LIST_URL = {
-            "/metrics",
-            "/actuator/**",
-"/**",
+            // Login/registration - must be reachable without a token to obtain one.
+            "/api/auth/login",
+            "/api/cashiers/authenticate",
+            "/api/cashiers/authenticate/pin",
+            "/api/users/register",
+            // WebSocket handshake (SockJS) - see WebSocketController's class comment for the
+            // known, disclosed limitation this leaves: message-level authorization for
+            // /app/inventory-update and /app/order-notification is not yet implemented.
+            "/ws/**",
+            // Ops/monitoring - only /actuator/health is exposed by Spring Boot's own default
+            // (no management.endpoints.web.exposure.include is configured), so this is
+            // intentionally narrower than a blanket "/actuator/**".
+            "/actuator/health",
+            "/actuator/health/**",
+            // API documentation.
             "/v2/api-docs",
             "/v3/api-docs",
             "/v3/api-docs/**",
@@ -68,6 +83,14 @@ public class SecurityConfiguration {
                         .requestMatchers(WHITE_LIST_URL).permitAll()
                         .anyRequest().authenticated()
                 )
+                // Without an explicit entry point, Spring Security falls back to
+                // Http403ForbiddenEntryPoint for a request with no authentication at all,
+                // making it indistinguishable from an authenticated-but-forbidden 403 from
+                // @PreAuthorize - this makes an unauthenticated/missing/invalid-token request
+                // correctly return 401 instead, so clients (and this class's own
+                // SecurityConfigurationIntegrationTest) can tell "you're not logged in" apart
+                // from "you're logged in but not allowed to do this".
+                .exceptionHandling(ex -> ex.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
                 .authenticationProvider(authenticationProvider)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
         ;

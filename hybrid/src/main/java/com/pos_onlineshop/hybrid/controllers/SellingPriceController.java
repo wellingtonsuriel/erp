@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -25,10 +26,19 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Pricing is sensitive (the audit's P1-4 finding: this controller previously had no
+ * authorization at all, so anyone could bulk-reprice the catalog or set promotional prices).
+ * Class-level default requires shop-management authority for every mutating endpoint; the
+ * read-only price-lookup endpoints are individually overridden back to public below, since an
+ * online-shop customer must be able to see a product's price without logging in - see
+ * ProductController's identical public-catalog-read pattern.
+ */
 @RestController
 @RequestMapping("/api/selling-prices")
 @RequiredArgsConstructor
 @Slf4j
+@PreAuthorize("hasRole('ADMIN') or hasRole('MANAGER')")
 public class SellingPriceController {
 
     private final SellingPriceService sellingPriceService;
@@ -166,9 +176,11 @@ public class SellingPriceController {
     }
 
     /**
-     * Get current price for a product in a shop
+     * Get current price for a product in a shop - public: an online-shop customer must be able
+     * to see what a product costs without logging in.
      */
     @GetMapping("/shop/{shopId}/product/{productId}/current")
+    @PreAuthorize("permitAll()")
     public ResponseEntity<SellingPriceResponse> getCurrentPrice(
             @PathVariable Long shopId,
             @PathVariable Long productId) {
@@ -179,9 +191,10 @@ public class SellingPriceController {
     }
 
     /**
-     * Get all active prices for a product in a shop
+     * Get all active prices for a product in a shop - public, same reasoning as getCurrentPrice.
      */
     @GetMapping("/shop/{shopId}/product/{productId}")
+    @PreAuthorize("permitAll()")
     public ResponseEntity<List<SellingPriceResponse>> getActivePrices(
             @PathVariable Long shopId,
             @PathVariable Long productId) {
@@ -199,9 +212,10 @@ public class SellingPriceController {
     }
 
     /**
-     * Get price by type
+     * Get price by type - public, same reasoning as getCurrentPrice.
      */
     @GetMapping("/shop/{shopId}/product/{productId}/type/{priceType}")
+    @PreAuthorize("permitAll()")
     public ResponseEntity<SellingPriceResponse> getPriceByType(
             @PathVariable Long shopId,
             @PathVariable Long productId,

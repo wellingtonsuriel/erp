@@ -14,15 +14,24 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * The audit's P1-4 finding: this controller previously had no authorization at all - anyone
+ * could create shops or reassign cashiers/managers. Class-level default requires shop-management
+ * authority for every mutating endpoint; read endpoints are overridden down to isAuthenticated()
+ * only (not permitAll - shop records aren't customer-facing catalog data the way products/prices
+ * are, so any logged-in staff member, not the public internet, is the right bar).
+ */
 @RestController
 @RequestMapping("/api/shops")
 @RequiredArgsConstructor
 @Slf4j
+@PreAuthorize("hasRole('ADMIN') or hasRole('MANAGER')")
 public class ShopController {
 
     private final ShopService shopService;
@@ -70,6 +79,7 @@ public class ShopController {
      * Get shop by ID
      */
     @GetMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Shop> getShopById(@PathVariable Long id) {
         Optional<Shop> shop = shopService.findById(id);
         return shop.map(ResponseEntity::ok)
@@ -80,6 +90,7 @@ public class ShopController {
      * Get shop by code
      */
     @GetMapping("/code/{code}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Shop> getShopByCode(@PathVariable String code) {
         Optional<Shop> shop = shopService.findByCode(code);
         return shop.map(ResponseEntity::ok)
@@ -90,6 +101,7 @@ public class ShopController {
      * Get all shops
      */
     @GetMapping
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<Shop>> getAllShops() {
         List<Shop> shops = shopService.findAllShops();
         return ResponseEntity.ok(shops);
@@ -99,6 +111,7 @@ public class ShopController {
      * Get all active shops
      */
     @GetMapping("/active")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<Shop>> getActiveShops() {
         List<Shop> shops = shopService.findActiveShops();
         return ResponseEntity.ok(shops);
@@ -108,6 +121,7 @@ public class ShopController {
      * Get shops by type
      */
     @GetMapping("/type/{type}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<Shop>> getShopsByType(@PathVariable ShopType type) {
         List<Shop> shops = shopService.findByType(type);
         return ResponseEntity.ok(shops);
@@ -117,6 +131,7 @@ public class ShopController {
      * Get warehouse shop
      */
     @GetMapping("/warehouse")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Shop> getWarehouse() {
         Optional<Shop> warehouse = shopService.findWarehouse();
         return warehouse.map(ResponseEntity::ok)
@@ -127,6 +142,7 @@ public class ShopController {
      * Get shops managed by a cashier
      */
     @GetMapping("/managed-by/{cashierId}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<Shop>> getManagedShops(@PathVariable Long cashierId) {
         Optional<Cashier> cashier = cashierRepository.findById(cashierId);
         if (cashier.isEmpty()) {
@@ -313,6 +329,7 @@ public class ShopController {
      * Get count of active shops by type
      */
     @GetMapping("/count/type/{type}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Long> getActiveShopsCountByType(@PathVariable ShopType type) {
         long count = shopService.countActiveShopsByType(type);
         return ResponseEntity.ok(count);

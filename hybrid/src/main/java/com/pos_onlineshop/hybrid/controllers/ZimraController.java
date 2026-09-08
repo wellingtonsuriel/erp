@@ -17,16 +17,26 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * The audit's P1-4 finding: tax-authority fiscalisation submission previously had no
+ * authorization at all. Class-level default requires any authenticated staff member (a cashier
+ * completing a sale needs to trigger fiscalisation for it, and viewing fiscal records/devices is
+ * routine back-office activity) - retry-failed is overridden to a stricter manager/admin-only
+ * check below, since bulk-retrying failed submissions to a tax authority is an operational
+ * recovery action, not routine per-sale activity.
+ */
 @RestController
 @RequestMapping("/api/zimra")
 @RequiredArgsConstructor
 @Slf4j
 @Tag(name = "ZIMRA Fiscalisation", description = "ZIMRA fiscal compliance and device management")
+@PreAuthorize("isAuthenticated()")
 public class ZimraController {
 
     private final ZimraService zimraService;
@@ -140,6 +150,7 @@ public class ZimraController {
     }
 
     @PostMapping("/retry-failed")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('MANAGER')")
     @Operation(summary = "Retry failed fiscalisations", description = "Retry all failed fiscalisation attempts")
     public ResponseEntity<List<FiscalisationResponse>> retryFailed() {
         try {
