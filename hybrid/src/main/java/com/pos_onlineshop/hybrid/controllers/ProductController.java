@@ -68,11 +68,22 @@ public class ProductController {
         }
     }
 
+    /**
+     * The audit's P2 finding: this previously did nothing at all - no service call, no
+     * database change - and still returned 204 No Content, so the admin UI reported a
+     * successful delete for a product that was never touched. A real hard delete would risk
+     * orphaning OrderLine/ShopInventory/SellingPrice history that references this product, so
+     * this reuses ProductService's existing soft-delete (Product.active = false) instead.
+     */
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
-
-        return ResponseEntity.noContent().build();
+        try {
+            productService.deactivateProduct(id);
+            return ResponseEntity.noContent().build();
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 
     // Other existing endpoints...

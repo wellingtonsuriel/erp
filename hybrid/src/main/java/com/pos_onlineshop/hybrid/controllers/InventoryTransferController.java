@@ -19,6 +19,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -161,13 +162,22 @@ public class InventoryTransferController {
     /**
      * Get transfers by date range
      */
+    /**
+     * The audit's P2 date-format finding: the admin transfers screen's date-range picker sends
+     * plain date-only values ("2024-01-20", from an &lt;input type="date"&gt;), but this
+     * endpoint previously required a full ISO_DATE_TIME string ("2024-01-20T00:00:00") and
+     * failed binding with a 400 on every real submission. LocalDate params here accept exactly
+     * what the picker sends; startDate is treated as the start of that day and endDate as the
+     * end of that day, so the range is inclusive of both selected days.
+     */
     @GetMapping("/date-range")
     @PreAuthorize("hasAuthority('INVENTORY_VIEW') or hasRole('ADMIN') or hasRole('MANAGER') or hasRole('CASHIER')")
     public ResponseEntity<List<InventoryTransfer>> getTransfersByDateRange(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
 
-        List<InventoryTransfer> transfers = transferService.findByDateRange(startDate, endDate);
+        List<InventoryTransfer> transfers = transferService.findByDateRange(
+                startDate.atStartOfDay(), endDate.atTime(23, 59, 59));
         return ResponseEntity.ok(transfers);
     }
 
