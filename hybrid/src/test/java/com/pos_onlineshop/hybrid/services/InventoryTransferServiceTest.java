@@ -105,6 +105,27 @@ class InventoryTransferServiceTest {
     }
 
     @Test
+    void shipTransferFailsWithoutConsumingCostLayersWhenReduceStockRejectsTheReservationInvariant() {
+        // P0-3: isInStock is a fast pre-check on a possibly-stale read; reduceStock's
+        // pessimistic-lock-guarded check is the real, race-free enforcement point (see
+        // ShopInventoryServiceTest's reduceStock invariant tests). If a concurrent reservation
+        // won the race between the pre-check and the actual mutation, reduceStock throws - and
+        // shipTransfer must not have already consumed FIFO cost layers for a shipment whose
+        // quantity was never actually, safely removed from the source shop.
+        InventoryTransferItem transferItem = item(20);
+        InventoryTransfer transfer = approvedTransfer(transferItem);
+        when(transferRepository.findById(100L)).thenReturn(Optional.of(transfer));
+        when(shopInventoryService.isInStock(1L, 1L, 20)).thenReturn(true);
+        doThrow(new RuntimeException("Insufficient available stock. Available: 5, Requested: 20"))
+                .when(shopInventoryService).reduceStock(1L, 1L, 20);
+
+        assertThrows(RuntimeException.class, () -> service.shipTransfer(100L, actor));
+
+        verify(inventoryValuationService, never()).consumeCostLayers(any(), any(), anyInt(), any(), anyString(), any());
+        verify(transferRepository, never()).save(any());
+    }
+
+    @Test
     void shipTransferUsesOnlyTheCoveredPortionWhenLayersDontFullyCoverTheShipment() {
         InventoryTransferItem transferItem = item(20);
         InventoryTransfer transfer = approvedTransfer(transferItem);

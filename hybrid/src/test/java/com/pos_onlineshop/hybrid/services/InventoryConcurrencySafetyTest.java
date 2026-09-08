@@ -122,4 +122,88 @@ class InventoryConcurrencySafetyTest {
                 "reserved stock must never exceed total stock - the core invariant under test");
         assertTrue(succeeded.get() <= 6, "at most 6 reservations of 3 units can fit in 20 units of stock");
     }
+
+    /**
+     * The specific race the P0-3 audit finding was about: a POS sale (reduceStock) and an
+     * online reservation (reserveStock) racing for the same units. 30 units on hand; five
+     * threads each try to reserve 10 units (as an online checkout would) and five threads each
+     * try to sell 10 units directly (as a POS sale would) - fifteen operations of 10 units each
+     * against 30 units of stock, so only 3 can possibly succeed combined, regardless of which
+     * kind. Before the P0-3 fix, reduceStock validated only against raw totalstock, so a sale
+     * could succeed even when the units it consumed were already reserved - this test would
+     * have let reservedStock end up exceeding the post-sale totalstock (i.e. available stock
+     * negative). Both operations take the same pessimistic lock on the same InventoryTotal row
+     * (see ShopInventoryRepository/InventoryTotalRepository's findByShopIdAndProductIdWithLock),
+     * so they serialize against each other, not just against operations of their own kind.
+     */
+    @Test
+    void concurrentSalesAndReservationsNeverLetAvailableStockGoNegative() throws InterruptedException {
+        Currency currency = currencyRepository.save(
+                Currency.builder().code("USD").name("US Dollar").symbol("$").build());
+        Shop shop = shopRepository.save(Shop.builder().code("SHOP-CONC-2").name("Concurrency Shop 2")
+                .defaultCurrency(currency).build());
+        Product product = productRepository.save(Product.builder().name("Concurrency Widget 2")
+                .category("General").sku("SKU-CONC-2").build());
+        inventoryTotalRepository.save(
+                InventoryTotal.builder().shop(shop).product(product).totalstock(30).reservedStock(0).build());
+
+        ShopInventoryService service = buildShopInventoryService();
+
+        int reservationThreads = 5;
+        int saleThreads = 5;
+        int totalThreads = reservationThreads + saleThreads;
+        ExecutorService pool = Executors.newFixedThreadPool(totalThreads);
+        CountDownLatch ready = new CountDownLatch(totalThreads);
+        CountDownLatch go = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(totalThreads);
+        AtomicInteger reservationsSucceeded = new AtomicInteger(0);
+        AtomicInteger salesSucceeded = new AtomicInteger(0);
+        AtomicInteger rejected = new AtomicInteger(0);
+
+        for (int i = 0; i < reservationThreads; i++) {
+            pool.submit(() -> {
+                try {
+                    ready.countDown();
+                    go.await();
+                    service.reserveStock(shop.getId(), product.getId(), 10);
+                    reservationsSucceeded.incrementAndGet();
+                } catch (Exception e) {
+                    rejected.incrementAndGet();
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+        for (int i = 0; i < saleThreads; i++) {
+            pool.submit(() -> {
+                try {
+                    ready.countDown();
+                    go.await();
+                    service.reduceStock(shop.getId(), product.getId(), 10);
+                    salesSucceeded.incrementAndGet();
+                } catch (Exception e) {
+                    rejected.incrementAndGet();
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+
+        ready.await(5, TimeUnit.SECONDS);
+        go.countDown();
+        assertTrue(done.await(30, TimeUnit.SECONDS), "all operations should finish within 30s");
+        pool.shutdown();
+
+        assertEquals(totalThreads, reservationsSucceeded.get() + salesSucceeded.get() + rejected.get());
+        assertTrue(reservationsSucceeded.get() + salesSucceeded.get() <= 3,
+                "at most 3 operations of 10 units can fit in 30 units of stock, mixed sales and reservations alike");
+
+        InventoryTotal finalState = inventoryTotalRepository.findByShopAndProduct(shop, product).orElseThrow();
+        assertEquals(30 - salesSucceeded.get() * 10, finalState.getTotalstock(),
+                "only successful sales reduce totalstock");
+        assertEquals(reservationsSucceeded.get() * 10, finalState.getReservedStock(),
+                "only successful reservations increase reservedStock");
+        assertTrue(finalState.getAvailableStock() >= 0,
+                "available stock (totalstock - reservedStock) must never go negative - the P0-3 invariant");
+    }
 }

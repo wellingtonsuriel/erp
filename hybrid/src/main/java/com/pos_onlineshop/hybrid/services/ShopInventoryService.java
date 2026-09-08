@@ -229,9 +229,18 @@ public class ShopInventoryService {
 
         InventoryTotal inventoryTotal = inventoryTotalOpt.get();
 
-        if (inventoryTotal.getTotalstock() < quantity) {
-            throw new RuntimeException("Insufficient stock. Available: " + inventoryTotal.getTotalstock() +
-                    ", Requested: " + quantity);
+        // Must check AVAILABLE stock (totalstock minus whatever is already reserved for a
+        // pending order), not raw totalstock - otherwise a POS sale or transfer shipment could
+        // consume units a customer's online order has already reserved, letting reservedStock
+        // exceed totalstock (getAvailableStock() going negative). isInStock/reserveStock both
+        // already correctly check availableStock (see their own comments); this was the one
+        // remaining place in the physical-removal path that didn't, and it's guarded by the
+        // same pessimistic lock (findByShopIdAndProductIdWithLock above) that already makes
+        // reserveStock race-free - see InventoryConcurrencySafetyTest.
+        if (inventoryTotal.getAvailableStock() < quantity) {
+            throw new RuntimeException("Insufficient available stock. Available: " + inventoryTotal.getAvailableStock() +
+                    " (total: " + inventoryTotal.getTotalstock() + ", reserved: " + inventoryTotal.getReservedStock() +
+                    "), Requested: " + quantity);
         }
 
         // Update inventory total

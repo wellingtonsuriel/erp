@@ -154,6 +154,79 @@ class ShopInventoryServiceTest {
         assertThrows(RuntimeException.class, () -> service.reduceStock(1L, 1L, 20));
     }
 
+    // ------------------------------------------------------------------
+    // P0-3: reduceStock must respect reserved stock, not just raw totalstock
+    // ------------------------------------------------------------------
+
+    private void stubForReduce(int total, int reserved) {
+        when(shopRepository.findById(1L)).thenReturn(Optional.of(shop));
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
+        when(inventoryTotalRepository.findByShopIdAndProductIdWithLock(1L, 1L))
+                .thenReturn(Optional.of(inventoryTotal(total, reserved)));
+        lenient().when(inventoryTotalRepository.save(any(InventoryTotal.class))).thenAnswer(inv -> inv.getArgument(0));
+    }
+
+    @Test
+    void reduceStockSucceedsWhenQuantityIsExactlyWhatIsAvailable() {
+        // total=100, reserved=20, sale=80 -> available is exactly 80, must succeed.
+        stubForReduce(100, 20);
+
+        InventoryTotal result = service.reduceStock(1L, 1L, 80);
+
+        assertEquals(20, result.getTotalstock());
+        assertEquals(20, result.getReservedStock());
+    }
+
+    @Test
+    void reduceStockRejectsOneUnitMoreThanAvailable() {
+        // total=100, reserved=20, sale=81 -> only 80 truly available, must fail.
+        stubForReduce(100, 20);
+
+        assertThrows(RuntimeException.class, () -> service.reduceStock(1L, 1L, 81));
+        verify(inventoryTotalRepository, never()).save(any());
+    }
+
+    @Test
+    void reduceStockRejectsAnySaleWhenEverythingIsAlreadyReserved() {
+        // total=100, reserved=100, sale=1 -> zero available, must fail even for a single unit.
+        stubForReduce(100, 100);
+
+        assertThrows(RuntimeException.class, () -> service.reduceStock(1L, 1L, 1));
+        verify(inventoryTotalRepository, never()).save(any());
+    }
+
+    @Test
+    void reduceStockSucceedsForTheFullQuantityWhenNothingIsReserved() {
+        // total=100, reserved=0, sale=100 -> the whole stock is available, must succeed.
+        stubForReduce(100, 0);
+
+        InventoryTotal result = service.reduceStock(1L, 1L, 100);
+
+        assertEquals(0, result.getTotalstock());
+        assertEquals(0, result.getReservedStock());
+    }
+
+    @Test
+    void reduceStockRejectsExceedingTotalstockEvenWithNothingReserved() {
+        // total=100, reserved=0, sale=101 -> exceeds total outright, must fail.
+        stubForReduce(100, 0);
+
+        assertThrows(RuntimeException.class, () -> service.reduceStock(1L, 1L, 101));
+        verify(inventoryTotalRepository, never()).save(any());
+    }
+
+    @Test
+    void reduceStockCannotConsumeUnitsAlreadyReservedForAnOnlineOrder() {
+        // The exact P0-3 scenario: 50 on hand, 30 already reserved for a pending online order
+        // (20 truly available) - a POS sale of 25 must be rejected, not silently allowed to
+        // push reservedStock above the new, lower totalstock.
+        stubForReduce(50, 30);
+
+        RuntimeException ex = assertThrows(RuntimeException.class, () -> service.reduceStock(1L, 1L, 25));
+        assertTrue(ex.getMessage().contains("Insufficient available stock"));
+        verify(inventoryTotalRepository, never()).save(any());
+    }
+
     @Test
     void calculateTotalInventoryValueDelegatesToInventoryValuationService() {
         // The real FIFO cost-layer valuation logic now lives entirely in
