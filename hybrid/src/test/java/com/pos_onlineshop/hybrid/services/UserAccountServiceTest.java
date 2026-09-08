@@ -9,11 +9,13 @@ import com.pos_onlineshop.hybrid.userAccountPermission.UserAccountPermissionRepo
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.List;
 import java.util.Optional;
@@ -22,19 +24,22 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class UserAccountServiceTest {
 
     @Mock private UserAccountRepository userRepository;
     @Mock private UserAccountPermissionRepository userAccountPermissionRepository;
+    @Mock private PasswordEncoder passwordEncoder;
     @Mock private CartService cartService;
 
     private UserAccountService service;
 
     @BeforeEach
     void setUp() {
-        service = new UserAccountService(userRepository, userAccountPermissionRepository, null, cartService);
+        service = new UserAccountService(userRepository, userAccountPermissionRepository, passwordEncoder, cartService);
     }
 
     @Test
@@ -88,5 +93,55 @@ class UserAccountServiceTest {
         UserDetails details = service.loadUserByUsername("disabled1");
 
         assertFalse(details.isEnabled());
+    }
+
+    @Test
+    void registerUserHashesThePasswordAndDefaultsToTheUserRole() {
+        when(userRepository.existsByUsername("newbie")).thenReturn(false);
+        when(userRepository.existsByEmail("newbie@example.com")).thenReturn(false);
+        when(passwordEncoder.encode("plaintext")).thenReturn("$2a$10$hashed");
+        when(userRepository.save(org.mockito.ArgumentMatchers.any(UserAccount.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        UserAccount created = service.registerUser("newbie", "plaintext", "newbie@example.com");
+
+        assertEquals("$2a$10$hashed", created.getPassword());
+        assertNotEquals("plaintext", created.getPassword());
+        assertEquals(Set.of(Role.USER), created.getRoles());
+        assertTrue(created.isEnabled());
+        verify(cartService).createCart(created);
+    }
+
+    @Test
+    void registerUserRejectsADuplicateUsernameWithoutSavingAnything() {
+        when(userRepository.existsByUsername("taken")).thenReturn(true);
+
+        assertThrows(RuntimeException.class, () -> service.registerUser("taken", "pw", "e@example.com"));
+
+        verify(userRepository, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void registerUserRejectsADuplicateEmailWithoutSavingAnything() {
+        when(userRepository.existsByUsername("newbie")).thenReturn(false);
+        when(userRepository.existsByEmail("taken@example.com")).thenReturn(true);
+
+        assertThrows(RuntimeException.class, () -> service.registerUser("newbie", "pw", "taken@example.com"));
+
+        verify(userRepository, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void addRoleToUserGrantsAnAdditionalRoleWithoutRemovingTheExistingOne() {
+        UserAccount account = UserAccount.builder().id(5L).username("promotable").password("hashed")
+                .enabled(true).roles(new java.util.HashSet<>(Set.of(Role.USER))).build();
+        when(userRepository.findById(5L)).thenReturn(Optional.of(account));
+        when(userRepository.save(account)).thenReturn(account);
+
+        service.addRoleToUser(5L, Role.ADMIN);
+
+        ArgumentCaptor<UserAccount> savedCaptor = ArgumentCaptor.forClass(UserAccount.class);
+        verify(userRepository).save(savedCaptor.capture());
+        assertEquals(Set.of(Role.USER, Role.ADMIN), savedCaptor.getValue().getRoles());
     }
 }

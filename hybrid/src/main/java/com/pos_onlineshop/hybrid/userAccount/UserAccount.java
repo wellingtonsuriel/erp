@@ -1,5 +1,6 @@
 package com.pos_onlineshop.hybrid.userAccount;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.pos_onlineshop.hybrid.enums.Role;
 import jakarta.persistence.*;
 import lombok.*;
@@ -24,7 +25,8 @@ public class UserAccount {
     private String username;
 
     @Column(nullable = false)
-    private String password;
+    @JsonIgnore
+    private String password; // Encrypted - never serialized back to any client
 
     @Column(nullable = false, unique = true)
     private String email;

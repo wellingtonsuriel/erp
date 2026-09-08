@@ -38,7 +38,8 @@ public class Cashier {
     private String username;
 
     @Column(nullable = false)
-    private String password; // Encrypted
+    @JsonIgnore
+    private String password; // Encrypted - never serialized back to any client
 
     @Column(nullable = false)
     private String firstName;
@@ -73,7 +74,8 @@ public class Cashier {
     private LocalDateTime lastLogin;
 
     @Column(name = "pin_code")
-    private String pinCode; // Quick login PIN for POS terminals
+    @JsonIgnore
+    private String pinCode; // Quick login PIN for POS terminals - hashed at rest, never serialized back
 
     @OneToMany(mappedBy = "cashier", cascade = CascadeType.ALL)
     @Builder.Default
