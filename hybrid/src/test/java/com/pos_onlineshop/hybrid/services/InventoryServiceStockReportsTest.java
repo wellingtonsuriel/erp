@@ -96,6 +96,25 @@ class InventoryServiceStockReportsTest {
     }
 
     @Test
+    void shopStockReportFlagsOverstockedProductsWithoutContradictingLowOrOutOfStock() {
+        // P1-3: the frontend's shop-detail panel needs an "overstocked" signal that never
+        // existed anywhere in the backend - see generateShopStockReport's stockStatus branch.
+        when(shopRepository.findById(1L)).thenReturn(Optional.of(shop));
+        when(inventoryTotalRepository.findByShopIdWithDetails(1L)).thenReturn(List.of(total(150)));
+        when(shopInventoryRepository.findFirstByShopAndProductOrderByIdDesc(shop, product))
+                .thenReturn(Optional.of(ShopInventory.builder().reorderLevel(20).maxStock(100).build()));
+        when(inventoryValuationService.getInventoryValue(shop, product)).thenReturn(new BigDecimal("1500.00"));
+        when(inventoryValuationService.getUnitCost(shop, product)).thenReturn(Optional.of(new BigDecimal("10.00")));
+
+        ShopStockReport report = service.generateShopStockReport(1L);
+
+        assertEquals("OVERSTOCKED", report.getProducts().get(0).getStockStatus());
+        assertEquals(1, report.getOverstockedProductCount());
+        assertEquals(0, report.getLowStockProductCount());
+        assertEquals(0, report.getOutOfStockProductCount());
+    }
+
+    @Test
     void stockValueReportUsesRealFifoValueNotTheLatestLotPrice() {
         when(inventoryTotalRepository.findAllWithShopAndProduct()).thenReturn(List.of(total(100)));
         when(inventoryValuationService.getInventoryValue(shop, product)).thenReturn(new BigDecimal("1080.00"));

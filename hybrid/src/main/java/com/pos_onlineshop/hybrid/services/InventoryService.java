@@ -335,6 +335,7 @@ public class InventoryService {
 
         int lowStockCount = 0;
         int outOfStockCount = 0;
+        int overstockedCount = 0;
         BigDecimal totalValue = BigDecimal.ZERO;
         int totalUnits = 0;
 
@@ -358,7 +359,9 @@ public class InventoryService {
             BigDecimal productValue = inventoryValuationService.getInventoryValue(shop, product);
             BigDecimal unitPrice = inventoryValuationService.getUnitCost(shop, product).orElse(BigDecimal.ZERO);
 
-            // Determine stock status
+            // Determine stock status. Out-of-stock and low-stock take priority over
+            // overstocked (a threshold misconfiguration - e.g. maxStock set below reorderLevel
+            // - should never report contradictory statuses for the same product).
             String stockStatus;
             if (currentStock <= 0) {
                 stockStatus = "OUT_OF_STOCK";
@@ -366,6 +369,9 @@ public class InventoryService {
             } else if (reorderLevel != null && currentStock <= reorderLevel) {
                 stockStatus = "LOW_STOCK";
                 lowStockCount++;
+            } else if (maxStock != null && currentStock > maxStock) {
+                stockStatus = "OVERSTOCKED";
+                overstockedCount++;
             } else {
                 stockStatus = "IN_STOCK";
             }
@@ -399,6 +405,7 @@ public class InventoryService {
                 .totalStockValue(totalValue)
                 .lowStockProductCount(lowStockCount)
                 .outOfStockProductCount(outOfStockCount)
+                .overstockedProductCount(overstockedCount)
                 .products(productDetails)
                 .generatedAt(LocalDateTime.now())
                 .build();

@@ -24,6 +24,9 @@ public class ShopStockReport {
     private BigDecimal totalStockValue;
     private Integer lowStockProductCount;
     private Integer outOfStockProductCount;
+    /** currentStock &gt; maxStock (only meaningful for products with a maxStock set) - see
+     * ProductStockDetail.stockStatus's "OVERSTOCKED" value. */
+    private Integer overstockedProductCount;
     private List<ProductStockDetail> products;
     private LocalDateTime generatedAt;
 
