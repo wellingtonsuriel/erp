@@ -5,6 +5,8 @@ import com.pos_onlineshop.hybrid.cashierSessions.CashierSession;
 import com.pos_onlineshop.hybrid.dtos.*;
 import com.pos_onlineshop.hybrid.enums.CashierRole;
 import com.pos_onlineshop.hybrid.enums.Permission;
+import com.pos_onlineshop.hybrid.security.CashierUserDetailsService;
+import com.pos_onlineshop.hybrid.security.JwtService;
 import com.pos_onlineshop.hybrid.services.CashierService;
 import com.pos_onlineshop.hybrid.services.ShopService;
 import com.pos_onlineshop.hybrid.shop.Shop;
@@ -15,6 +17,9 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -34,6 +39,21 @@ public class CashierController {
 
     private final CashierService cashierService;
     private final ShopService shopService;
+    private final JwtService jwtService;
+    private final CashierUserDetailsService cashierUserDetailsService;
+
+    /** Resolves the Cashier a JWT was actually issued to - never a client-supplied ID - for
+     * every endpoint that needs to know "who is really calling this". A cashier's own JWT
+     * subject is their username (see CashierUserDetailsService), so this is a simple, reliable
+     * lookup rather than trusting anything in the request body. */
+    private Cashier requireAuthenticatedCashier(UserDetails principal) {
+        if (principal == null) {
+            throw new org.springframework.security.access.AccessDeniedException("Authentication required");
+        }
+        return cashierService.findByUsername(principal.getUsername())
+                .orElseThrow(() -> new org.springframework.security.access.AccessDeniedException(
+                        "Authenticated principal is not a cashier"));
+    }
 
     @PostMapping("/register")
     @PreAuthorize("hasRole('ADMIN')")
@@ -224,13 +244,16 @@ public class CashierController {
     // Permission Management
     @PostMapping("/{id}/permissions")
     @PreAuthorize("hasAnyRole('MANAGER', 'ADMIN')")
-    public ResponseEntity<Void> grantPermission(@PathVariable Long id, @RequestBody GrantPermissionRequest request) {
+    public ResponseEntity<Void> grantPermission(@PathVariable Long id, @RequestBody GrantPermissionRequest request,
+                                                 @AuthenticationPrincipal UserDetails principal) {
         try {
             Cashier cashier = cashierService.findById(id)
                     .orElseThrow(() -> new RuntimeException("Cashier not found"));
 
-            // TODO: Get current user as grantedBy
-            Cashier grantedBy = null; // Should be obtained from security context
+            // The grantor is always the authenticated caller, never anything the client could
+            // supply - a request body can't be trusted to accurately name who is granting a
+            // permission, and audit records for RBAC changes must be tamper-proof.
+            Cashier grantedBy = requireAuthenticatedCashier(principal);
 
             cashierService.grantPermission(cashier, request.getPermission(), grantedBy);
             return ResponseEntity.ok().build();
@@ -278,6 +301,8 @@ public class CashierController {
                 response.put("success", true);
                 response.put("cashier", cashier);
                 response.put("permissions", cashierService.getCashierPermissions(cashier.getId()));
+                response.put("token", issueToken(cashier));
+                response.put("tokenType", "Bearer");
                 return ResponseEntity.ok(response);
             } else {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -302,6 +327,8 @@ public class CashierController {
                 response.put("success", true);
                 response.put("cashier", cashier);
                 response.put("permissions", cashierService.getCashierPermissions(cashier.getId()));
+                response.put("token", issueToken(cashier));
+                response.put("tokenType", "Bearer");
                 return ResponseEntity.ok(response);
             } else {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -312,6 +339,18 @@ public class CashierController {
             return ResponseEntity.internalServerError()
                     .body(Map.of("success", false, "message", "Authentication error"));
         }
+    }
+
+    /** Issues the same JWT format AuthController issues for UserAccount logins, but for a
+     * Cashier - see CashierUserDetailsService's class comment for why login stays split across
+     * two entities while sharing one token/validation pipeline (JwtService,
+     * JwtAuthenticationFilter). Without this, the frontend's login/cashierLogin never received a
+     * usable token at all (it silently stored an empty string), so every @PreAuthorize-protected
+     * endpoint rejected every real user as anonymous regardless of their actual role. */
+    private String issueToken(Cashier cashier) {
+        UserDetails principal = new User(cashier.getUsername(), cashier.getPassword(), true, true, true, true,
+                cashierUserDetailsService.authoritiesFor(cashier));
+        return jwtService.generateToken(principal);
     }
 
 

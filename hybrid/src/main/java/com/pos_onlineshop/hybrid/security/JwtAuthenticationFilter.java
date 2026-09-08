@@ -24,6 +24,13 @@ import java.io.IOException;
  * happens next. This lets method security (@PreAuthorize) work correctly without changing
  * SecurityConfiguration's existing permitAll URL matching for endpoints that don't request
  * authorization.
+ *
+ * A JWT's subject (see JwtService.generateToken) is a username in exactly one of two disjoint
+ * namespaces: UserAccount (online customers, minted by AuthController's /api/auth/login) or
+ * Cashier (POS/back-office staff, minted by CashierController's /api/cashiers/authenticate -
+ * see CashierUserDetailsService's class comment for why these stay two entities rather than
+ * being merged). Resolution tries UserAccount first, then falls back to Cashier, since the two
+ * username columns are independently unique but not guaranteed disjoint from each other.
  */
 @Component
 @RequiredArgsConstructor
@@ -35,6 +42,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final UserAccountService userAccountService;
+    private final CashierUserDetailsService cashierUserDetailsService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -49,7 +57,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         try {
             String username = jwtService.extractUsername(token);
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                UserDetails userDetails = userAccountService.loadUserByUsername(username);
+                UserDetails userDetails = resolveUserDetails(username);
                 if (jwtService.isTokenValid(token, userDetails)) {
                     UsernamePasswordAuthenticationToken authToken =
                             new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
@@ -64,5 +72,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private UserDetails resolveUserDetails(String username) {
+        try {
+            return userAccountService.loadUserByUsername(username);
+        } catch (UsernameNotFoundException e) {
+            return cashierUserDetailsService.loadUserByUsername(username);
+        }
     }
 }

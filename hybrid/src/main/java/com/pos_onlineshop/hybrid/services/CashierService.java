@@ -340,6 +340,17 @@ public class CashierService {
         return permissionRepository.findPermissionsByCashierId(cashierId);
     }
 
+    /** The full set of permissions {@link #hasPermission} would grant this cashier - role-based
+     * defaults unioned with individually-granted ones. Used to build the JWT authorities issued
+     * at login (see CashierUserDetailsService) so a token's authorities always agree with what
+     * hasPermission would independently compute for the same cashier. */
+    @Transactional(readOnly = true)
+    public Set<Permission> getEffectivePermissions(Cashier cashier) {
+        Set<Permission> effective = new HashSet<>(getDefaultPermissionsByRole(cashier.getRole()));
+        effective.addAll(getCashierPermissions(cashier.getId()));
+        return effective;
+    }
+
     private void grantDefaultPermissions(Cashier cashier) {
         Set<Permission> defaultPermissions = getDefaultPermissionsByRole(cashier.getRole());
         for (Permission permission : defaultPermissions) {
