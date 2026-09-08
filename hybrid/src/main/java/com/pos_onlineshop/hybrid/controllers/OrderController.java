@@ -163,6 +163,17 @@ public class OrderController {
     }
 
     /**
+     * Get orders for a specific shop - the admin Orders screen's shop filter (previously
+     * 404'd; this endpoint never existed - see the audit's P1-5 finding).
+     */
+    @GetMapping("/shop/{shopId}")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('CASHIER')")
+    public ResponseEntity<List<OrderResponse>> getOrdersByShop(@PathVariable Long shopId) {
+        List<OrderResponse> orders = orderService.findByShopAsResponses(shopId);
+        return ResponseEntity.ok(orders);
+    }
+
+    /**
      * Update an existing order
      */
     @PutMapping("/{id}")

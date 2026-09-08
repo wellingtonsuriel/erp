@@ -750,4 +750,14 @@ public class OrderService {
                 .map(orderMapper::toResponse)
                 .collect(Collectors.toList());
     }
+
+    /**
+     * Get orders for a specific shop as DTOs - see OrderController's shop-filter endpoint.
+     */
+    @Transactional(readOnly = true)
+    public List<OrderResponse> findByShopAsResponses(Long shopId) {
+        return orderRepository.findByShopId(shopId).stream()
+                .map(orderMapper::toResponse)
+                .collect(Collectors.toList());
+    }
 }

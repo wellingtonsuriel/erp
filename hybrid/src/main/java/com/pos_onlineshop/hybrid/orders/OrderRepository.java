@@ -25,6 +25,11 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     List<Order> findBySalesChannel(SalesChannel channel);
 
+    /** The audit's P1-5 finding: the admin Orders screen's shop filter had no backing endpoint
+     * at all (GET /api/orders/shop/{shopId} 404'd). Shop-scoped, not paginated, matching the
+     * sibling findByStatus/findBySalesChannel endpoints' shape. */
+    List<Order> findByShopId(Long shopId);
+
     List<Order> findByStoreLocation(String storeLocation);
 
     List<Order> findByCashier(UserAccount cashier);

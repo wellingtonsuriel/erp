@@ -9,6 +9,7 @@ import com.pos_onlineshop.hybrid.enums.ShopType;
 import com.pos_onlineshop.hybrid.mappers.OrderMapper;
 import com.pos_onlineshop.hybrid.orderLines.OrderLine;
 import com.pos_onlineshop.hybrid.orderLines.OrderLineRepository;
+import com.pos_onlineshop.hybrid.dtos.OrderResponse;
 import com.pos_onlineshop.hybrid.orders.Order;
 import com.pos_onlineshop.hybrid.orders.OrderRepository;
 import com.pos_onlineshop.hybrid.products.Product;
@@ -268,5 +269,32 @@ class OrderServiceTest {
 
         assertEquals(0, expired);
         verifyNoInteractions(shopInventoryService);
+    }
+
+    // ------------------------------------------------------------------
+    // P1-5: shop-scoped order listing (the admin Orders screen's shop filter)
+    // ------------------------------------------------------------------
+
+    @Test
+    void findByShopAsResponsesDelegatesToTheShopScopedRepositoryQuery() {
+        Order order = Order.builder().id(1L).build();
+        OrderResponse response = OrderResponse.builder().id(1L).build();
+        when(orderRepository.findByShopId(10L)).thenReturn(List.of(order));
+        when(orderMapper.toResponse(order)).thenReturn(response);
+
+        List<OrderResponse> result = service.findByShopAsResponses(10L);
+
+        assertEquals(1, result.size());
+        assertEquals(1L, result.get(0).getId());
+    }
+
+    @Test
+    void findByShopAsResponsesReturnsAnEmptyListForAShopWithNoOrders() {
+        when(orderRepository.findByShopId(99L)).thenReturn(List.of());
+
+        List<OrderResponse> result = service.findByShopAsResponses(99L);
+
+        assertTrue(result.isEmpty());
+        verifyNoInteractions(orderMapper);
     }
 }
