@@ -10,6 +10,7 @@ import com.pos_onlineshop.hybrid.enums.FinancialEventType;
 import com.pos_onlineshop.hybrid.enums.GLSourceModule;
 import com.pos_onlineshop.hybrid.enums.OrderStatus;
 import com.pos_onlineshop.hybrid.enums.PaymentMethod;
+import com.pos_onlineshop.hybrid.enums.Permission;
 import com.pos_onlineshop.hybrid.enums.SalesChannel;
 import com.pos_onlineshop.hybrid.gl.FinancialEvent;
 import com.pos_onlineshop.hybrid.journalEntry.JournalEntry;
@@ -47,6 +48,7 @@ public class POSService {
     private final CurrencyService currencyService;
     private final com.pos_onlineshop.hybrid.journalEntry.JournalEntryRepository journalEntryRepository;
     private final InventoryValuationService inventoryValuationService;
+    private final CashierService cashierService;
 
     @Transactional
     public Order processQuickSale(List<QuickSaleItem> items, PaymentMethod paymentMethod,
@@ -88,8 +90,29 @@ public class POSService {
                     .cashierSession(session) // Set the session
                     .build();
 
-            // Pass the SellingPrice and currency to copyProductDetails
-            orderLine.copyProductDetails(sellingPrice, shopCurrency);
+            if (item.getCustomPrice() != null) {
+                // A price override must be explicit and authorized - never applied just
+                // because the field was present. Reuses the same Permission.OVERRIDE_PRICE
+                // check VoidTransaction/CashierController already use, rather than inventing a
+                // second authorization mechanism for pricing.
+                if (!cashierService.hasPermission(cashier, Permission.OVERRIDE_PRICE)) {
+                    throw new RuntimeException("Cashier " + cashier.getUsername()
+                            + " is not authorized to override prices for " + product.getName());
+                }
+                if (item.getCustomPrice().compareTo(BigDecimal.ZERO) <= 0) {
+                    throw new RuntimeException("Custom price must be positive for " + product.getName()
+                            + ", received: " + item.getCustomPrice());
+                }
+                // No tax breakdown is computed for an overridden price (see
+                // copyProductDetails' 3-arg overload) - there is no defensible way to infer
+                // what portion of a manually-entered price is tax, so it is left at zero
+                // rather than guessed; Order.taxAmount will correctly reflect only the
+                // non-overridden lines' tax.
+                orderLine.copyProductDetails(product, shopCurrency, item.getCustomPrice());
+            } else {
+                // Pass the SellingPrice and currency to copyProductDetails
+                orderLine.copyProductDetails(sellingPrice, shopCurrency);
+            }
 
             order.addOrderLine(orderLine);
 
