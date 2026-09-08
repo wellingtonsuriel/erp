@@ -17,7 +17,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/analytics")
@@ -32,6 +34,13 @@ public class AnalyticsController {
     private final AccountancyService accountancyService;
     private final ShopInventoryService shopInventoryService;
     private final CurrencyService currencyService;
+    private final ProfitAndLossService profitAndLossService;
+    private final InventoryValuationService inventoryValuationService;
+    private final ShopService shopService;
+
+    /** Rolling window used for every "current period" performance metric below - matches the
+     * dashboard endpoint's existing 30-day convention (monthOrders, calculateMonthlyRevenue). */
+    private static final int PERFORMANCE_WINDOW_DAYS = 30;
 
     @GetMapping("/dashboard")
     public ResponseEntity<Map<String, Object>> getDashboardData(
@@ -157,7 +166,11 @@ public class AnalyticsController {
             // Additional performance metrics
             performance.put("orderFulfillmentRate", calculateOrderFulfillmentRate());
             performance.put("customerRetentionRate", calculateCustomerRetentionRate());
-            performance.put("averageOrderProcessingTime", calculateAverageOrderProcessingTime());
+            // averageOrderProcessingTime is intentionally omitted: Order has no
+            // status-transition timestamp (only orderDate and a generic updatedAt that any
+            // unrelated edit also bumps), so there is no honest way to compute "time to
+            // fulfillment" from the current data model. Returning a fabricated 0.0 here would
+            // read as "instant processing," which is worse than not reporting the metric.
 
             if (shopId != null) {
                 performance.put("shopPerformance", getShopSpecificPerformance(shopId, targetCurrency));
@@ -277,11 +290,29 @@ public class AnalyticsController {
         }
     }
 
+    /**
+     * Inventory turnover = Cost of Goods Sold (period) / Inventory Value. COGS comes from the
+     * GL via ProfitAndLossService - the same authoritative source the P&L report uses - over
+     * the rolling PERFORMANCE_WINDOW_DAYS window. The denominator uses ending inventory value
+     * rather than a period average, since no historical (beginning-of-period) inventory value
+     * is tracked; this is a documented simplification, not a fabricated figure.
+     */
     private double calculateInventoryTurnover(Long shopId) {
         try {
-            // Placeholder - implement based on your business logic
-            // Inventory turnover = Cost of Goods Sold / Average Inventory Value
-            return 0.0; // TODO: Implement inventory turnover calculation
+            LocalDate toDate = LocalDate.now();
+            LocalDate fromDate = toDate.minusDays(PERFORMANCE_WINDOW_DAYS);
+            BigDecimal cogs = profitAndLossService.generate(fromDate, toDate, shopId).getTotalCostOfGoodsSold();
+
+            BigDecimal inventoryValue = shopId != null
+                    ? shopService.findById(shopId)
+                            .map(inventoryValuationService::getInventoryValue)
+                            .orElse(BigDecimal.ZERO)
+                    : inventoryValuationService.getTotalInventoryValue();
+
+            if (inventoryValue == null || inventoryValue.compareTo(BigDecimal.ZERO) <= 0) {
+                return 0.0;
+            }
+            return cogs.divide(inventoryValue, 4, BigDecimal.ROUND_HALF_UP).doubleValue();
         } catch (Exception e) {
             log.warn("Error calculating inventory turnover", e);
             return 0.0;
@@ -303,39 +334,44 @@ public class AnalyticsController {
         }
     }
 
+    /**
+     * Share of identifiable customers from the previous PERFORMANCE_WINDOW_DAYS window who
+     * also ordered in the current window - see OrderRepository.findDistinctUserIdsByOrderDateBetween
+     * for why anonymous (no linked UserAccount) POS sales aren't counted as customers here.
+     */
     private double calculateCustomerRetentionRate() {
         try {
-            // Placeholder - implement based on your customer analytics
-            return 0.0; // TODO: Implement customer retention rate
+            LocalDateTime periodEnd = LocalDateTime.now();
+            LocalDateTime periodStart = periodEnd.minusDays(PERFORMANCE_WINDOW_DAYS);
+            LocalDateTime previousStart = periodStart.minusDays(PERFORMANCE_WINDOW_DAYS);
+
+            Set<Long> previousCustomers = new HashSet<>(
+                    orderService.findDistinctCustomerIdsBetween(previousStart, periodStart));
+            if (previousCustomers.isEmpty()) {
+                return 0.0;
+            }
+            Set<Long> currentCustomers = new HashSet<>(
+                    orderService.findDistinctCustomerIdsBetween(periodStart, periodEnd));
+
+            long retained = previousCustomers.stream().filter(currentCustomers::contains).count();
+            return (retained / (double) previousCustomers.size()) * 100;
         } catch (Exception e) {
             log.warn("Error calculating customer retention rate", e);
             return 0.0;
         }
     }
 
-    private double calculateAverageOrderProcessingTime() {
-        try {
-            // Placeholder - implement based on order timestamps
-            return 0.0; // TODO: Implement average processing time calculation
-        } catch (Exception e) {
-            log.warn("Error calculating average processing time", e);
-            return 0.0;
-        }
-    }
-
     private Map<String, Object> getShopSpecificPerformance(Long shopId, Currency currency) {
         Map<String, Object> shopPerformance = new HashMap<>();
-        // Placeholder - implement shop-specific performance metrics
         shopPerformance.put("shopId", shopId);
         shopPerformance.put("shopRevenue", getShopRevenue(shopId, currency));
-        shopPerformance.put("shopOrderCount", 0); // TODO: Implement
+        shopPerformance.put("shopOrderCount", orderService.countShopOrders(shopId));
         return shopPerformance;
     }
 
     private BigDecimal getShopRevenue(Long shopId, Currency currency) {
         try {
-            // Placeholder - implement shop-specific revenue calculation
-            return BigDecimal.ZERO; // TODO: Implement shop revenue calculation
+            return orderService.calculateShopRevenue(shopId, currency);
         } catch (Exception e) {
             log.warn("Error calculating shop revenue", e);
             return BigDecimal.ZERO;

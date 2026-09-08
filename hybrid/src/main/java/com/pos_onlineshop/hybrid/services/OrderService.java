@@ -760,4 +760,34 @@ public class OrderService {
                 .map(orderMapper::toResponse)
                 .collect(Collectors.toList());
     }
+
+    /**
+     * Revenue for a single shop, converted to the requested currency - the shop-scoped
+     * counterpart to calculatePeriodRevenue, used by AnalyticsController's per-shop metrics.
+     */
+    @Transactional(readOnly = true)
+    public BigDecimal calculateShopRevenue(Long shopId, Currency currency) {
+        List<Order> orders = orderRepository.findByShopId(shopId);
+
+        return orders.stream()
+                .filter(order -> order.getStatus() == OrderStatus.COMPLETED || order.getStatus() == OrderStatus.DELIVERED)
+                .map(order -> order.getCurrency().equals(currency) ? order.getTotalAmount()
+                        : currencyService.convert(order.getTotalAmount(), order.getCurrency(), currency))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    @Transactional(readOnly = true)
+    public long countShopOrders(Long shopId) {
+        return orderRepository.findByShopId(shopId).size();
+    }
+
+    /**
+     * Distinct identifiable customers (UserAccount-linked orders only) who ordered within the
+     * window - see OrderRepository.findDistinctUserIdsByOrderDateBetween for why anonymous POS
+     * sales are excluded. Used by AnalyticsController's customer retention rate.
+     */
+    @Transactional(readOnly = true)
+    public List<Long> findDistinctCustomerIdsBetween(LocalDateTime start, LocalDateTime end) {
+        return orderRepository.findDistinctUserIdsByOrderDateBetween(start, end);
+    }
 }

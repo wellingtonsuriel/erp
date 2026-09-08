@@ -297,4 +297,60 @@ class OrderServiceTest {
         assertTrue(result.isEmpty());
         verifyNoInteractions(orderMapper);
     }
+
+    // ------------------------------------------------------------------
+    // P1-7: real (non-fabricated) shop-scoped analytics backing AnalyticsController
+    // ------------------------------------------------------------------
+
+    @Test
+    void calculateShopRevenueOnlyCountsCompletedAndDeliveredOrdersForThatShop() {
+        Currency usd = Currency.builder().id(1L).code("USD").build();
+        Order completed = Order.builder().id(1L).status(OrderStatus.COMPLETED)
+                .totalAmount(new java.math.BigDecimal("100")).currency(usd).build();
+        Order delivered = Order.builder().id(2L).status(OrderStatus.DELIVERED)
+                .totalAmount(new java.math.BigDecimal("50")).currency(usd).build();
+        Order pending = Order.builder().id(3L).status(OrderStatus.PENDING)
+                .totalAmount(new java.math.BigDecimal("999")).currency(usd).build();
+        when(orderRepository.findByShopId(10L)).thenReturn(List.of(completed, delivered, pending));
+
+        java.math.BigDecimal revenue = service.calculateShopRevenue(10L, usd);
+
+        assertEquals(0, new java.math.BigDecimal("150").compareTo(revenue));
+        verifyNoInteractions(currencyService);
+    }
+
+    @Test
+    void calculateShopRevenueConvertsOrdersInADifferentCurrency() {
+        Currency usd = Currency.builder().id(1L).code("USD").build();
+        Currency eur = Currency.builder().id(2L).code("EUR").build();
+        Order order = Order.builder().id(1L).status(OrderStatus.COMPLETED)
+                .totalAmount(new java.math.BigDecimal("100")).currency(eur).build();
+        when(orderRepository.findByShopId(10L)).thenReturn(List.of(order));
+        when(currencyService.convert(new java.math.BigDecimal("100"), eur, usd))
+                .thenReturn(new java.math.BigDecimal("110"));
+
+        java.math.BigDecimal revenue = service.calculateShopRevenue(10L, usd);
+
+        assertEquals(0, new java.math.BigDecimal("110").compareTo(revenue));
+    }
+
+    @Test
+    void countShopOrdersCountsEveryOrderRegardlessOfStatus() {
+        Order a = Order.builder().id(1L).status(OrderStatus.PENDING).build();
+        Order b = Order.builder().id(2L).status(OrderStatus.COMPLETED).build();
+        when(orderRepository.findByShopId(10L)).thenReturn(List.of(a, b));
+
+        assertEquals(2L, service.countShopOrders(10L));
+    }
+
+    @Test
+    void findDistinctCustomerIdsBetweenDelegatesToTheRepositoryQuery() {
+        java.time.LocalDateTime start = java.time.LocalDateTime.of(2026, 1, 1, 0, 0);
+        java.time.LocalDateTime end = java.time.LocalDateTime.of(2026, 1, 31, 0, 0);
+        when(orderRepository.findDistinctUserIdsByOrderDateBetween(start, end)).thenReturn(List.of(5L, 7L));
+
+        List<Long> result = service.findDistinctCustomerIdsBetween(start, end);
+
+        assertEquals(List.of(5L, 7L), result);
+    }
 }

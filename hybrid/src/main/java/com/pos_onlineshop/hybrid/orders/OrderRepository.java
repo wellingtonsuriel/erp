@@ -57,4 +57,11 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
      * sitting untouched since before cutoff - the abandoned-cart case ScheduledJobsService's
      * reservation-expiry job cleans up. */
     List<Order> findBySalesChannelAndStatusAndOrderDateBefore(SalesChannel salesChannel, OrderStatus status, LocalDateTime cutoff);
+
+    /** Distinct identifiable (non-anonymous) customers who placed an order in the window -
+     * the basis for AnalyticsController's customer retention rate. Walk-in POS sales with no
+     * linked UserAccount can't be attributed to a returning person, so they're excluded rather
+     * than counted as a new customer on every visit. */
+    @Query("SELECT DISTINCT o.user.id FROM Order o WHERE o.user IS NOT NULL AND o.orderDate BETWEEN :start AND :end")
+    List<Long> findDistinctUserIdsByOrderDateBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 }
