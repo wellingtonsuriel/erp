@@ -18,7 +18,8 @@ public class CreateManualJournalRequest {
     @NotBlank(message = "Description is required")
     private String description;
 
-    @NotNull(message = "Creator is required")
+    // Ignored server-side: the creator is always the authenticated caller (see
+    // ManualJournalController/ManualJournalService's class comments), never this request-body field.
     private Long createdByUserId;
 
     private String attachmentReference;

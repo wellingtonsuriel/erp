@@ -4,18 +4,30 @@ import com.pos_onlineshop.hybrid.dtos.*;
 import com.pos_onlineshop.hybrid.gl.GLPostingException;
 import com.pos_onlineshop.hybrid.services.ExpenseCategoryService;
 import com.pos_onlineshop.hybrid.services.ExpenseService;
+import com.pos_onlineshop.hybrid.services.UserAccountService;
+import com.pos_onlineshop.hybrid.userAccount.UserAccount;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
+/**
+ * create/approveAndPay/reject's acting-user id must always be the authenticated caller, never
+ * CreateExpenseRequest.createdByUserId or ManualJournalActionRequest/RejectManualJournalRequest.
+ * userId from the request body - see ExpenseService's class comment for why (the same
+ * preparer/approver identity-spoofing bug fixed on ManualJournalController/WorkflowController).
+ * Pre-existing constraint this doesn't change: Expense.createdBy/approvedBy are UserAccount
+ * foreign keys, so a Cashier-model principal gets a 403 here.
+ */
 @RestController
 @RequestMapping("/api/expenses")
 @RequiredArgsConstructor
@@ -24,6 +36,13 @@ public class ExpenseController {
 
     private final ExpenseService expenseService;
     private final ExpenseCategoryService expenseCategoryService;
+    private final UserAccountService userAccountService;
+
+    private UserAccount requireAuthenticatedUser(UserDetails principal) {
+        return userAccountService.findByUsername(principal.getUsername())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Authenticated principal " + principal.getUsername() + " is not a UserAccount"));
+    }
 
     @GetMapping
     @PreAuthorize("hasAuthority('GL_VIEW') or hasRole('ADMIN')")
@@ -43,11 +62,15 @@ public class ExpenseController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('GL_MANUAL_JOURNAL') or hasRole('ADMIN')")
-    public ResponseEntity<?> create(@Valid @RequestBody CreateExpenseRequest request) {
+    public ResponseEntity<?> create(@Valid @RequestBody CreateExpenseRequest request,
+                                     @AuthenticationPrincipal UserDetails principal) {
         try {
-            return ResponseEntity.status(HttpStatus.CREATED).body(expenseService.createExpense(request));
+            UserAccount creator = requireAuthenticatedUser(principal);
+            return ResponseEntity.status(HttpStatus.CREATED).body(expenseService.createExpense(request, creator.getId()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         }
     }
 
@@ -59,14 +82,25 @@ public class ExpenseController {
 
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasAuthority('GL_APPROVE') or hasAuthority('GL_ADMIN') or hasRole('ADMIN')")
-    public ResponseEntity<?> approve(@PathVariable Long id, @Valid @RequestBody ManualJournalActionRequest request) {
-        return runTransition(() -> expenseService.approveAndPay(id, request));
+    public ResponseEntity<?> approve(@PathVariable Long id, @AuthenticationPrincipal UserDetails principal) {
+        try {
+            UserAccount approver = requireAuthenticatedUser(principal);
+            return runTransition(() -> expenseService.approveAndPay(id, approver.getId()));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
+        }
     }
 
     @PostMapping("/{id}/reject")
     @PreAuthorize("hasAuthority('GL_APPROVE') or hasAuthority('GL_ADMIN') or hasRole('ADMIN')")
-    public ResponseEntity<?> reject(@PathVariable Long id, @Valid @RequestBody RejectManualJournalRequest request) {
-        return runTransition(() -> expenseService.reject(id, request));
+    public ResponseEntity<?> reject(@PathVariable Long id, @Valid @RequestBody RejectManualJournalRequest request,
+                                     @AuthenticationPrincipal UserDetails principal) {
+        try {
+            UserAccount approver = requireAuthenticatedUser(principal);
+            return runTransition(() -> expenseService.reject(id, approver.getId(), request.getReason()));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
+        }
     }
 
     @GetMapping("/categories")

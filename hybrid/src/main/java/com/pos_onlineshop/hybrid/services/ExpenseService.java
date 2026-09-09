@@ -6,8 +6,6 @@ import com.pos_onlineshop.hybrid.currency.Currency;
 import com.pos_onlineshop.hybrid.currency.CurrencyRepository;
 import com.pos_onlineshop.hybrid.dtos.CreateExpenseRequest;
 import com.pos_onlineshop.hybrid.dtos.ExpenseResponse;
-import com.pos_onlineshop.hybrid.dtos.ManualJournalActionRequest;
-import com.pos_onlineshop.hybrid.dtos.RejectManualJournalRequest;
 import com.pos_onlineshop.hybrid.employee.Employee;
 import com.pos_onlineshop.hybrid.employee.EmployeeRepository;
 import com.pos_onlineshop.hybrid.enums.ExpensePayeeType;
@@ -41,6 +39,13 @@ import java.util.stream.Collectors;
  * DRAFT -> SUBMITTED -> PAID: approveAndPay() posts to the GL and marks the expense paid in
  * one atomic action, since there is no separate "approved but not yet paid" state for a
  * cash/bank expense - approval IS the payment decision here.
+ *
+ * createExpense/approveAndPay/reject's acting-user id must always be the authenticated caller
+ * (resolved in ExpenseController), never CreateExpenseRequest.createdByUserId or
+ * ManualJournalActionRequest/RejectManualJournalRequest.userId from the request body - both
+ * identities being independently client-suppliable let anyone with GL_APPROVE defeat the
+ * preparer-cannot-also-approve check in Expense.approveAndPay() by lying about who prepared
+ * versus approved, the same bug class fixed on ManualJournalController/WorkflowController.
  */
 @Service
 @RequiredArgsConstructor
@@ -71,7 +76,7 @@ public class ExpenseService {
     }
 
     @Transactional
-    public ExpenseResponse createExpense(CreateExpenseRequest request) {
+    public ExpenseResponse createExpense(CreateExpenseRequest request, Long createdByUserId) {
         if (expenseRepository.existsByExpenseNumber(request.getExpenseNumber())) {
             throw new IllegalArgumentException("An expense with number " + request.getExpenseNumber() + " already exists");
         }
@@ -79,7 +84,7 @@ public class ExpenseService {
                 .orElseThrow(() -> new IllegalArgumentException("Category not found: " + request.getCategoryId()));
         Currency currency = currencyRepository.findById(request.getCurrencyId())
                 .orElseThrow(() -> new IllegalArgumentException("Currency not found: " + request.getCurrencyId()));
-        UserAccount createdBy = resolveUser(request.getCreatedByUserId());
+        UserAccount createdBy = resolveUser(createdByUserId);
 
         Suppliers supplier = null;
         Employee employee = null;
@@ -136,9 +141,9 @@ public class ExpenseService {
     }
 
     @Transactional
-    public ExpenseResponse approveAndPay(Long id, ManualJournalActionRequest request) {
+    public ExpenseResponse approveAndPay(Long id, Long approverUserId) {
         Expense expense = findOrThrow(id);
-        UserAccount approver = resolveUser(request.getUserId());
+        UserAccount approver = resolveUser(approverUserId);
 
         JournalEntry entry = postToGeneralLedger(expense, approver.getUsername());
         expense.approveAndPay(approver, entry);
@@ -149,10 +154,10 @@ public class ExpenseService {
     }
 
     @Transactional
-    public ExpenseResponse reject(Long id, RejectManualJournalRequest request) {
+    public ExpenseResponse reject(Long id, Long approverUserId, String reason) {
         Expense expense = findOrThrow(id);
-        UserAccount approver = resolveUser(request.getUserId());
-        expense.reject(approver, request.getReason());
+        UserAccount approver = resolveUser(approverUserId);
+        expense.reject(approver, reason);
         return toResponse(expenseRepository.save(expense));
     }
 

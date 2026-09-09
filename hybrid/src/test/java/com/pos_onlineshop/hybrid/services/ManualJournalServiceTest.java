@@ -94,7 +94,7 @@ class ManualJournalServiceTest {
         when(accountRepository.findById(2L)).thenReturn(Optional.of(expense));
         when(accountRepository.findById(1L)).thenReturn(Optional.of(cash));
 
-        ManualJournalResponse response = service.create(createRequest());
+        ManualJournalResponse response = service.create(createRequest(), 1L);
 
         assertEquals(ManualJournalStatus.DRAFT.name(), response.getStatus());
         assertEquals(2, response.getLines().size());
@@ -106,7 +106,7 @@ class ManualJournalServiceTest {
         when(userAccountRepository.findById(1L)).thenReturn(Optional.of(preparer));
         when(accountRepository.findById(2L)).thenReturn(Optional.empty());
 
-        assertThrows(IllegalArgumentException.class, () -> service.create(createRequest()));
+        assertThrows(IllegalArgumentException.class, () -> service.create(createRequest(), 1L));
     }
 
     private ManualJournal storedJournal(Long id) {
@@ -125,10 +125,7 @@ class ManualJournalServiceTest {
         when(manualJournalRepository.findById(1L)).thenReturn(Optional.of(journal));
         when(userAccountRepository.findById(1L)).thenReturn(Optional.of(preparer));
 
-        ManualJournalActionRequest request = new ManualJournalActionRequest();
-        request.setUserId(1L);
-
-        ManualJournalResponse response = service.submit(1L, request);
+        ManualJournalResponse response = service.submit(1L, 1L);
 
         assertEquals(ManualJournalStatus.SUBMITTED.name(), response.getStatus());
     }
@@ -140,10 +137,7 @@ class ManualJournalServiceTest {
         when(manualJournalRepository.findById(1L)).thenReturn(Optional.of(journal));
         when(userAccountRepository.findById(1L)).thenReturn(Optional.of(preparer));
 
-        ManualJournalActionRequest request = new ManualJournalActionRequest();
-        request.setUserId(1L);
-
-        assertThrows(IllegalStateException.class, () -> service.approve(1L, request));
+        assertThrows(IllegalStateException.class, () -> service.approve(1L, 1L));
     }
 
     @Test
@@ -153,10 +147,7 @@ class ManualJournalServiceTest {
         when(manualJournalRepository.findById(1L)).thenReturn(Optional.of(journal));
         when(userAccountRepository.findById(2L)).thenReturn(Optional.of(approver));
 
-        ManualJournalActionRequest request = new ManualJournalActionRequest();
-        request.setUserId(2L);
-
-        ManualJournalResponse response = service.approve(1L, request);
+        ManualJournalResponse response = service.approve(1L, 2L);
 
         assertEquals(ManualJournalStatus.APPROVED.name(), response.getStatus());
         assertEquals("manager1", response.getApprovedByUsername());
@@ -175,10 +166,7 @@ class ManualJournalServiceTest {
                 eq("Accrual correction"), eq(GLSourceModule.MANUAL), eq("MANUAL_JOURNAL"), eq(5L), anyList(), eq("manager1")))
                 .thenReturn(postedEntry);
 
-        ManualJournalActionRequest request = new ManualJournalActionRequest();
-        request.setUserId(2L);
-
-        ManualJournalResponse response = service.post(5L, request);
+        ManualJournalResponse response = service.post(5L, 2L);
 
         assertEquals(ManualJournalStatus.POSTED.name(), response.getStatus());
         assertEquals(10L, response.getPostedJournalEntryNumber());
@@ -193,10 +181,7 @@ class ManualJournalServiceTest {
         ManualJournal journal = storedJournal(5L);
         when(manualJournalRepository.findById(5L)).thenReturn(Optional.of(journal));
 
-        ManualJournalActionRequest request = new ManualJournalActionRequest();
-        request.setUserId(1L);
-
-        assertThrows(IllegalStateException.class, () -> service.post(5L, request));
+        assertThrows(IllegalStateException.class, () -> service.post(5L, 1L));
         verifyNoInteractions(glPostingService);
     }
 
@@ -207,11 +192,7 @@ class ManualJournalServiceTest {
         when(manualJournalRepository.findById(1L)).thenReturn(Optional.of(journal));
         when(userAccountRepository.findById(2L)).thenReturn(Optional.of(approver));
 
-        RejectManualJournalRequest request = new RejectManualJournalRequest();
-        request.setUserId(2L);
-        request.setReason("Wrong period");
-
-        ManualJournalResponse response = service.reject(1L, request);
+        ManualJournalResponse response = service.reject(1L, 2L, "Wrong period");
 
         assertEquals(ManualJournalStatus.REJECTED.name(), response.getStatus());
         assertEquals("Wrong period", response.getRejectionReason());

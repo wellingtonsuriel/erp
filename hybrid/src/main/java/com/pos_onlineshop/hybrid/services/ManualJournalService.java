@@ -31,6 +31,14 @@ import java.util.stream.Collectors;
  * approver - enforced in ManualJournal.approve(). Posting is a separate explicit action
  * from approval so an APPROVED journal can wait for e.g. its accounting period to open
  * without blocking the approval step itself.
+ *
+ * create/submit/approve/reject/post's acting-user id must always be the authenticated
+ * caller (resolved in ManualJournalController), never CreateManualJournalRequest.createdByUserId
+ * or ManualJournalActionRequest/RejectManualJournalRequest.userId from the request body -
+ * both identities being independently client-suppliable let anyone with GL_APPROVE defeat
+ * the preparer-cannot-also-approve check above by simply lying about which user prepared
+ * versus approved, the same class of bug fixed on WorkflowController/WorkflowService.
+ * ManualJournalActionRequest (which existed solely to carry that field) was deleted.
  */
 @Service
 @RequiredArgsConstructor
@@ -56,8 +64,8 @@ public class ManualJournalService {
         return toResponse(findOrThrow(id));
     }
 
-    public ManualJournalResponse create(CreateManualJournalRequest request) {
-        UserAccount createdBy = resolveUser(request.getCreatedByUserId());
+    public ManualJournalResponse create(CreateManualJournalRequest request, Long createdByUserId) {
+        UserAccount createdBy = resolveUser(createdByUserId);
         Currency baseCurrency = currencyService.getBaseCurrency();
 
         ManualJournal journal = ManualJournal.builder()
@@ -98,16 +106,16 @@ public class ManualJournalService {
         return toResponse(manualJournalRepository.save(journal));
     }
 
-    public ManualJournalResponse submit(Long id, ManualJournalActionRequest request) {
+    public ManualJournalResponse submit(Long id, Long submittedByUserId) {
         ManualJournal journal = findOrThrow(id);
-        UserAccount submittedBy = resolveUser(request.getUserId());
+        UserAccount submittedBy = resolveUser(submittedByUserId);
         journal.submit(submittedBy);
         return toResponse(manualJournalRepository.save(journal));
     }
 
-    public ManualJournalResponse approve(Long id, ManualJournalActionRequest request) {
+    public ManualJournalResponse approve(Long id, Long approvedByUserId) {
         ManualJournal journal = findOrThrow(id);
-        UserAccount approvedBy = resolveUser(request.getUserId());
+        UserAccount approvedBy = resolveUser(approvedByUserId);
         journal.approve(approvedBy);
         ManualJournalResponse response = toResponse(manualJournalRepository.save(journal));
         auditLogService.record("MANUAL_JOURNAL", id, com.pos_onlineshop.hybrid.enums.AuditAction.APPROVE,
@@ -115,22 +123,22 @@ public class ManualJournalService {
         return response;
     }
 
-    public ManualJournalResponse reject(Long id, RejectManualJournalRequest request) {
+    public ManualJournalResponse reject(Long id, Long rejectedByUserId, String reason) {
         ManualJournal journal = findOrThrow(id);
-        UserAccount rejectedBy = resolveUser(request.getUserId());
-        journal.reject(rejectedBy, request.getReason());
+        UserAccount rejectedBy = resolveUser(rejectedByUserId);
+        journal.reject(rejectedBy, reason);
         ManualJournalResponse response = toResponse(manualJournalRepository.save(journal));
         auditLogService.record("MANUAL_JOURNAL", id, com.pos_onlineshop.hybrid.enums.AuditAction.REJECT,
-                rejectedBy.getUsername(), "Manual journal " + journal.getDescription() + " rejected: " + request.getReason());
+                rejectedBy.getUsername(), "Manual journal " + journal.getDescription() + " rejected: " + reason);
         return response;
     }
 
-    public ManualJournalResponse post(Long id, ManualJournalActionRequest request) {
+    public ManualJournalResponse post(Long id, Long postedByUserId) {
         ManualJournal journal = findOrThrow(id);
         if (!journal.canBePosted()) {
             throw new IllegalStateException("Manual journal " + id + " cannot be posted from status " + journal.getStatus());
         }
-        UserAccount postedByUser = resolveUser(request.getUserId());
+        UserAccount postedByUser = resolveUser(postedByUserId);
 
         List<ManualLineSpec> specs = journal.getLines().stream()
                 .map(line -> new ManualLineSpec(line.getAccount(), line.getDebitAmount(), line.getCreditAmount(),

@@ -6,8 +6,6 @@ import com.pos_onlineshop.hybrid.currency.Currency;
 import com.pos_onlineshop.hybrid.currency.CurrencyRepository;
 import com.pos_onlineshop.hybrid.dtos.CreateExpenseRequest;
 import com.pos_onlineshop.hybrid.dtos.ExpenseResponse;
-import com.pos_onlineshop.hybrid.dtos.ManualJournalActionRequest;
-import com.pos_onlineshop.hybrid.dtos.RejectManualJournalRequest;
 import com.pos_onlineshop.hybrid.employee.Employee;
 import com.pos_onlineshop.hybrid.employee.EmployeeRepository;
 import com.pos_onlineshop.hybrid.enums.AccountType;
@@ -122,7 +120,7 @@ class ExpenseServiceTest {
         CreateExpenseRequest request = request(ExpensePayeeType.OTHER);
         request.setPayeeName("Fuel Station");
 
-        assertThrows(IllegalArgumentException.class, () -> service.createExpense(request));
+        assertThrows(IllegalArgumentException.class, () -> service.createExpense(request, 1L));
     }
 
     @Test
@@ -130,7 +128,7 @@ class ExpenseServiceTest {
         when(expenseRepository.existsByExpenseNumber("EXP-1")).thenReturn(false);
         CreateExpenseRequest request = request(ExpensePayeeType.EMPLOYEE);
 
-        assertThrows(IllegalArgumentException.class, () -> service.createExpense(request));
+        assertThrows(IllegalArgumentException.class, () -> service.createExpense(request, 1L));
     }
 
     @Test
@@ -141,7 +139,7 @@ class ExpenseServiceTest {
         CreateExpenseRequest request = request(ExpensePayeeType.EMPLOYEE);
         request.setEmployeeId(5L);
 
-        ExpenseResponse response = service.createExpense(request);
+        ExpenseResponse response = service.createExpense(request, 1L);
 
         assertEquals("DRAFT", response.getStatus());
         assertEquals("Jane Doe", response.getEmployeeName());
@@ -153,7 +151,7 @@ class ExpenseServiceTest {
         when(expenseRepository.existsByExpenseNumber("EXP-1")).thenReturn(false);
         CreateExpenseRequest request = request(ExpensePayeeType.OTHER);
 
-        assertThrows(IllegalArgumentException.class, () -> service.createExpense(request));
+        assertThrows(IllegalArgumentException.class, () -> service.createExpense(request, 1L));
     }
 
     private Expense submittedExpense() {
@@ -174,9 +172,7 @@ class ExpenseServiceTest {
                 eq(GLSourceModule.SYSTEM), eq("EXPENSE"), eq(20L), captor.capture(), eq("manager1")))
                 .thenReturn(entry);
 
-        ManualJournalActionRequest request = new ManualJournalActionRequest();
-        request.setUserId(2L);
-        ExpenseResponse response = service.approveAndPay(20L, request);
+        ExpenseResponse response = service.approveAndPay(20L, 2L);
 
         assertEquals("PAID", response.getStatus());
         List<ManualLineSpec> specs = captor.getValue();
@@ -194,10 +190,7 @@ class ExpenseServiceTest {
         when(glPostingService.postManual(anyString(), any(LocalDate.class), anyString(), any(), anyString(), anyLong(), anyList(), anyString()))
                 .thenReturn(JournalEntry.builder().id(500L).entryNumber(50L).build());
 
-        ManualJournalActionRequest request = new ManualJournalActionRequest();
-        request.setUserId(1L); // the preparer, not a different approver
-
-        assertThrows(IllegalStateException.class, () -> service.approveAndPay(20L, request));
+        assertThrows(IllegalStateException.class, () -> service.approveAndPay(20L, 1L)); // the preparer, not a different approver
     }
 
     @Test
@@ -205,10 +198,7 @@ class ExpenseServiceTest {
         Expense expense = submittedExpense();
         when(expenseRepository.findById(20L)).thenReturn(Optional.of(expense));
 
-        RejectManualJournalRequest request = new RejectManualJournalRequest();
-        request.setUserId(2L);
-        request.setReason("Missing receipt");
-        ExpenseResponse response = service.reject(20L, request);
+        ExpenseResponse response = service.reject(20L, 2L, "Missing receipt");
 
         assertEquals("REJECTED", response.getStatus());
         assertEquals("Missing receipt", response.getRejectionReason());

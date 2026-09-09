@@ -1,13 +1,13 @@
 package com.pos_onlineshop.hybrid.dtos;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 @Data
 public class RejectManualJournalRequest {
 
-    @NotNull(message = "Acting user is required")
+    // Ignored server-side: the rejecting user is always the authenticated caller (see
+    // ManualJournalController/ManualJournalService's class comments), never this request-body field.
     private Long userId;
 
     @NotBlank(message = "A reason is required to reject a manual journal")

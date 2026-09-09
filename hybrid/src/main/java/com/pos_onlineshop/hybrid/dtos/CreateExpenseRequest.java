@@ -54,6 +54,7 @@ public class CreateExpenseRequest {
 
     private String attachmentReference;
 
-    @NotNull(message = "Creator is required")
+    // Ignored server-side: the creator is always the authenticated caller (see
+    // ExpenseController/ExpenseService's class comments), never this request-body field.
     private Long createdByUserId;
 }
