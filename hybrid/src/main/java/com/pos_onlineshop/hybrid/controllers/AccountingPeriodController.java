@@ -8,12 +8,21 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * close/reopen's closedBy/reopenedBy - which flow into the GL entries this posts (depreciation,
+ * FX revaluation, IAS29 restatement, the retained-earnings sweep) and the period's own audit
+ * columns - must always be the authenticated caller's username, never a request-body field:
+ * previously any GL_ADMIN-authorized caller could claim any string, including someone else's
+ * name, as who closed or reopened a period.
+ */
 @RestController
 @RequestMapping("/api/accounting-periods")
 @RequiredArgsConstructor
@@ -47,10 +56,9 @@ public class AccountingPeriodController {
 
     @PostMapping("/{id}/close")
     @PreAuthorize("hasAuthority('PERIOD_CLOSE') or hasRole('ADMIN')")
-    public ResponseEntity<?> close(@PathVariable Long id, @RequestBody(required = false) Map<String, String> body) {
-        String closedBy = body != null ? body.getOrDefault("closedBy", "system") : "system";
+    public ResponseEntity<?> close(@PathVariable Long id, @AuthenticationPrincipal UserDetails principal) {
         try {
-            return ResponseEntity.ok(accountingPeriodService.closePeriod(id, closedBy));
+            return ResponseEntity.ok(accountingPeriodService.closePeriod(id, principal.getUsername()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (IllegalStateException e) {
@@ -61,10 +69,9 @@ public class AccountingPeriodController {
 
     @PostMapping("/{id}/reopen")
     @PreAuthorize("hasAuthority('PERIOD_REOPEN') or hasRole('ADMIN')")
-    public ResponseEntity<?> reopen(@PathVariable Long id, @RequestBody(required = false) Map<String, String> body) {
-        String reopenedBy = body != null ? body.getOrDefault("reopenedBy", "system") : "system";
+    public ResponseEntity<?> reopen(@PathVariable Long id, @AuthenticationPrincipal UserDetails principal) {
         try {
-            return ResponseEntity.ok(accountingPeriodService.reopenPeriod(id, reopenedBy));
+            return ResponseEntity.ok(accountingPeriodService.reopenPeriod(id, principal.getUsername()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (IllegalStateException e) {
