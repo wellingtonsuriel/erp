@@ -2,9 +2,8 @@ package com.pos_onlineshop.hybrid.controllers;
 
 import com.pos_onlineshop.hybrid.dtos.LoyaltyTransactionRequest;
 import com.pos_onlineshop.hybrid.dtos.LoyaltyTransactionResponse;
+import com.pos_onlineshop.hybrid.security.AuthenticatedActorResolver;
 import com.pos_onlineshop.hybrid.services.LoyaltyService;
-import com.pos_onlineshop.hybrid.services.UserAccountService;
-import com.pos_onlineshop.hybrid.userAccount.UserAccount;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -15,7 +14,6 @@ import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.List;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.verify;
@@ -30,7 +28,7 @@ import static org.mockito.Mockito.when;
 class LoyaltyControllerTest {
 
     @Mock private LoyaltyService loyaltyService;
-    @Mock private UserAccountService userAccountService;
+    @Mock private AuthenticatedActorResolver actorResolver;
 
     private LoyaltyController controller;
 
@@ -40,16 +38,16 @@ class LoyaltyControllerTest {
 
     @Test
     void earnUsesTheAuthenticatedPrincipalNeverTheRequestBody() {
-        controller = new LoyaltyController(loyaltyService, userAccountService);
-        UserAccount realActor = UserAccount.builder().id(11L).username("real-clerk").build();
-        when(userAccountService.findByUsername("real-clerk")).thenReturn(Optional.of(realActor));
+        controller = new LoyaltyController(loyaltyService, actorResolver);
+        UserDetails principal = principal("real-clerk");
+        when(actorResolver.requireActingUserId(principal)).thenReturn(11L);
         when(loyaltyService.earn(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(11L)))
                 .thenReturn(LoyaltyTransactionResponse.builder().id(1L).build());
 
         LoyaltyTransactionRequest request = new LoyaltyTransactionRequest();
         request.setCreatedByUserId(9999L); // attacker-controlled value that must be ignored
 
-        ResponseEntity<?> response = controller.earn(request, principal("real-clerk"));
+        ResponseEntity<?> response = controller.earn(request, principal);
 
         verify(loyaltyService).earn(request, 11L);
         assertEquals(HttpStatus.CREATED, response.getStatusCode());
@@ -57,10 +55,12 @@ class LoyaltyControllerTest {
 
     @Test
     void aCashierOnlyPrincipalCannotPerformLoyaltyTransactionsAtAll() {
-        controller = new LoyaltyController(loyaltyService, userAccountService);
-        when(userAccountService.findByUsername("cashier-admin")).thenReturn(Optional.empty());
+        controller = new LoyaltyController(loyaltyService, actorResolver);
+        UserDetails principal = principal("cashier-admin");
+        when(actorResolver.requireActingUserId(principal))
+                .thenThrow(new IllegalStateException("Authenticated principal cashier-admin is not a UserAccount"));
 
-        ResponseEntity<?> response = controller.earn(new LoyaltyTransactionRequest(), principal("cashier-admin"));
+        ResponseEntity<?> response = controller.earn(new LoyaltyTransactionRequest(), principal);
 
         assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
     }

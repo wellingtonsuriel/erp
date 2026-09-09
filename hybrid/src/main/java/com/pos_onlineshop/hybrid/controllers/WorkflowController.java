@@ -3,9 +3,8 @@ package com.pos_onlineshop.hybrid.controllers;
 import com.pos_onlineshop.hybrid.dtos.ApprovalDecisionRequest;
 import com.pos_onlineshop.hybrid.dtos.ApprovalRequestResponse;
 import com.pos_onlineshop.hybrid.dtos.CreateApprovalRequestRequest;
-import com.pos_onlineshop.hybrid.services.UserAccountService;
+import com.pos_onlineshop.hybrid.security.AuthenticatedActorResolver;
 import com.pos_onlineshop.hybrid.services.WorkflowService;
-import com.pos_onlineshop.hybrid.userAccount.UserAccount;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,11 +23,12 @@ import java.util.function.Supplier;
  * The audit-attribution fix documented on WorkflowService's class comment: requestedByUserId/
  * decidedBy must be the authenticated caller, never ApprovalDecisionRequest.userId or
  * CreateApprovalRequestRequest.requestedByUserId from the request body - both DTO fields still
- * exist (kept for backward compatibility with any client still sending them) but are ignored.
- * Pre-existing constraint this doesn't change: ApprovalRequest.requestedBy/decidedBy are
- * UserAccount foreign keys, so a Cashier-model principal (even one satisfying hasRole('ADMIN'))
- * gets a 403 here rather than being recorded as the requester/decider - this workflow has always
- * been UserAccount-only, it just used to fail on a client-supplied ID instead of failing clearly.
+ * exist (kept for backward compatibility with any client still sending them) but are ignored,
+ * resolved here via the shared {@link AuthenticatedActorResolver}. Pre-existing constraint this
+ * doesn't change: ApprovalRequest.requestedBy/decidedBy are UserAccount foreign keys, so a
+ * Cashier-model principal (even one satisfying hasRole('ADMIN')) gets a 403 here rather than
+ * being recorded as the requester/decider - this workflow has always been UserAccount-only, it
+ * just used to fail on a client-supplied ID instead of failing clearly.
  */
 @RestController
 @RequestMapping("/api/approval-requests")
@@ -37,13 +37,7 @@ import java.util.function.Supplier;
 public class WorkflowController {
 
     private final WorkflowService workflowService;
-    private final UserAccountService userAccountService;
-
-    private UserAccount requireAuthenticatedUser(UserDetails principal) {
-        return userAccountService.findByUsername(principal.getUsername())
-                .orElseThrow(() -> new IllegalStateException(
-                        "Authenticated principal " + principal.getUsername() + " is not a UserAccount"));
-    }
+    private final AuthenticatedActorResolver actorResolver;
 
     @GetMapping
     @PreAuthorize("hasAuthority('GL_VIEW') or hasRole('ADMIN')")
@@ -62,9 +56,9 @@ public class WorkflowController {
     public ResponseEntity<?> create(@Valid @RequestBody CreateApprovalRequestRequest request,
                                      @AuthenticationPrincipal UserDetails principal) {
         try {
-            UserAccount requester = requireAuthenticatedUser(principal);
+            Long requesterId = actorResolver.requireActingUserId(principal);
             return ResponseEntity.status(HttpStatus.CREATED)
-                    .body(workflowService.requestApproval(request, requester.getId()));
+                    .body(workflowService.requestApproval(request, requesterId));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (IllegalStateException e) {
@@ -77,8 +71,8 @@ public class WorkflowController {
     public ResponseEntity<?> approve(@PathVariable Long id, @Valid @RequestBody ApprovalDecisionRequest request,
                                       @AuthenticationPrincipal UserDetails principal) {
         try {
-            UserAccount decider = requireAuthenticatedUser(principal);
-            return decide(() -> workflowService.approve(id, decider.getId(), request.getReason()));
+            Long deciderId = actorResolver.requireActingUserId(principal);
+            return decide(() -> workflowService.approve(id, deciderId, request.getReason()));
         } catch (IllegalStateException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         }
@@ -89,8 +83,8 @@ public class WorkflowController {
     public ResponseEntity<?> reject(@PathVariable Long id, @Valid @RequestBody ApprovalDecisionRequest request,
                                      @AuthenticationPrincipal UserDetails principal) {
         try {
-            UserAccount decider = requireAuthenticatedUser(principal);
-            return decide(() -> workflowService.reject(id, decider.getId(), request.getReason()));
+            Long deciderId = actorResolver.requireActingUserId(principal);
+            return decide(() -> workflowService.reject(id, deciderId, request.getReason()));
         } catch (IllegalStateException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         }

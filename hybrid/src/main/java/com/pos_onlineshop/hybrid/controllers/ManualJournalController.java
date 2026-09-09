@@ -2,9 +2,8 @@ package com.pos_onlineshop.hybrid.controllers;
 
 import com.pos_onlineshop.hybrid.dtos.*;
 import com.pos_onlineshop.hybrid.gl.GLPostingException;
+import com.pos_onlineshop.hybrid.security.AuthenticatedActorResolver;
 import com.pos_onlineshop.hybrid.services.ManualJournalService;
-import com.pos_onlineshop.hybrid.services.UserAccountService;
-import com.pos_onlineshop.hybrid.userAccount.UserAccount;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,11 +20,12 @@ import java.util.function.Supplier;
 
 /**
  * create/submit/approve/reject/post's acting-user id must always be the authenticated caller,
- * never CreateManualJournalRequest.createdByUserId or ManualJournalActionRequest/
- * RejectManualJournalRequest.userId from the request body - see ManualJournalService's class
- * comment for why (the same preparer/approver identity-spoofing bug fixed on WorkflowController).
- * Pre-existing constraint this doesn't change: ManualJournal.createdBy/submittedBy/approvedBy/
- * rejectedBy are UserAccount foreign keys, so a Cashier-model principal gets a 403 here.
+ * never CreateManualJournalRequest.createdByUserId or RejectManualJournalRequest.userId from
+ * the request body - see ManualJournalService's class comment for why (the same
+ * preparer/approver identity-spoofing bug fixed on WorkflowController), resolved here via the
+ * shared {@link AuthenticatedActorResolver}. Pre-existing constraint this doesn't change:
+ * ManualJournal.createdBy/submittedBy/approvedBy/rejectedBy are UserAccount foreign keys, so a
+ * Cashier-model principal gets a 403 here.
  */
 @RestController
 @RequestMapping("/api/manual-journals")
@@ -34,13 +34,7 @@ import java.util.function.Supplier;
 public class ManualJournalController {
 
     private final ManualJournalService manualJournalService;
-    private final UserAccountService userAccountService;
-
-    private UserAccount requireAuthenticatedUser(UserDetails principal) {
-        return userAccountService.findByUsername(principal.getUsername())
-                .orElseThrow(() -> new IllegalStateException(
-                        "Authenticated principal " + principal.getUsername() + " is not a UserAccount"));
-    }
+    private final AuthenticatedActorResolver actorResolver;
 
     @GetMapping
     @PreAuthorize("hasAuthority('GL_VIEW') or hasRole('ADMIN')")
@@ -63,8 +57,8 @@ public class ManualJournalController {
     public ResponseEntity<?> create(@Valid @RequestBody CreateManualJournalRequest request,
                                      @AuthenticationPrincipal UserDetails principal) {
         try {
-            UserAccount creator = requireAuthenticatedUser(principal);
-            return ResponseEntity.status(HttpStatus.CREATED).body(manualJournalService.create(request, creator.getId()));
+            Long creatorId = actorResolver.requireActingUserId(principal);
+            return ResponseEntity.status(HttpStatus.CREATED).body(manualJournalService.create(request, creatorId));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (IllegalStateException e) {
@@ -78,8 +72,8 @@ public class ManualJournalController {
     @PreAuthorize("hasAuthority('GL_MANUAL_JOURNAL') or hasRole('ADMIN')")
     public ResponseEntity<?> submit(@PathVariable Long id, @AuthenticationPrincipal UserDetails principal) {
         try {
-            UserAccount submitter = requireAuthenticatedUser(principal);
-            return runTransition(() -> manualJournalService.submit(id, submitter.getId()));
+            Long submitterId = actorResolver.requireActingUserId(principal);
+            return runTransition(() -> manualJournalService.submit(id, submitterId));
         } catch (IllegalStateException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         }
@@ -89,8 +83,8 @@ public class ManualJournalController {
     @PreAuthorize("hasAuthority('GL_APPROVE') or hasRole('ADMIN')")
     public ResponseEntity<?> approve(@PathVariable Long id, @AuthenticationPrincipal UserDetails principal) {
         try {
-            UserAccount approver = requireAuthenticatedUser(principal);
-            return runTransition(() -> manualJournalService.approve(id, approver.getId()));
+            Long approverId = actorResolver.requireActingUserId(principal);
+            return runTransition(() -> manualJournalService.approve(id, approverId));
         } catch (IllegalStateException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         }
@@ -101,8 +95,8 @@ public class ManualJournalController {
     public ResponseEntity<?> reject(@PathVariable Long id, @Valid @RequestBody RejectManualJournalRequest request,
                                      @AuthenticationPrincipal UserDetails principal) {
         try {
-            UserAccount rejecter = requireAuthenticatedUser(principal);
-            return runTransition(() -> manualJournalService.reject(id, rejecter.getId(), request.getReason()));
+            Long rejecterId = actorResolver.requireActingUserId(principal);
+            return runTransition(() -> manualJournalService.reject(id, rejecterId, request.getReason()));
         } catch (IllegalStateException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         }
@@ -112,8 +106,8 @@ public class ManualJournalController {
     @PreAuthorize("hasAuthority('GL_POST') or hasRole('ADMIN')")
     public ResponseEntity<?> post(@PathVariable Long id, @AuthenticationPrincipal UserDetails principal) {
         try {
-            UserAccount poster = requireAuthenticatedUser(principal);
-            return runTransition(() -> manualJournalService.post(id, poster.getId()));
+            Long posterId = actorResolver.requireActingUserId(principal);
+            return runTransition(() -> manualJournalService.post(id, posterId));
         } catch (IllegalStateException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         }

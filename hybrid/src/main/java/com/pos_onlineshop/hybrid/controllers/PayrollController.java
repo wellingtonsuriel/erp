@@ -2,10 +2,9 @@ package com.pos_onlineshop.hybrid.controllers;
 
 import com.pos_onlineshop.hybrid.dtos.*;
 import com.pos_onlineshop.hybrid.gl.GLPostingException;
+import com.pos_onlineshop.hybrid.security.AuthenticatedActorResolver;
 import com.pos_onlineshop.hybrid.services.DeductionTypeService;
 import com.pos_onlineshop.hybrid.services.PayrollService;
-import com.pos_onlineshop.hybrid.services.UserAccountService;
-import com.pos_onlineshop.hybrid.userAccount.UserAccount;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,14 +17,14 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
- * payRun's acting-user audit attribution (who paid this run, logged alongside the GL entry it
- * posts) used to come from PayPayrollRunRequest.userId - a request-body field any caller could
- * set to anything - the same class of bug fixed on WorkflowController/SellingPriceController.
- * It's now always the authenticated principal's own username.
+ * processRun/payRun's acting-user audit attribution (who processed/paid this run, logged
+ * alongside the GL entries they post) used to come from a request-body userId field any caller
+ * could set to anything - the same class of bug fixed on WorkflowController/SellingPriceController.
+ * It's now always the authenticated principal's own id, resolved via the shared
+ * {@link AuthenticatedActorResolver}.
  */
 @RestController
 @RequestMapping("/api/payroll")
@@ -35,7 +34,7 @@ public class PayrollController {
 
     private final PayrollService payrollService;
     private final DeductionTypeService deductionTypeService;
-    private final UserAccountService userAccountService;
+    private final AuthenticatedActorResolver actorResolver;
 
     @GetMapping("/runs")
     @PreAuthorize("hasAuthority('GL_VIEW') or hasRole('ADMIN')")
@@ -57,23 +56,23 @@ public class PayrollController {
     @PreAuthorize("hasAuthority('GL_MANUAL_JOURNAL') or hasRole('ADMIN')")
     public ResponseEntity<?> processRun(@Valid @RequestBody ProcessPayrollRequest request,
                                          @AuthenticationPrincipal UserDetails principal) {
-        Optional<UserAccount> creator = userAccountService.findByUsername(principal.getUsername());
-        if (creator.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("error", "Only a UserAccount principal can process a payroll run"));
+        try {
+            Long creatorId = actorResolver.requireActingUserId(principal);
+            return runCreate(() -> payrollService.processPayroll(request, creatorId));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         }
-        return runCreate(() -> payrollService.processPayroll(request, creator.get().getId()));
     }
 
     @PostMapping("/runs/{id}/pay")
     @PreAuthorize("hasAuthority('GL_APPROVE') or hasAuthority('GL_ADMIN') or hasRole('ADMIN')")
     public ResponseEntity<?> payRun(@PathVariable Long id, @AuthenticationPrincipal UserDetails principal) {
-        Optional<UserAccount> payer = userAccountService.findByUsername(principal.getUsername());
-        if (payer.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("error", "Only a UserAccount principal can pay a payroll run"));
+        try {
+            Long payerId = actorResolver.requireActingUserId(principal);
+            return runTransition(() -> payrollService.payRun(id, payerId));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         }
-        return runTransition(() -> payrollService.payRun(id, payer.get().getId()));
     }
 
     @GetMapping("/deduction-types")

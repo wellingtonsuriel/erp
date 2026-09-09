@@ -59,6 +59,7 @@ public class SellingPriceController {
     /**
      * Create or update a selling price
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
     public ResponseEntity<SellingPriceResponse> createSellingPrice(
             @RequestBody SellingPriceCreateRequest request,
@@ -118,6 +119,7 @@ public class SellingPriceController {
     /**
      * Update an existing selling price
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{priceId}")
     public ResponseEntity<SellingPriceResponse> updateSellingPrice(
             @PathVariable Long priceId,
@@ -280,6 +282,7 @@ public class SellingPriceController {
     /**
      * Set promotional price
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/shop/{shopId}/product/{productId}/promotional")
     public ResponseEntity<SellingPriceResponse> setPromotionalPrice(
             @PathVariable Long shopId,
@@ -312,6 +315,7 @@ public class SellingPriceController {
     /**
      * Set bulk pricing
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/shop/{shopId}/product/{productId}/bulk")
     public ResponseEntity<SellingPriceResponse> setBulkPrice(
             @PathVariable Long shopId,
@@ -344,6 +348,7 @@ public class SellingPriceController {
     /**
      * Update price with cost calculation
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{priceId}/cost-based")
     public ResponseEntity<SellingPriceResponse> updatePriceWithCost(
             @PathVariable Long priceId,
@@ -409,6 +414,7 @@ public class SellingPriceController {
     /**
      * Deactivate a price
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/{priceId}/deactivate")
     public ResponseEntity<Void> deactivatePrice(@PathVariable Long priceId) {
         try {
@@ -473,6 +479,7 @@ public class SellingPriceController {
     /**
      * Bulk update prices
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/shop/{shopId}/bulk-update")
     public ResponseEntity<Void> bulkUpdatePrices(
             @PathVariable Long shopId,
@@ -499,6 +506,7 @@ public class SellingPriceController {
     /**
      * Copy prices from one shop to another
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/copy-prices")
     public ResponseEntity<Void> copyPricesFromShop(
             @RequestBody CopyPricesRequest request,
@@ -524,6 +532,7 @@ public class SellingPriceController {
     /**
      * Expire promotional prices
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/expire-promotions")
     public ResponseEntity<Void> expirePromotionalPrices() {
         try {

@@ -10,6 +10,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/products")
@@ -35,7 +36,7 @@ public class ProductController {
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Product> createProduct(@Valid @RequestBody CreateProductRequest request) {
+    public ResponseEntity<?> createProduct(@Valid @RequestBody CreateProductRequest request) {
         Product product = Product.builder()
                 .name(request.getName())
                 .description(request.getDescription())
@@ -51,8 +52,12 @@ public class ProductController {
                 .actualMeasure(request.getActualMeasure())
                 .build();
 
-        Product created = productService.createProduct(product);
-        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+        try {
+            Product created = productService.createProduct(product);
+            return ResponseEntity.status(HttpStatus.CREATED).body(created);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 
     @PutMapping("/{id}")

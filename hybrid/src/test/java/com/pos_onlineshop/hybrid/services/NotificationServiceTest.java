@@ -79,12 +79,12 @@ class NotificationServiceTest {
     }
 
     @Test
-    void markReadRejectsANotificationBelongingToAnotherUser() {
+    void markReadRejectsANotificationBelongingToSomeoneElse() {
         Notification notification = Notification.builder().id(10L).recipient(recipient)
                 .type(NotificationType.INFO).title("Title").message("Message").read(false).build();
         when(notificationRepository.findById(10L)).thenReturn(Optional.of(notification));
 
-        assertThrows(IllegalStateException.class, () -> service.markRead(10L, 999L));
+        assertThrows(IllegalArgumentException.class, () -> service.markRead(10L, 999L));
         verify(notificationRepository, never()).save(any());
     }
 

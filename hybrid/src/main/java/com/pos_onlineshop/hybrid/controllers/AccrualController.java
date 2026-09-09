@@ -3,9 +3,8 @@ package com.pos_onlineshop.hybrid.controllers;
 import com.pos_onlineshop.hybrid.dtos.AccrualResponse;
 import com.pos_onlineshop.hybrid.dtos.CreateAccrualRequest;
 import com.pos_onlineshop.hybrid.gl.GLPostingException;
+import com.pos_onlineshop.hybrid.security.AuthenticatedActorResolver;
 import com.pos_onlineshop.hybrid.services.AccrualService;
-import com.pos_onlineshop.hybrid.services.UserAccountService;
-import com.pos_onlineshop.hybrid.userAccount.UserAccount;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,7 +24,8 @@ import java.util.Map;
  * create/reverse's acting-user id must always be the authenticated caller, never
  * CreateAccrualRequest.createdByUserId or reverse's own client-suppliable userId query
  * parameter - see AccrualService's class comment for why (the same request-supplied-identity
- * bug fixed on ManualJournalController).
+ * bug fixed on ManualJournalController), resolved here via the shared
+ * {@link AuthenticatedActorResolver}.
  */
 @RestController
 @RequestMapping("/api/accruals")
@@ -34,13 +34,7 @@ import java.util.Map;
 public class AccrualController {
 
     private final AccrualService accrualService;
-    private final UserAccountService userAccountService;
-
-    private UserAccount requireAuthenticatedUser(UserDetails principal) {
-        return userAccountService.findByUsername(principal.getUsername())
-                .orElseThrow(() -> new IllegalStateException(
-                        "Authenticated principal " + principal.getUsername() + " is not a UserAccount"));
-    }
+    private final AuthenticatedActorResolver actorResolver;
 
     @GetMapping
     @PreAuthorize("hasAuthority('GL_VIEW') or hasRole('ADMIN')")
@@ -63,8 +57,8 @@ public class AccrualController {
     public ResponseEntity<?> create(@Valid @RequestBody CreateAccrualRequest request,
                                      @AuthenticationPrincipal UserDetails principal) {
         try {
-            UserAccount creator = requireAuthenticatedUser(principal);
-            return ResponseEntity.status(HttpStatus.CREATED).body(accrualService.createAccrual(request, creator.getId()));
+            Long creatorId = actorResolver.requireActingUserId(principal);
+            return ResponseEntity.status(HttpStatus.CREATED).body(accrualService.createAccrual(request, creatorId));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (IllegalStateException e) {
@@ -78,14 +72,14 @@ public class AccrualController {
     @PostMapping("/{id}/reverse")
     @PreAuthorize("hasAuthority('GL_ADMIN') or hasRole('ADMIN')")
     public ResponseEntity<?> reverse(@PathVariable Long id, @AuthenticationPrincipal UserDetails principal) {
-        UserAccount reverser;
+        Long reverserId;
         try {
-            reverser = requireAuthenticatedUser(principal);
+            reverserId = actorResolver.requireActingUserId(principal);
         } catch (IllegalStateException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         }
         try {
-            return ResponseEntity.ok(accrualService.reverseAccrual(id, reverser.getId()));
+            return ResponseEntity.ok(accrualService.reverseAccrual(id, reverserId));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (IllegalStateException e) {

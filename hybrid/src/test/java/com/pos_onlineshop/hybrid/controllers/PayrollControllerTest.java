@@ -3,10 +3,9 @@ package com.pos_onlineshop.hybrid.controllers;
 import com.pos_onlineshop.hybrid.dtos.PayrollRunResponse;
 import com.pos_onlineshop.hybrid.dtos.ProcessPayrollRequest;
 import com.pos_onlineshop.hybrid.enums.PaymentMethod;
+import com.pos_onlineshop.hybrid.security.AuthenticatedActorResolver;
 import com.pos_onlineshop.hybrid.services.DeductionTypeService;
 import com.pos_onlineshop.hybrid.services.PayrollService;
-import com.pos_onlineshop.hybrid.services.UserAccountService;
-import com.pos_onlineshop.hybrid.userAccount.UserAccount;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -18,7 +17,6 @@ import org.springframework.security.core.userdetails.UserDetails;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.verify;
@@ -38,18 +36,17 @@ class PayrollControllerTest {
 
     @Mock private PayrollService payrollService;
     @Mock private DeductionTypeService deductionTypeService;
-    @Mock private UserAccountService userAccountService;
+    @Mock private AuthenticatedActorResolver actorResolver;
 
     private PayrollController controller;
 
     @Test
     void payRunUsesTheAuthenticatedPrincipalNeverTheRequestBody() {
-        controller = new PayrollController(payrollService, deductionTypeService, userAccountService);
-        UserAccount realPayer = UserAccount.builder().id(77L).username("real-admin").build();
-        when(userAccountService.findByUsername("real-admin")).thenReturn(Optional.of(realPayer));
+        controller = new PayrollController(payrollService, deductionTypeService, actorResolver);
+        UserDetails principal = new User("real-admin", "hashed", true, true, true, true, List.of());
+        when(actorResolver.requireActingUserId(principal)).thenReturn(77L);
         when(payrollService.payRun(3L, 77L)).thenReturn(PayrollRunResponse.builder().id(3L).build());
 
-        UserDetails principal = new User("real-admin", "hashed", true, true, true, true, List.of());
         ResponseEntity<?> response = controller.payRun(3L, principal);
 
         verify(payrollService).payRun(3L, 77L);
@@ -58,10 +55,11 @@ class PayrollControllerTest {
 
     @Test
     void payRunFailsClosedForANonUserAccountPrincipal() {
-        controller = new PayrollController(payrollService, deductionTypeService, userAccountService);
-        when(userAccountService.findByUsername("cashier-admin")).thenReturn(Optional.empty());
-
+        controller = new PayrollController(payrollService, deductionTypeService, actorResolver);
         UserDetails principal = new User("cashier-admin", "hashed", true, true, true, true, List.of());
+        when(actorResolver.requireActingUserId(principal))
+                .thenThrow(new IllegalStateException("Authenticated principal cashier-admin is not a UserAccount"));
+
         ResponseEntity<?> response = controller.payRun(3L, principal);
 
         assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
@@ -69,9 +67,9 @@ class PayrollControllerTest {
 
     @Test
     void processRunUsesTheAuthenticatedPrincipalAsCreatorNeverTheRequestBody() {
-        controller = new PayrollController(payrollService, deductionTypeService, userAccountService);
-        UserAccount realCreator = UserAccount.builder().id(88L).username("real-admin").build();
-        when(userAccountService.findByUsername("real-admin")).thenReturn(Optional.of(realCreator));
+        controller = new PayrollController(payrollService, deductionTypeService, actorResolver);
+        UserDetails principal = new User("real-admin", "hashed", true, true, true, true, List.of());
+        when(actorResolver.requireActingUserId(principal)).thenReturn(88L);
         when(payrollService.processPayroll(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(88L)))
                 .thenReturn(PayrollRunResponse.builder().id(9L).build());
 
@@ -83,7 +81,6 @@ class PayrollControllerTest {
         request.setCurrencyId(1L);
         request.setPaymentMethod(PaymentMethod.CASH);
 
-        UserDetails principal = new User("real-admin", "hashed", true, true, true, true, List.of());
         ResponseEntity<?> response = controller.processRun(request, principal);
 
         verify(payrollService).processPayroll(request, 88L);

@@ -2,11 +2,10 @@ package com.pos_onlineshop.hybrid.controllers;
 
 import com.pos_onlineshop.hybrid.dtos.*;
 import com.pos_onlineshop.hybrid.gl.GLPostingException;
+import com.pos_onlineshop.hybrid.security.AuthenticatedActorResolver;
 import com.pos_onlineshop.hybrid.services.BankAccountService;
 import com.pos_onlineshop.hybrid.services.BankChargeService;
 import com.pos_onlineshop.hybrid.services.CashBankTransferService;
-import com.pos_onlineshop.hybrid.services.UserAccountService;
-import com.pos_onlineshop.hybrid.userAccount.UserAccount;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,13 +35,7 @@ public class CashBankController {
     private final BankAccountService bankAccountService;
     private final CashBankTransferService cashBankTransferService;
     private final BankChargeService bankChargeService;
-    private final UserAccountService userAccountService;
-
-    private UserAccount requireAuthenticatedUser(UserDetails principal) {
-        return userAccountService.findByUsername(principal.getUsername())
-                .orElseThrow(() -> new IllegalStateException(
-                        "Authenticated principal " + principal.getUsername() + " is not a UserAccount"));
-    }
+    private final AuthenticatedActorResolver actorResolver;
 
     @GetMapping("/accounts")
     @PreAuthorize("hasAuthority('GL_VIEW') or hasRole('ADMIN')")
@@ -65,8 +58,8 @@ public class CashBankController {
     public ResponseEntity<?> createAccount(@Valid @RequestBody CreateBankAccountRequest request,
                                             @AuthenticationPrincipal UserDetails principal) {
         try {
-            UserAccount creator = requireAuthenticatedUser(principal);
-            return ResponseEntity.status(HttpStatus.CREATED).body(bankAccountService.create(request, creator.getId()));
+            Long creatorId = actorResolver.requireActingUserId(principal);
+            return ResponseEntity.status(HttpStatus.CREATED).body(bankAccountService.create(request, creatorId));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (IllegalStateException e) {
@@ -95,8 +88,8 @@ public class CashBankController {
     public ResponseEntity<?> createTransfer(@Valid @RequestBody CreateCashBankTransferRequest request,
                                              @AuthenticationPrincipal UserDetails principal) {
         try {
-            UserAccount creator = requireAuthenticatedUser(principal);
-            return runCreate(() -> cashBankTransferService.createTransfer(request, creator.getId()));
+            Long creatorId = actorResolver.requireActingUserId(principal);
+            return runCreate(() -> cashBankTransferService.createTransfer(request, creatorId));
         } catch (IllegalStateException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         }
@@ -112,14 +105,14 @@ public class CashBankController {
     @PreAuthorize("hasAuthority('GL_MANUAL_JOURNAL') or hasRole('ADMIN')")
     public ResponseEntity<?> createCharge(@Valid @RequestBody CreateBankChargeRequest request,
                                            @AuthenticationPrincipal UserDetails principal) {
-        UserAccount creator;
+        Long creatorId;
         try {
-            creator = requireAuthenticatedUser(principal);
+            creatorId = actorResolver.requireActingUserId(principal);
         } catch (IllegalStateException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         }
         try {
-            return ResponseEntity.status(HttpStatus.CREATED).body(bankChargeService.createCharge(request, creator.getId()));
+            return ResponseEntity.status(HttpStatus.CREATED).body(bankChargeService.createCharge(request, creatorId));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (IllegalStateException | GLPostingException e) {

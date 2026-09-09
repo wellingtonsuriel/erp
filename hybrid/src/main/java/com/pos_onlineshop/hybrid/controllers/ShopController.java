@@ -41,6 +41,7 @@ public class ShopController {
     /**
      * Create a new shop
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
     public ResponseEntity<Shop> createShop(@RequestBody ShopCreateRequest request) {
         try {
@@ -156,6 +157,7 @@ public class ShopController {
     /**
      * Update shop
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{id}")
     public ResponseEntity<Shop> updateShop(
             @PathVariable Long id,
@@ -199,6 +201,7 @@ public class ShopController {
     /**
      * Assign cashier to shop
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/{shopId}/assign-cashier/{cashierId}")
     public ResponseEntity<Void> assignCashierToShop(
             @PathVariable Long shopId,
@@ -223,6 +226,7 @@ public class ShopController {
     /**
      * Remove cashier from their assigned shop
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/remove-cashier/{cashierId}")
     public ResponseEntity<Void> removeCashierFromShop(@PathVariable Long cashierId) {
         try {
@@ -242,6 +246,7 @@ public class ShopController {
     /**
      * Set shop manager
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/{shopId}/set-manager/{managerId}")
     public ResponseEntity<Void> setShopManager(
             @PathVariable Long shopId,
@@ -266,6 +271,7 @@ public class ShopController {
     /**
      * Add additional manager to shop
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/{shopId}/add-manager/{managerId}")
     public ResponseEntity<Void> addShopManager(
             @PathVariable Long shopId,
@@ -290,6 +296,7 @@ public class ShopController {
     /**
      * Remove manager from shop
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/{shopId}/remove-manager/{managerId}")
     public ResponseEntity<Void> removeShopManager(
             @PathVariable Long shopId,
@@ -314,6 +321,7 @@ public class ShopController {
     /**
      * Deactivate shop
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/{shopId}/deactivate")
     public ResponseEntity<Void> deactivateShop(@PathVariable Long shopId) {
         try {

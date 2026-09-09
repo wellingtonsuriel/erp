@@ -3,9 +3,8 @@ package com.pos_onlineshop.hybrid.controllers;
 import com.pos_onlineshop.hybrid.dtos.CreateOpeningBalanceRequest;
 import com.pos_onlineshop.hybrid.dtos.OpeningBalanceResponse;
 import com.pos_onlineshop.hybrid.gl.GLPostingException;
+import com.pos_onlineshop.hybrid.security.AuthenticatedActorResolver;
 import com.pos_onlineshop.hybrid.services.OpeningBalanceService;
-import com.pos_onlineshop.hybrid.services.UserAccountService;
-import com.pos_onlineshop.hybrid.userAccount.UserAccount;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,7 +22,8 @@ import java.util.Map;
  * create's acting-user id must always be the authenticated caller, never
  * CreateOpeningBalanceRequest.createdByUserId from the request body - see
  * OpeningBalanceService's class comment for why (the same request-supplied-identity bug
- * fixed on ManualJournalController).
+ * fixed on ManualJournalController), resolved here via the shared
+ * {@link AuthenticatedActorResolver}.
  */
 @RestController
 @RequestMapping("/api/opening-balances")
@@ -32,13 +32,7 @@ import java.util.Map;
 public class OpeningBalanceController {
 
     private final OpeningBalanceService openingBalanceService;
-    private final UserAccountService userAccountService;
-
-    private UserAccount requireAuthenticatedUser(UserDetails principal) {
-        return userAccountService.findByUsername(principal.getUsername())
-                .orElseThrow(() -> new IllegalStateException(
-                        "Authenticated principal " + principal.getUsername() + " is not a UserAccount"));
-    }
+    private final AuthenticatedActorResolver actorResolver;
 
     @GetMapping
     @PreAuthorize("hasAuthority('GL_VIEW') or hasRole('ADMIN')")
@@ -61,8 +55,8 @@ public class OpeningBalanceController {
     public ResponseEntity<?> create(@Valid @RequestBody CreateOpeningBalanceRequest request,
                                      @AuthenticationPrincipal UserDetails principal) {
         try {
-            UserAccount creator = requireAuthenticatedUser(principal);
-            return ResponseEntity.status(HttpStatus.CREATED).body(openingBalanceService.createOpeningBalance(request, creator.getId()));
+            Long creatorId = actorResolver.requireActingUserId(principal);
+            return ResponseEntity.status(HttpStatus.CREATED).body(openingBalanceService.createOpeningBalance(request, creatorId));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (IllegalStateException e) {

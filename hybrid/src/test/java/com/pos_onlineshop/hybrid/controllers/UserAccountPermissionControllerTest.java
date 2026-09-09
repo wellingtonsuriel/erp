@@ -3,9 +3,8 @@ package com.pos_onlineshop.hybrid.controllers;
 import com.pos_onlineshop.hybrid.dtos.GrantAccountingPermissionRequest;
 import com.pos_onlineshop.hybrid.dtos.UserAccountPermissionResponse;
 import com.pos_onlineshop.hybrid.enums.AccountingPermission;
+import com.pos_onlineshop.hybrid.security.AuthenticatedActorResolver;
 import com.pos_onlineshop.hybrid.services.UserAccountPermissionService;
-import com.pos_onlineshop.hybrid.services.UserAccountService;
-import com.pos_onlineshop.hybrid.userAccount.UserAccount;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -16,7 +15,6 @@ import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.List;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.verify;
@@ -32,15 +30,15 @@ import static org.mockito.Mockito.when;
 class UserAccountPermissionControllerTest {
 
     @Mock private UserAccountPermissionService userAccountPermissionService;
-    @Mock private UserAccountService userAccountService;
+    @Mock private AuthenticatedActorResolver actorResolver;
 
     private UserAccountPermissionController controller;
 
     @Test
     void grantUsesTheAuthenticatedPrincipalNeverTheRequestBody() {
-        controller = new UserAccountPermissionController(userAccountPermissionService, userAccountService);
-        UserAccount realGrantor = UserAccount.builder().id(11L).username("real-admin").build();
-        when(userAccountService.findByUsername("real-admin")).thenReturn(Optional.of(realGrantor));
+        controller = new UserAccountPermissionController(userAccountPermissionService, actorResolver);
+        UserDetails principal = new User("real-admin", "hashed", true, true, true, true, List.of());
+        when(actorResolver.requireActingUserId(principal)).thenReturn(11L);
         when(userAccountPermissionService.grant(org.mockito.ArgumentMatchers.eq(1L), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(11L)))
                 .thenReturn(UserAccountPermissionResponse.builder().id(1L).build());
 
@@ -48,7 +46,6 @@ class UserAccountPermissionControllerTest {
         request.setPermission(AccountingPermission.GL_POST);
         request.setGrantedByUserId(9999L); // attacker-controlled value that must be ignored
 
-        UserDetails principal = new User("real-admin", "hashed", true, true, true, true, List.of());
         ResponseEntity<?> response = controller.grant(1L, request, principal);
 
         verify(userAccountPermissionService).grant(1L, request, 11L);

@@ -54,6 +54,7 @@ class SecurityConfigurationIntegrationTest {
     @MockitoBean private UserAccountService userAccountService;
     @MockitoBean private CashierUserDetailsService cashierUserDetailsService;
     @MockitoBean private AuthenticationProvider authenticationProvider;
+    @MockitoBean private AuthenticatedActorResolver actorResolver;
 
     @TestConfiguration
     static class RealJwtServiceConfig {

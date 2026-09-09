@@ -42,6 +42,7 @@ public class ZimraController {
     private final ZimraService zimraService;
     private final ShopRepository shopRepository;
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/fiscalise/order/{orderId}")
     @Operation(summary = "Fiscalise an order", description = "Send order to fiscal device for ZIMRA compliance")
     public ResponseEntity<FiscalisationResponse> fiscaliseOrder(
@@ -58,6 +59,7 @@ public class ZimraController {
         }
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/fiscalise/sale/{saleId}")
     @Operation(summary = "Fiscalise a sale", description = "Send sale to fiscal device for ZIMRA compliance")
     public ResponseEntity<FiscalisationResponse> fiscaliseSale(

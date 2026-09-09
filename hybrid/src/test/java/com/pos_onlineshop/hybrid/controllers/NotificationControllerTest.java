@@ -1,9 +1,8 @@
 package com.pos_onlineshop.hybrid.controllers;
 
 import com.pos_onlineshop.hybrid.dtos.NotificationResponse;
+import com.pos_onlineshop.hybrid.security.AuthenticatedActorResolver;
 import com.pos_onlineshop.hybrid.services.NotificationService;
-import com.pos_onlineshop.hybrid.services.UserAccountService;
-import com.pos_onlineshop.hybrid.userAccount.UserAccount;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -14,7 +13,6 @@ import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.List;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.verify;
@@ -30,7 +28,7 @@ import static org.mockito.Mockito.when;
 class NotificationControllerTest {
 
     @Mock private NotificationService notificationService;
-    @Mock private UserAccountService userAccountService;
+    @Mock private AuthenticatedActorResolver actorResolver;
 
     private NotificationController controller;
 
@@ -40,12 +38,12 @@ class NotificationControllerTest {
 
     @Test
     void listUsesTheAuthenticatedPrincipalsOwnId() {
-        controller = new NotificationController(notificationService, userAccountService);
-        UserAccount realUser = UserAccount.builder().id(11L).username("real-user").build();
-        when(userAccountService.findByUsername("real-user")).thenReturn(Optional.of(realUser));
+        controller = new NotificationController(notificationService, actorResolver);
+        UserDetails principal = principal("real-user");
+        when(actorResolver.requireActingUserId(principal)).thenReturn(11L);
         when(notificationService.findForUser(11L)).thenReturn(List.of());
 
-        ResponseEntity<?> response = controller.list(principal("real-user"));
+        ResponseEntity<?> response = controller.list(principal);
 
         verify(notificationService).findForUser(11L);
         assertEquals(HttpStatus.OK, response.getStatusCode());
@@ -53,12 +51,12 @@ class NotificationControllerTest {
 
     @Test
     void markReadUsesTheAuthenticatedPrincipalsOwnId() {
-        controller = new NotificationController(notificationService, userAccountService);
-        UserAccount realUser = UserAccount.builder().id(11L).username("real-user").build();
-        when(userAccountService.findByUsername("real-user")).thenReturn(Optional.of(realUser));
+        controller = new NotificationController(notificationService, actorResolver);
+        UserDetails principal = principal("real-user");
+        when(actorResolver.requireActingUserId(principal)).thenReturn(11L);
         when(notificationService.markRead(5L, 11L)).thenReturn(NotificationResponse.builder().id(5L).build());
 
-        ResponseEntity<?> response = controller.markRead(5L, principal("real-user"));
+        ResponseEntity<?> response = controller.markRead(5L, principal);
 
         verify(notificationService).markRead(5L, 11L);
         assertEquals(HttpStatus.OK, response.getStatusCode());
@@ -66,10 +64,12 @@ class NotificationControllerTest {
 
     @Test
     void aCashierOnlyPrincipalCannotAccessNotificationsAtAll() {
-        controller = new NotificationController(notificationService, userAccountService);
-        when(userAccountService.findByUsername("cashier-admin")).thenReturn(Optional.empty());
+        controller = new NotificationController(notificationService, actorResolver);
+        UserDetails principal = principal("cashier-admin");
+        when(actorResolver.requireActingUserId(principal))
+                .thenThrow(new IllegalStateException("Authenticated principal cashier-admin is not a UserAccount"));
 
-        ResponseEntity<?> response = controller.list(principal("cashier-admin"));
+        ResponseEntity<?> response = controller.list(principal);
 
         assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
     }

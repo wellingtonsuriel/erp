@@ -21,12 +21,10 @@ import java.util.stream.Collectors;
  * can actually deliver today; adding an external channel is separate infrastructure this
  * service does not pretend to have.
  *
- * markRead's callerUserId must be the notification's own recipient - previously any
- * authenticated caller could mark any other user's notification read by guessing/enumerating
- * its id, with no ownership check at all. findForUser/findUnreadForUser/unreadCount's userId
- * must always be the authenticated caller's own id, resolved in NotificationController, never
- * a request-supplied value - that was a real IDOR letting any authenticated user read anyone
- * else's notification inbox by simply changing a query parameter.
+ * findForUser/findUnreadForUser/unreadCount/markRead's userId must always be the authenticated
+ * caller's own id, resolved in NotificationController, never a request-supplied value - that
+ * was a real IDOR letting any authenticated user read (or mark read) anyone else's notification
+ * inbox by simply changing a query parameter or guessing/enumerating a notification id.
  */
 @Service
 @RequiredArgsConstructor
@@ -68,12 +66,16 @@ public class NotificationService {
         return notificationRepository.countByRecipientAndReadFalse(resolveUser(userId));
     }
 
-    public NotificationResponse markRead(Long notificationId, Long callerUserId) {
+    /**
+     * @param actingUserId the authenticated caller's own id - a notification belonging to
+     *                     anyone else is reported as not found rather than acted on, so one
+     *                     account can never confirm the existence or contents of another
+     *                     account's notification through this call.
+     */
+    public NotificationResponse markRead(Long notificationId, Long actingUserId) {
         Notification notification = notificationRepository.findById(notificationId)
+                .filter(n -> n.getRecipient().getId().equals(actingUserId))
                 .orElseThrow(() -> new IllegalArgumentException("Notification not found: " + notificationId));
-        if (!notification.getRecipient().getId().equals(callerUserId)) {
-            throw new IllegalStateException("Notification " + notificationId + " does not belong to the caller");
-        }
         if (!notification.isRead()) {
             notification.setRead(true);
             notification.setReadAt(LocalDateTime.now());

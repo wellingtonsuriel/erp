@@ -2,9 +2,8 @@ package com.pos_onlineshop.hybrid.controllers;
 
 import com.pos_onlineshop.hybrid.dtos.GrantAccountingPermissionRequest;
 import com.pos_onlineshop.hybrid.enums.AccountingPermission;
+import com.pos_onlineshop.hybrid.security.AuthenticatedActorResolver;
 import com.pos_onlineshop.hybrid.services.UserAccountPermissionService;
-import com.pos_onlineshop.hybrid.services.UserAccountService;
-import com.pos_onlineshop.hybrid.userAccount.UserAccount;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,7 +32,7 @@ import java.util.Map;
 public class UserAccountPermissionController {
 
     private final UserAccountPermissionService userAccountPermissionService;
-    private final UserAccountService userAccountService;
+    private final AuthenticatedActorResolver actorResolver;
 
     @GetMapping
     public ResponseEntity<?> list(@PathVariable Long userId) {
@@ -48,10 +47,8 @@ public class UserAccountPermissionController {
     public ResponseEntity<?> grant(@PathVariable Long userId, @Valid @RequestBody GrantAccountingPermissionRequest request,
                                     @AuthenticationPrincipal UserDetails principal) {
         try {
-            UserAccount grantor = userAccountService.findByUsername(principal.getUsername())
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Authenticated principal " + principal.getUsername() + " is not a UserAccount"));
-            return ResponseEntity.status(HttpStatus.CREATED).body(userAccountPermissionService.grant(userId, request, grantor.getId()));
+            Long grantorId = actorResolver.requireActingUserId(principal);
+            return ResponseEntity.status(HttpStatus.CREATED).body(userAccountPermissionService.grant(userId, request, grantorId));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (IllegalStateException e) {
