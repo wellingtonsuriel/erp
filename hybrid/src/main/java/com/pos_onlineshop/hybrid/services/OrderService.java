@@ -30,7 +30,9 @@ import com.pos_onlineshop.hybrid.userAccount.UserAccount;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,6 +49,8 @@ import java.util.stream.Collectors;
 @Slf4j
 @Transactional
 public class OrderService {
+
+    private static final int MAX_UNBOUNDED_LIST_SIZE = 500;
 
     private final OrderRepository orderRepository;
     private final OrderLineRepository orderLineRepository;
@@ -704,11 +708,15 @@ public class OrderService {
     }
 
     /**
-     * Get all orders as DTOs
+     * Get all orders as DTOs, capped at MAX_UNBOUNDED_LIST_SIZE (most recent first) - this is
+     * the endpoint the admin Orders screen calls with no pagination params, and an
+     * ever-growing orders table with no limit here would eventually mean an unbounded DB scan
+     * and an unbounded JSON payload on every load. Callers that need the full history beyond
+     * the cap should page through it via findAllAsResponses(Pageable) instead.
      */
     @Transactional(readOnly = true)
     public List<OrderResponse> findAllAsResponses() {
-        return orderRepository.findAll().stream()
+        return orderRepository.findAll(unboundedListCap()).stream()
                 .map(orderMapper::toResponse)
                 .collect(Collectors.toList());
     }
@@ -732,33 +740,49 @@ public class OrderService {
     }
 
     /**
-     * Get orders by status as DTOs
+     * Get orders by status as DTOs, capped at MAX_UNBOUNDED_LIST_SIZE - see
+     * findAllAsResponses()'s comment. This uses the Pageable-capped repository overload, never
+     * the plain findByStatus(status) other OrderService methods rely on for true counts/totals.
      */
     @Transactional(readOnly = true)
     public List<OrderResponse> findByStatusAsResponses(OrderStatus status) {
-        return orderRepository.findByStatus(status).stream()
+        return orderRepository.findByStatus(status, unboundedListCap()).stream()
                 .map(orderMapper::toResponse)
                 .collect(Collectors.toList());
     }
 
     /**
-     * Get orders by sales channel as DTOs
+     * Get orders by sales channel as DTOs, capped at MAX_UNBOUNDED_LIST_SIZE - see
+     * findAllAsResponses()'s comment.
      */
     @Transactional(readOnly = true)
     public List<OrderResponse> findBySalesChannelAsResponses(SalesChannel channel) {
-        return orderRepository.findBySalesChannel(channel).stream()
+        return orderRepository.findBySalesChannel(channel, unboundedListCap()).stream()
                 .map(orderMapper::toResponse)
                 .collect(Collectors.toList());
     }
 
     /**
-     * Get orders for a specific shop as DTOs - see OrderController's shop-filter endpoint.
+     * Get orders for a specific shop as DTOs, capped at MAX_UNBOUNDED_LIST_SIZE - see
+     * OrderController's shop-filter endpoint and findAllAsResponses()'s comment.
      */
     @Transactional(readOnly = true)
     public List<OrderResponse> findByShopAsResponses(Long shopId) {
-        return orderRepository.findByShopId(shopId).stream()
+        return orderRepository.findByShopId(shopId, unboundedListCap()).stream()
                 .map(orderMapper::toResponse)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Safety ceiling for the handful of admin-facing "list everything" endpoints
+     * (findAllAsResponses/findByStatusAsResponses/findBySalesChannelAsResponses/
+     * findByShopAsResponses) that take no pagination params from the client - without this, an
+     * ever-growing orders table turns each call into an unbounded DB scan and an unbounded JSON
+     * response. Most recent orders first, since that is what an admin scanning the list cares
+     * about; callers that need the full history should use the paginated sibling endpoints.
+     */
+    private static Pageable unboundedListCap() {
+        return PageRequest.of(0, MAX_UNBOUNDED_LIST_SIZE, Sort.by(Sort.Direction.DESC, "id"));
     }
 
     /**

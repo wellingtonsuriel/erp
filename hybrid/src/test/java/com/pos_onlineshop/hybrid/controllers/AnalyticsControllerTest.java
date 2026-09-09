@@ -56,6 +56,19 @@ class AnalyticsControllerTest {
     }
 
     @Test
+    void dashboardFailureReturnsAGenericErrorNeverTheRawExceptionMessage() {
+        when(orderService.countRecentOrders(1))
+                .thenThrow(new RuntimeException("Duplicate entry 'admin@internal.local' for key users.email_UNIQUE"));
+
+        ResponseEntity<Map<String, Object>> response = controller.getDashboardData("USD", null);
+
+        assertEquals(500, response.getStatusCode().value());
+        String error = (String) response.getBody().get("error");
+        assertFalse(error.contains("Duplicate entry"), "must never leak the raw exception message to the client");
+        assertFalse(error.contains("users.email_UNIQUE"), "must never leak internal schema details to the client");
+    }
+
+    @Test
     void performanceMetricsNeverIncludesTheUnimplementableProcessingTimeMetric() {
         stubBaselineOrderCounts();
         when(profitAndLossService.generate(any(LocalDate.class), any(LocalDate.class), isNull())).thenReturn(

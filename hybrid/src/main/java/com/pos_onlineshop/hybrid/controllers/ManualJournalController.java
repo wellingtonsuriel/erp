@@ -20,12 +20,11 @@ import java.util.function.Supplier;
 
 /**
  * create/submit/approve/reject/post's acting-user id must always be the authenticated caller,
- * never CreateManualJournalRequest.createdByUserId or RejectManualJournalRequest.userId from
- * the request body - see ManualJournalService's class comment for why (the same
- * preparer/approver identity-spoofing bug fixed on WorkflowController), resolved here via the
- * shared {@link AuthenticatedActorResolver}. Pre-existing constraint this doesn't change:
- * ManualJournal.createdBy/submittedBy/approvedBy/rejectedBy are UserAccount foreign keys, so a
- * Cashier-model principal gets a 403 here.
+ * never CreateManualJournalRequest.createdByUserId from the request body - see
+ * ManualJournalService's class comment for why (the same preparer/approver identity-spoofing bug
+ * fixed on WorkflowController), resolved here via the shared {@link AuthenticatedActorResolver}.
+ * Pre-existing constraint this doesn't change: ManualJournal.createdBy/submittedBy/approvedBy/
+ * rejectedBy are UserAccount foreign keys, so a Cashier-model principal gets a 403 here.
  */
 @RestController
 @RequestMapping("/api/manual-journals")

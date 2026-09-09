@@ -26,10 +26,11 @@ import static org.mockito.Mockito.when;
  * ManualJournal's maker-checker rule (the preparer can never also approve their own journal)
  * only holds if createdBy/submittedBy/approvedBy/rejectedBy are the real authenticated identity -
  * previously all of them came from request-body fields (CreateManualJournalRequest.
- * createdByUserId, ManualJournalActionRequest/RejectManualJournalRequest.userId) that any caller
- * with GL_APPROVE could set to anything, defeating the check by simply claiming mismatched
- * identities on each side. These tests confirm the controller now always resolves the real
- * principal (via AuthenticatedActorResolver) and ignores whatever the body claims.
+ * createdByUserId, RejectManualJournalRequest.userId) that any caller with GL_APPROVE could set
+ * to anything, defeating the check by simply claiming mismatched identities on each side. Those
+ * userId fields have since been removed from the DTOs entirely; these tests confirm the
+ * controller always resolves the real principal (via AuthenticatedActorResolver) rather than
+ * trusting the body.
  */
 @ExtendWith(MockitoExtension.class)
 class ManualJournalControllerTest {
@@ -83,7 +84,6 @@ class ManualJournalControllerTest {
                 .thenReturn(ManualJournalResponse.builder().id(5L).status("REJECTED").build());
 
         RejectManualJournalRequest request = new RejectManualJournalRequest();
-        request.setUserId(9999L); // attacker-controlled value that must be ignored
         request.setReason("Wrong period");
 
         ResponseEntity<?> response = controller.reject(5L, request, principal);

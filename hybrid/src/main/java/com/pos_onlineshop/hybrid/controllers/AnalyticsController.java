@@ -104,7 +104,7 @@ public class AnalyticsController {
         } catch (Exception e) {
             log.error("Error retrieving dashboard data", e);
             return ResponseEntity.internalServerError()
-                    .body(Map.of("error", "Failed to retrieve dashboard data: " + e.getMessage()));
+                    .body(Map.of("error", "Failed to retrieve dashboard data"));
         }
     }
 
@@ -143,7 +143,7 @@ public class AnalyticsController {
         } catch (Exception e) {
             log.error("Error retrieving sales trend data", e);
             return ResponseEntity.internalServerError()
-                    .body(Map.of("error", "Failed to retrieve sales trend data: " + e.getMessage()));
+                    .body(Map.of("error", "Failed to retrieve sales trend data"));
         }
     }
 
@@ -183,7 +183,7 @@ public class AnalyticsController {
         } catch (Exception e) {
             log.error("Error retrieving performance metrics", e);
             return ResponseEntity.internalServerError()
-                    .body(Map.of("error", "Failed to retrieve performance metrics: " + e.getMessage()));
+                    .body(Map.of("error", "Failed to retrieve performance metrics"));
         }
     }
 
@@ -221,7 +221,7 @@ public class AnalyticsController {
         } catch (Exception e) {
             log.error("Error retrieving revenue data", e);
             return ResponseEntity.internalServerError()
-                    .body(Map.of("error", "Failed to retrieve revenue data: " + e.getMessage()));
+                    .body(Map.of("error", "Failed to retrieve revenue data"));
         }
     }
 
@@ -254,7 +254,7 @@ public class AnalyticsController {
         } catch (Exception e) {
             log.error("Error retrieving inventory data", e);
             return ResponseEntity.internalServerError()
-                    .body(Map.of("error", "Failed to retrieve inventory data: " + e.getMessage()));
+                    .body(Map.of("error", "Failed to retrieve inventory data"));
         }
     }
 

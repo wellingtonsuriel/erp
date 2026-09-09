@@ -28,9 +28,9 @@ import static org.mockito.Mockito.when;
  * holds if createdBy/approvedBy are the real authenticated identity - previously both came from
  * request-body fields (CreateExpenseRequest.createdByUserId, ManualJournalActionRequest/
  * RejectManualJournalRequest.userId) that any caller with GL_APPROVE could set to anything,
- * defeating the check by simply claiming mismatched identities on each side. These tests confirm
- * the controller now always resolves the real principal (via AuthenticatedActorResolver) and
- * ignores whatever the body claims.
+ * defeating the check by simply claiming mismatched identities on each side. Those userId fields
+ * have since been removed from the DTOs entirely; these tests confirm the controller always
+ * resolves the real principal (via AuthenticatedActorResolver) rather than trusting the body.
  */
 @ExtendWith(MockitoExtension.class)
 class ExpenseControllerTest {
@@ -85,7 +85,6 @@ class ExpenseControllerTest {
                 .thenReturn(ExpenseResponse.builder().id(5L).status("REJECTED").build());
 
         RejectManualJournalRequest request = new RejectManualJournalRequest();
-        request.setUserId(9999L); // attacker-controlled value that must be ignored
         request.setReason("Missing receipt");
 
         ResponseEntity<?> response = controller.reject(5L, request, principal);

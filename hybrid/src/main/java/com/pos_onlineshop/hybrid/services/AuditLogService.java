@@ -5,6 +5,7 @@ import com.pos_onlineshop.hybrid.auditLog.AuditLogEntryRepository;
 import com.pos_onlineshop.hybrid.dtos.AuditLogResponse;
 import com.pos_onlineshop.hybrid.enums.AuditAction;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +29,12 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AuditLogService {
 
+    /** Safety ceiling for findAll() - the log is append-only and grows forever, so returning
+     * every entry ever written on an unbounded GET would eventually mean an unbounded DB scan
+     * and response payload. Most recent first, since that's what an admin reviewing the log
+     * cares about. */
+    private static final int MAX_UNBOUNDED_LIST_SIZE = 500;
+
     private final AuditLogEntryRepository auditLogEntryRepository;
 
     public void record(String entityType, Long entityId, AuditAction action, String performedBy, String description) {
@@ -42,7 +49,8 @@ public class AuditLogService {
 
     @Transactional(readOnly = true)
     public List<AuditLogResponse> findAll() {
-        return auditLogEntryRepository.findAllByOrderByIdDesc().stream().map(this::toResponse).collect(Collectors.toList());
+        return auditLogEntryRepository.findAllByOrderByIdDesc(PageRequest.of(0, MAX_UNBOUNDED_LIST_SIZE)).stream()
+                .map(this::toResponse).collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)

@@ -19,7 +19,9 @@ import com.pos_onlineshop.hybrid.shop.ShopRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +35,12 @@ import java.util.Optional;
 @Slf4j
 @Transactional
 public class SalesService {
+
+    /** Safety ceiling for the no-args findAll() below - sales rows accumulate with every POS
+     * transaction, so an unbounded query on that endpoint would eventually mean an unbounded
+     * DB scan and response payload. Most recent first; callers that need the full history
+     * should use findAll(Pageable) instead. */
+    private static final int MAX_UNBOUNDED_LIST_SIZE = 500;
 
     private final SalesRepository salesRepository;
     private final ShopRepository shopRepository;
@@ -257,7 +265,8 @@ public class SalesService {
 
     @Transactional(readOnly = true)
     public List<Sales> findAll() {
-        return salesRepository.findAll();
+        return salesRepository.findAll(PageRequest.of(0, MAX_UNBOUNDED_LIST_SIZE, Sort.by(Sort.Direction.DESC, "id")))
+                .getContent();
     }
 
     @Transactional(readOnly = true)

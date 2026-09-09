@@ -42,10 +42,11 @@ import java.util.stream.Collectors;
  *
  * createExpense/approveAndPay/reject's acting-user id must always be the authenticated caller
  * (resolved in ExpenseController), never CreateExpenseRequest.createdByUserId or
- * ManualJournalActionRequest/RejectManualJournalRequest.userId from the request body - both
- * identities being independently client-suppliable let anyone with GL_APPROVE defeat the
- * preparer-cannot-also-approve check in Expense.approveAndPay() by lying about who prepared
- * versus approved, the same bug class fixed on ManualJournalController/WorkflowController.
+ * RejectManualJournalRequest.userId from the request body (that userId field has since been
+ * removed from the DTO entirely) - both identities being independently client-suppliable let
+ * anyone with GL_APPROVE defeat the preparer-cannot-also-approve check in
+ * Expense.approveAndPay() by lying about who prepared versus approved, the same bug class fixed
+ * on ManualJournalController/WorkflowController.
  */
 @Service
 @RequiredArgsConstructor

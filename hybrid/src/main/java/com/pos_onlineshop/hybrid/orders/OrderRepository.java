@@ -21,14 +21,25 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     List<Order> findByStatus(OrderStatus status);
 
+    /** Pageable-capped sibling of findByStatus, used only by OrderService's *AsResponses
+     * methods (the admin-facing list endpoints) - never by the aggregate/counting call sites
+     * above, which need the true unbounded list. */
+    List<Order> findByStatus(OrderStatus status, Pageable pageable);
+
     List<Order> findByOrderDateBetween(LocalDateTime startDate, LocalDateTime endDate);
 
     List<Order> findBySalesChannel(SalesChannel channel);
+
+    /** Pageable-capped sibling of findBySalesChannel; see findByStatus(status, pageable). */
+    List<Order> findBySalesChannel(SalesChannel channel, Pageable pageable);
 
     /** The audit's P1-5 finding: the admin Orders screen's shop filter had no backing endpoint
      * at all (GET /api/orders/shop/{shopId} 404'd). Shop-scoped, not paginated, matching the
      * sibling findByStatus/findBySalesChannel endpoints' shape. */
     List<Order> findByShopId(Long shopId);
+
+    /** Pageable-capped sibling of findByShopId; see findByStatus(status, pageable). */
+    List<Order> findByShopId(Long shopId, Pageable pageable);
 
     List<Order> findByStoreLocation(String storeLocation);
 

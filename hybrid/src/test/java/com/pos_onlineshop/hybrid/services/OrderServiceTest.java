@@ -30,6 +30,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -272,6 +273,47 @@ class OrderServiceTest {
     }
 
     // ------------------------------------------------------------------
+    // Unbounded-list safety cap: the admin-facing *AsResponses list endpoints must never
+    // issue a truly unbounded query against an ever-growing orders table.
+    // ------------------------------------------------------------------
+
+    @Test
+    void findAllAsResponsesAppliesABoundedPageableCap() {
+        when(orderRepository.findAll(any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(org.springframework.data.domain.Page.empty());
+
+        List<OrderResponse> result = service.findAllAsResponses();
+
+        assertTrue(result.isEmpty());
+        org.mockito.ArgumentCaptor<org.springframework.data.domain.Pageable> captor =
+                org.mockito.ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
+        verify(orderRepository).findAll(captor.capture());
+        assertTrue(captor.getValue().getPageSize() > 0, "must apply a bounded page size, never an unbounded query");
+    }
+
+    @Test
+    void findByStatusAsResponsesUsesThePageableCappedRepositoryOverload() {
+        when(orderRepository.findByStatus(eq(OrderStatus.PENDING), any())).thenReturn(List.of());
+
+        List<OrderResponse> result = service.findByStatusAsResponses(OrderStatus.PENDING);
+
+        assertTrue(result.isEmpty());
+        verify(orderRepository).findByStatus(eq(OrderStatus.PENDING), any());
+        verify(orderRepository, never()).findByStatus(OrderStatus.PENDING);
+    }
+
+    @Test
+    void findBySalesChannelAsResponsesUsesThePageableCappedRepositoryOverload() {
+        when(orderRepository.findBySalesChannel(eq(SalesChannel.ONLINE), any())).thenReturn(List.of());
+
+        List<OrderResponse> result = service.findBySalesChannelAsResponses(SalesChannel.ONLINE);
+
+        assertTrue(result.isEmpty());
+        verify(orderRepository).findBySalesChannel(eq(SalesChannel.ONLINE), any());
+        verify(orderRepository, never()).findBySalesChannel(SalesChannel.ONLINE);
+    }
+
+    // ------------------------------------------------------------------
     // P1-5: shop-scoped order listing (the admin Orders screen's shop filter)
     // ------------------------------------------------------------------
 
@@ -279,7 +321,7 @@ class OrderServiceTest {
     void findByShopAsResponsesDelegatesToTheShopScopedRepositoryQuery() {
         Order order = Order.builder().id(1L).build();
         OrderResponse response = OrderResponse.builder().id(1L).build();
-        when(orderRepository.findByShopId(10L)).thenReturn(List.of(order));
+        when(orderRepository.findByShopId(eq(10L), any())).thenReturn(List.of(order));
         when(orderMapper.toResponse(order)).thenReturn(response);
 
         List<OrderResponse> result = service.findByShopAsResponses(10L);
@@ -290,7 +332,7 @@ class OrderServiceTest {
 
     @Test
     void findByShopAsResponsesReturnsAnEmptyListForAShopWithNoOrders() {
-        when(orderRepository.findByShopId(99L)).thenReturn(List.of());
+        when(orderRepository.findByShopId(eq(99L), any())).thenReturn(List.of());
 
         List<OrderResponse> result = service.findByShopAsResponses(99L);
 

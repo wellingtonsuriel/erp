@@ -21,10 +21,10 @@ import java.util.function.Supplier;
 
 /**
  * create/approveAndPay/reject's acting-user id must always be the authenticated caller, never
- * CreateExpenseRequest.createdByUserId or RejectManualJournalRequest.userId from the request
- * body - see ExpenseService's class comment for why (the same preparer/approver
- * identity-spoofing bug fixed on ManualJournalController/WorkflowController), resolved here via
- * the shared {@link AuthenticatedActorResolver}. Pre-existing constraint this doesn't change:
+ * CreateExpenseRequest.createdByUserId from the request body - see ExpenseService's class
+ * comment for why (the same preparer/approver identity-spoofing bug fixed on
+ * ManualJournalController/WorkflowController), resolved here via the shared
+ * {@link AuthenticatedActorResolver}. Pre-existing constraint this doesn't change:
  * Expense.createdBy/approvedBy are UserAccount foreign keys, so a Cashier-model principal gets
  * a 403 here.
  */

@@ -10,6 +10,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 
@@ -43,6 +44,21 @@ class AuditLogServiceTest {
         assertEquals(AuditAction.APPROVE, saved.getAction());
         assertEquals("admin1", saved.getPerformedBy());
         assertEquals("Manual journal approved", saved.getDescription());
+    }
+
+    @Test
+    void findAllCapsTheQueryInsteadOfLoadingTheEntireEverGrowingLog() {
+        AuditLogEntry entry = AuditLogEntry.builder().id(1L).entityType("MANUAL_JOURNAL").entityId(42L)
+                .action(AuditAction.APPROVE).performedBy("admin1").description("Approved").build();
+        when(auditLogEntryRepository.findAllByOrderByIdDesc(any(Pageable.class))).thenReturn(List.of(entry));
+
+        List<AuditLogResponse> results = service.findAll();
+
+        assertEquals(1, results.size());
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(auditLogEntryRepository).findAllByOrderByIdDesc(captor.capture());
+        assertEquals(0, captor.getValue().getPageNumber());
+        assertTrue(captor.getValue().getPageSize() > 0, "must apply a bounded page size, never an unbounded query");
     }
 
     @Test
