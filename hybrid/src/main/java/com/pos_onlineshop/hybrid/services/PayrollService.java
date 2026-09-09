@@ -40,6 +40,10 @@ import java.util.stream.Collectors;
  * payment (Dr 2400 / Cr Cash or Bank for the net only) once the money actually goes out.
  * Known limitation: a run has a single currency, and every payroll-eligible employee's
  * salaryCurrency must match it - true multi-currency payroll within one run isn't supported.
+ *
+ * processPayroll's createdByUserId and payRun's userId (both used only for audit attribution
+ * alongside the GL entries each posts) must always be the authenticated caller - never a
+ * request-body field, which PayrollController used to trust directly for both.
  */
 @Service
 @RequiredArgsConstructor
@@ -71,7 +75,7 @@ public class PayrollService {
     }
 
     @Transactional
-    public PayrollRunResponse processPayroll(ProcessPayrollRequest request) {
+    public PayrollRunResponse processPayroll(ProcessPayrollRequest request, Long createdByUserId) {
         if (payrollRunRepository.existsByRunNumber(request.getRunNumber())) {
             throw new IllegalArgumentException("A payroll run with number " + request.getRunNumber() + " already exists");
         }
@@ -81,7 +85,7 @@ public class PayrollService {
         }
         Currency currency = currencyRepository.findById(request.getCurrencyId())
                 .orElseThrow(() -> new IllegalArgumentException("Currency not found: " + request.getCurrencyId()));
-        UserAccount createdBy = resolveUser(request.getUserId());
+        UserAccount createdBy = resolveUser(createdByUserId);
 
         List<Employee> eligible = employeeRepository.findByActiveTrue().stream()
                 .filter(Employee::isPayrollEligible)

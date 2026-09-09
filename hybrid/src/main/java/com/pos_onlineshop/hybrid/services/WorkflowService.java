@@ -23,6 +23,12 @@ import java.util.stream.Collectors;
  * maker-checker logic. The requester may never also be the decider, the same rule those
  * modules already enforce. On approve()/reject(), the requester is notified via
  * NotificationService - the one concrete integration point this stage wires end to end.
+ *
+ * requestedByUserId/decidedBy (the userId param to approve/reject) must always come from the
+ * authenticated caller - never a request-body field, which WorkflowController used to trust
+ * directly. That let anyone with GL_APPROVE defeat the requester-cannot-also-decide check above
+ * by simply lying about which user ID was requesting versus deciding, since the two spoofed
+ * identities were compared to each other rather than to who was actually authenticated.
  */
 @Service
 @RequiredArgsConstructor
@@ -44,8 +50,8 @@ public class WorkflowService {
     }
 
     @Transactional
-    public ApprovalRequestResponse requestApproval(CreateApprovalRequestRequest request) {
-        UserAccount requestedBy = resolveUser(request.getRequestedByUserId());
+    public ApprovalRequestResponse requestApproval(CreateApprovalRequestRequest request, Long requestedByUserId) {
+        UserAccount requestedBy = resolveUser(requestedByUserId);
         ApprovalRequest approvalRequest = ApprovalRequest.builder()
                 .entityType(request.getEntityType())
                 .entityId(request.getEntityId())

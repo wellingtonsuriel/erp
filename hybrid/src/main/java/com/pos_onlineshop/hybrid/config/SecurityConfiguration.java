@@ -51,9 +51,14 @@ public class SecurityConfiguration {
             "/api/cashiers/authenticate",
             "/api/cashiers/authenticate/pin",
             "/api/users/register",
-            // WebSocket handshake (SockJS) - see WebSocketController's class comment for the
-            // known, disclosed limitation this leaves: message-level authorization for
-            // /app/inventory-update and /app/order-notification is not yet implemented.
+            // WebSocket handshake (SockJS). The client-publishable /app/inventory-update and
+            // /app/order-notification destinations this whitelist entry used to make reachable
+            // without message-level authorization were removed entirely (WebSocketController
+            // deleted) rather than secured - they had no real caller and just echoed whatever a
+            // connected client sent straight to every subscriber of /topic/inventory or
+            // /topic/orders, which is indistinguishable from a genuine server-verified update. The
+            // real ones are pushed directly by InventoryService/OrderService via
+            // SimpMessagingTemplate, never client-initiated, so nothing legitimate used this relay.
             "/ws/**",
             // Ops/monitoring - only /actuator/health is exposed by Spring Boot's own default
             // (no management.endpoints.web.exposure.include is configured), so this is

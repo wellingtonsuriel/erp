@@ -1,14 +1,20 @@
 package com.pos_onlineshop.hybrid.controllers;
 
 import com.pos_onlineshop.hybrid.cashier.Cashier;
+import com.pos_onlineshop.hybrid.cashierSessions.CashierSession;
 import com.pos_onlineshop.hybrid.dtos.AuthenticationRequest;
+import com.pos_onlineshop.hybrid.dtos.EndSessionRequest;
 import com.pos_onlineshop.hybrid.dtos.GrantPermissionRequest;
+import com.pos_onlineshop.hybrid.dtos.StartSessionRequest;
 import com.pos_onlineshop.hybrid.enums.CashierRole;
 import com.pos_onlineshop.hybrid.enums.Permission;
 import com.pos_onlineshop.hybrid.security.CashierUserDetailsService;
 import com.pos_onlineshop.hybrid.security.JwtService;
 import com.pos_onlineshop.hybrid.services.CashierService;
 import com.pos_onlineshop.hybrid.services.ShopService;
+import com.pos_onlineshop.hybrid.shop.Shop;
+
+import java.math.BigDecimal;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,11 +35,15 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 /**
- * Covers two of the audit's P0/P1 authentication findings for this controller: (1) authenticate
- * / authenticate-by-pin must return a real, usable JWT - not silently omit the field the
- * frontend has always tried to read - and (2) a permission grant's "grantedBy" must always come
- * from the authenticated caller, never a request-body field (GrantPermissionRequest.grantedById
- * exists but must never be trusted).
+ * Covers several of the audit's P0/P1 authentication findings for this controller: (1)
+ * authenticate / authenticate-by-pin must return a real, usable JWT - not silently omit the
+ * field the frontend has always tried to read - (2) a permission grant's "grantedBy" must always
+ * come from the authenticated caller, never a request-body field (GrantPermissionRequest.
+ * grantedById exists but must never be trusted), (3) starting a shift session must always be
+ * for the authenticated caller, never StartSessionRequest.cashierId (which previously let any
+ * cashier-role holder open, and take financial responsibility for, ANY other cashier's drawer),
+ * and (4) ending a session enforces the same real-identity rule via requireAuthenticatedCashier,
+ * with the actual ownership check itself covered by CashierServiceEndSessionTest.
  */
 @ExtendWith(MockitoExtension.class)
 class CashierControllerTest {
@@ -123,5 +133,46 @@ class CashierControllerTest {
 
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
         verify(cashierService, never()).grantPermission(any(), any(), any());
+    }
+
+    @Test
+    void startSessionUsesTheAuthenticatedPrincipalAsTheCashierNeverTheRequestBody() {
+        Cashier realCashier = cashier(1L, "real-cashier", CashierRole.CASHIER);
+        Shop shop = Shop.builder().id(10L).build();
+        when(cashierService.findByUsername("real-cashier")).thenReturn(Optional.of(realCashier));
+        when(shopService.findById(10L)).thenReturn(Optional.of(shop));
+        when(cashierService.startSession(eq(realCashier), eq(shop), eq("T1"), any(BigDecimal.class)))
+                .thenReturn(CashierSession.builder().id(500L).build());
+
+        StartSessionRequest request = new StartSessionRequest();
+        request.setCashierId(9999L); // attacker-controlled value that must be ignored
+        request.setShopId(10L);
+        request.setTerminalId("T1");
+        request.setOpeningCash(new BigDecimal("50"));
+
+        UserDetails principal = new User("real-cashier", "hashed", true, true, true, true, List.of());
+        ResponseEntity<CashierSession> response = controller.startSession(request, principal);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        verify(cashierService).startSession(eq(realCashier), eq(shop), eq("T1"), any(BigDecimal.class));
+        verify(cashierService, never()).findById(9999L);
+    }
+
+    @Test
+    void endSessionResolvesTheActingCashierFromThePrincipalNotTheRequestBody() {
+        Cashier realCashier = cashier(1L, "real-cashier", CashierRole.CASHIER);
+        when(cashierService.findByUsername("real-cashier")).thenReturn(Optional.of(realCashier));
+        when(cashierService.endSession(eq(500L), any(BigDecimal.class), anyString(), eq(realCashier)))
+                .thenReturn(CashierSession.builder().id(500L).build());
+
+        EndSessionRequest request = new EndSessionRequest();
+        request.setClosingCash(new BigDecimal("120"));
+        request.setNotes("end of shift");
+
+        UserDetails principal = new User("real-cashier", "hashed", true, true, true, true, List.of());
+        ResponseEntity<CashierSession> response = controller.endSession(500L, request, principal);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        verify(cashierService).endSession(500L, new BigDecimal("120"), "end of shift", realCashier);
     }
 }

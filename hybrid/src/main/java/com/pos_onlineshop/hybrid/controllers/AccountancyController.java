@@ -76,10 +76,11 @@ public class AccountancyController {
     @PostMapping("/entries")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<AccountancyEntry> createEntry(
-            @RequestBody CreateEntryRequest request) {
-        UserAccount user = request.getUserId() != null ?
-                userAccountService.findById(request.getUserId())
-                        .orElseThrow(() -> new RuntimeException("User not found")) : null;
+            @RequestBody CreateEntryRequest request,
+            @AuthenticationPrincipal UserDetails principal) {
+        // The entry's user attribution used to come from request.getUserId() - any admin could
+        // attribute a ledger entry to a different user entirely. Always the authenticated caller.
+        UserAccount user = userAccountService.findByUsername(principal.getUsername()).orElse(null);
 
         AccountancyEntry entry = accountancyService.createEntry(
                 request.getType(),

@@ -57,7 +57,9 @@ class WorkflowServiceTest {
 
     @Test
     void requestApprovalCreatesAPendingRequest() {
-        ApprovalRequestResponse response = service.requestApproval(request());
+        // requestedByUserId is now a separate parameter (the authenticated caller's id), not
+        // read from the request body - see WorkflowController's class comment.
+        ApprovalRequestResponse response = service.requestApproval(request(), 1L);
 
         assertEquals("PENDING", response.getStatus());
         assertEquals("clerk1", response.getRequestedByUsername());
@@ -106,5 +108,19 @@ class WorkflowServiceTest {
         when(approvalRequestRepository.findById(50L)).thenReturn(Optional.of(approvalRequest));
 
         assertThrows(IllegalStateException.class, () -> service.approve(50L, 2L, "reason"));
+    }
+
+    @Test
+    void requestApprovalUsesTheGivenRequesterIdNeverTheRequestBodysValue() {
+        // The request body claims requestedByUserId=1 (clerk1), but the id actually passed in
+        // (the resolved authenticated caller, per WorkflowController) is 2 (manager1) - the
+        // saved request must be attributed to the real caller.
+        CreateApprovalRequestRequest request = request();
+        request.setRequestedByUserId(1L);
+
+        ApprovalRequestResponse response = service.requestApproval(request, 2L);
+
+        assertEquals("manager1", response.getRequestedByUsername());
+        assertNotEquals("clerk1", response.getRequestedByUsername());
     }
 }

@@ -27,6 +27,7 @@ public class ProcessPayrollRequest {
 
     private PaymentMethod paymentMethod;
 
-    @NotNull(message = "Acting user is required")
+    // Ignored server-side: the payroll run's createdBy is always the authenticated caller (see
+    // PayrollController/PayrollService's class comments), never this request-body field.
     private Long userId;
 }

@@ -115,7 +115,7 @@ class PayrollServiceTest {
     void processPayrollRejectsADuplicateRunNumber() {
         when(payrollRunRepository.existsByRunNumber("PAY-2026-08")).thenReturn(true);
 
-        assertThrows(IllegalArgumentException.class, () -> service.processPayroll(request()));
+        assertThrows(IllegalArgumentException.class, () -> service.processPayroll(request(), 1L));
     }
 
     @Test
@@ -123,7 +123,7 @@ class PayrollServiceTest {
         when(payrollRunRepository.existsByRunNumber("PAY-2026-08")).thenReturn(false);
         when(employeeRepository.findByActiveTrue()).thenReturn(List.of());
 
-        assertThrows(IllegalArgumentException.class, () -> service.processPayroll(request()));
+        assertThrows(IllegalArgumentException.class, () -> service.processPayroll(request(), 1L));
     }
 
     @Test
@@ -142,7 +142,7 @@ class PayrollServiceTest {
                 any(), eq("PAYROLL_RUN"), eq(90L), captor.capture(), eq("admin1")))
                 .thenReturn(entry);
 
-        PayrollRunResponse response = service.processPayroll(request());
+        PayrollRunResponse response = service.processPayroll(request(), 1L);
 
         assertEquals("PROCESSED", response.getStatus());
         assertEquals(0, new BigDecimal("3000.00").compareTo(response.getTotalGrossPay()));
@@ -167,7 +167,7 @@ class PayrollServiceTest {
         mismatched.setSalaryCurrency(zwg);
         when(employeeRepository.findByActiveTrue()).thenReturn(List.of(mismatched));
 
-        assertThrows(IllegalArgumentException.class, () -> service.processPayroll(request()));
+        assertThrows(IllegalArgumentException.class, () -> service.processPayroll(request(), 1L));
     }
 
     private PayrollRun processedRun() {

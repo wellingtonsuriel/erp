@@ -168,12 +168,19 @@ public class CashierController {
     }
 
     // Session Management
+    /**
+     * The audit-attribution fix documented on requireAuthenticatedCashier's own comment applies
+     * here too, and matters more: request.getCashierId() previously let any authenticated
+     * cashier-role holder open a shift session - complete with an opening cash float - as any
+     * OTHER cashier, the same class of identity spoofing already fixed on POSController.quickSale.
+     * Whoever's shift this is must be whoever is actually logged in.
+     */
     @PostMapping("/sessions/start")
     @PreAuthorize("hasAnyRole('CASHIER', 'SUPERVISOR', 'MANAGER', 'ADMIN')")
-    public ResponseEntity<CashierSession> startSession(@RequestBody StartSessionRequest request) {
+    public ResponseEntity<CashierSession> startSession(@RequestBody StartSessionRequest request,
+                                                         @AuthenticationPrincipal UserDetails principal) {
         try {
-            Cashier cashier = cashierService.findById(request.getCashierId())
-                    .orElseThrow(() -> new RuntimeException("Cashier not found"));
+            Cashier cashier = requireAuthenticatedCashier(principal);
 
             Shop shop = shopService.findById(request.getShopId())
                     .orElseThrow(() -> new RuntimeException("Shop not found"));
@@ -192,10 +199,12 @@ public class CashierController {
     @PreAuthorize("hasAnyRole('CASHIER', 'SUPERVISOR', 'MANAGER', 'ADMIN')")
     public ResponseEntity<CashierSession> endSession(
             @PathVariable Long sessionId,
-            @RequestBody EndSessionRequest request) {
+            @RequestBody EndSessionRequest request,
+            @AuthenticationPrincipal UserDetails principal) {
         try {
+            Cashier actingCashier = requireAuthenticatedCashier(principal);
             CashierSession session = cashierService.endSession(
-                    sessionId, request.getClosingCash(), request.getNotes());
+                    sessionId, request.getClosingCash(), request.getNotes(), actingCashier);
             return ResponseEntity.ok(session);
         } catch (RuntimeException e) {
             log.error("Error ending cashier session", e);

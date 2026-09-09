@@ -169,13 +169,25 @@ public class CashierService {
         return sessionRepository.save(session);
     }
 
+    /**
+     * The audit's finding: any cashier-role holder could end ANY other cashier's session by ID
+     * with a fabricated closingCash figure, which posts a cash-difference entry to the GL for a
+     * drawer they never actually held - there was no check tying the caller to the session at
+     * all. A plain CASHIER may only end their own session; SUPERVISOR/MANAGER/ADMIN may end
+     * anyone's (a real business need - e.g. reconciling a drawer a cashier left without closing).
+     */
     @Transactional
-    public CashierSession endSession(Long sessionId, BigDecimal closingCash, String notes) {
+    public CashierSession endSession(Long sessionId, BigDecimal closingCash, String notes, Cashier actingCashier) {
         CashierSession session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new RuntimeException("Session not found"));
 
         if (!session.isActive()) {
             throw new RuntimeException("Session is not active");
+        }
+
+        boolean isOwnSession = session.getCashier().getId().equals(actingCashier.getId());
+        if (!isOwnSession && actingCashier.getRole() == CashierRole.CASHIER) {
+            throw new RuntimeException("Only a supervisor or manager can end another cashier's session");
         }
 
         session.endSession(closingCash);
@@ -295,10 +307,11 @@ public class CashierService {
         Cashier cashier = cashierRepository.findById(cashierId)
                 .orElseThrow(() -> new RuntimeException("Cashier not found"));
 
-        // End any active sessions
+        // End any active sessions - this is the cashier's own session being closed as a side
+        // effect of their own deactivation, so they're passed as the acting cashier too.
         sessionRepository.findByCashierAndStatus(cashier, SessionStatus.ACTIVE)
                 .ifPresent(session -> endSession(session.getId(), session.getExpectedCash(),
-                        "Session ended due to cashier deactivation"));
+                        "Session ended due to cashier deactivation", cashier));
 
         cashier.setActive(false);
         cashierRepository.save(cashier);
