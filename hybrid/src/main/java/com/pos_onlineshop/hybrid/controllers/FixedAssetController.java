@@ -14,11 +14,18 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
 
+/**
+ * dispose's performedBy must always be the authenticated caller's username, never a
+ * client-suppliable query parameter (previously defaulted to "system" and could be set to any
+ * string) - the same audit-attribution forgery fixed on AccountingPeriodController's close/reopen.
+ */
 @RestController
 @RequestMapping("/api/fixed-assets")
 @RequiredArgsConstructor
@@ -58,9 +65,9 @@ public class FixedAssetController {
     @PostMapping("/{id}/dispose")
     @PreAuthorize("hasAuthority('GL_ADMIN') or hasRole('ADMIN')")
     public ResponseEntity<?> dispose(@PathVariable Long id, @Valid @RequestBody DisposeAssetRequest request,
-                                      @RequestParam(defaultValue = "system") String performedBy) {
+                                      @AuthenticationPrincipal UserDetails principal) {
         try {
-            return ResponseEntity.ok(assetDisposalService.disposeAsset(id, request, performedBy));
+            return ResponseEntity.ok(assetDisposalService.disposeAsset(id, request, principal.getUsername()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (IllegalStateException e) {

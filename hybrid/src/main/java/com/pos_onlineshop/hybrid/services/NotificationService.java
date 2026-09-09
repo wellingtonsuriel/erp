@@ -20,6 +20,13 @@ import java.util.stream.Collectors;
  * channel - this is an in-app inbox (findForUser/unreadCount), matching what this codebase
  * can actually deliver today; adding an external channel is separate infrastructure this
  * service does not pretend to have.
+ *
+ * markRead's callerUserId must be the notification's own recipient - previously any
+ * authenticated caller could mark any other user's notification read by guessing/enumerating
+ * its id, with no ownership check at all. findForUser/findUnreadForUser/unreadCount's userId
+ * must always be the authenticated caller's own id, resolved in NotificationController, never
+ * a request-supplied value - that was a real IDOR letting any authenticated user read anyone
+ * else's notification inbox by simply changing a query parameter.
  */
 @Service
 @RequiredArgsConstructor
@@ -61,9 +68,12 @@ public class NotificationService {
         return notificationRepository.countByRecipientAndReadFalse(resolveUser(userId));
     }
 
-    public NotificationResponse markRead(Long notificationId) {
+    public NotificationResponse markRead(Long notificationId, Long callerUserId) {
         Notification notification = notificationRepository.findById(notificationId)
                 .orElseThrow(() -> new IllegalArgumentException("Notification not found: " + notificationId));
+        if (!notification.getRecipient().getId().equals(callerUserId)) {
+            throw new IllegalStateException("Notification " + notificationId + " does not belong to the caller");
+        }
         if (!notification.isRead()) {
             notification.setRead(true);
             notification.setReadAt(LocalDateTime.now());
