@@ -89,7 +89,7 @@ class BankChargeServiceTest {
     void createChargeRejectsADuplicateReference() {
         when(bankChargeRepository.existsByReferenceNumber("CHG-1")).thenReturn(true);
 
-        assertThrows(IllegalArgumentException.class, () -> service.createCharge(request()));
+        assertThrows(IllegalArgumentException.class, () -> service.createCharge(request(), 1L));
     }
 
     @Test
@@ -98,7 +98,7 @@ class BankChargeServiceTest {
         CreateBankChargeRequest request = request();
         request.setAmount(new BigDecimal("5000.00"));
 
-        assertThrows(IllegalStateException.class, () -> service.createCharge(request));
+        assertThrows(IllegalStateException.class, () -> service.createCharge(request, 1L));
         verifyNoInteractions(glPostingService);
     }
 
@@ -111,7 +111,7 @@ class BankChargeServiceTest {
                 any(), eq("BANK_CHARGE"), eq(50L), captor.capture(), eq("clerk1")))
                 .thenReturn(entry);
 
-        BankChargeResponse response = service.createCharge(request());
+        BankChargeResponse response = service.createCharge(request(), 1L);
 
         assertEquals(60L, response.getJournalEntryNumber());
         assertEquals(0, new BigDecimal("185.00").compareTo(bank.getCurrentBalance()));

@@ -35,6 +35,7 @@ public class CreateBankAccountRequest {
     /** Required when openingBalance is positive. */
     private LocalDate openingBalanceDate;
 
-    @NotNull(message = "Creator is required")
+    // Ignored server-side: the creator is always the authenticated caller (see
+    // CashBankController/BankAccountService's class comments), never this request-body field.
     private Long createdByUserId;
 }

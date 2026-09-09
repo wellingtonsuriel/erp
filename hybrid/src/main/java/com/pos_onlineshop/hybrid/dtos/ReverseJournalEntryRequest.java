@@ -14,5 +14,7 @@ public class ReverseJournalEntryRequest {
     /** Defaults to today if omitted. Must fall in an OPEN accounting period. */
     private LocalDate reversalDate;
 
+    // Ignored server-side: the reverser is always the authenticated caller's username (see
+    // JournalEntryController/JournalEntryService's class comments), never this request-body field.
     private String postedBy;
 }

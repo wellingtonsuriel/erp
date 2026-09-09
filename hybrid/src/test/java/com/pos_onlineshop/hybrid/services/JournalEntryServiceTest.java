@@ -108,37 +108,37 @@ class JournalEntryServiceTest {
     }
 
     @Test
-    void reverseDefaultsReversalDateAndPostedByWhenNotSupplied() {
+    void reverseDefaultsReversalDateWhenNotSuppliedAndUsesTheGivenPostedBy() {
         JournalEntry original = postedEntry(1L, 1L);
         JournalEntry reversal = postedEntry(2L, 2L);
         when(journalEntryRepository.findById(1L)).thenReturn(Optional.of(original));
-        when(glPostingService.reverse(eq(original), any(LocalDate.class), eq("Correction"), eq("system")))
+        when(glPostingService.reverse(eq(original), any(LocalDate.class), eq("Correction"), eq("real-admin")))
                 .thenReturn(reversal);
 
         ReverseJournalEntryRequest request = new ReverseJournalEntryRequest();
         request.setReason("Correction");
 
-        JournalEntryDetailResponse response = service.reverse(1L, request);
+        JournalEntryDetailResponse response = service.reverse(1L, request, "real-admin");
 
         assertEquals(2L, response.getEntryNumber());
-        verify(glPostingService).reverse(eq(original), eq(LocalDate.now()), eq("Correction"), eq("system"));
+        verify(glPostingService).reverse(eq(original), eq(LocalDate.now()), eq("Correction"), eq("real-admin"));
     }
 
     @Test
-    void reverseUsesSuppliedReversalDateAndPostedBy() {
+    void reverseUsesTheGivenPostedByNeverTheRequestBodysValue() {
         JournalEntry original = postedEntry(1L, 1L);
         JournalEntry reversal = postedEntry(2L, 2L);
         when(journalEntryRepository.findById(1L)).thenReturn(Optional.of(original));
         LocalDate customDate = LocalDate.of(2026, 8, 20);
-        when(glPostingService.reverse(original, customDate, "Voided", "alice")).thenReturn(reversal);
+        when(glPostingService.reverse(original, customDate, "Voided", "real-admin")).thenReturn(reversal);
 
         ReverseJournalEntryRequest request = new ReverseJournalEntryRequest();
         request.setReason("Voided");
         request.setReversalDate(customDate);
-        request.setPostedBy("alice");
+        request.setPostedBy("attacker-controlled-value"); // must be ignored
 
-        service.reverse(1L, request);
+        service.reverse(1L, request, "real-admin");
 
-        verify(glPostingService).reverse(original, customDate, "Voided", "alice");
+        verify(glPostingService).reverse(original, customDate, "Voided", "real-admin");
     }
 }

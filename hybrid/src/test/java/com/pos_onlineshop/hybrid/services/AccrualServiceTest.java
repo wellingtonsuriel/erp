@@ -116,7 +116,7 @@ class AccrualServiceTest {
                 eq(GLSourceModule.ACCRUAL), eq("ACCRUAL_ENTRY"), eq(20L), specsCaptor.capture(), eq("controller1")))
                 .thenAnswer(inv -> postedEntryWithLines(specsCaptor.getValue(), 600L));
 
-        AccrualResponse response = service.createAccrual(balancedRequest());
+        AccrualResponse response = service.createAccrual(balancedRequest(), 1L);
 
         assertEquals(2, specsCaptor.getValue().size());
         assertEquals("PENDING_REVERSAL", response.getStatus());
@@ -128,7 +128,7 @@ class AccrualServiceTest {
     void createAccrualRejectsADuplicateReference() {
         when(accrualEntryRepository.existsByReference("ACR-2026-001")).thenReturn(true);
 
-        assertThrows(IllegalArgumentException.class, () -> service.createAccrual(balancedRequest()));
+        assertThrows(IllegalArgumentException.class, () -> service.createAccrual(balancedRequest(), 1L));
         verifyNoInteractions(glPostingService);
     }
 
@@ -138,7 +138,7 @@ class AccrualServiceTest {
         request.setReversalDate(LocalDate.of(2026, 8, 1)); // before accrualDate 2026-08-31
         when(accrualEntryRepository.existsByReference("ACR-2026-001")).thenReturn(false);
 
-        assertThrows(IllegalArgumentException.class, () -> service.createAccrual(request));
+        assertThrows(IllegalArgumentException.class, () -> service.createAccrual(request, 1L));
         verifyNoInteractions(glPostingService);
         verify(accrualEntryRepository, never()).save(any());
     }

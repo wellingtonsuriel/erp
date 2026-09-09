@@ -41,6 +41,11 @@ import java.util.stream.Collectors;
  * exists (their accounts don't vary per invocation the way REDEEMED's would need to if the
  * revenue account it credits ever did). Known limitation: tracked in base currency only -
  * there is no per-customer currency on this ledger.
+ *
+ * earn/redeem/expire/reverse's createdByUserId must always be the authenticated caller
+ * (resolved in LoyaltyController), never LoyaltyTransactionRequest.createdByUserId from the
+ * request body - the same request-supplied-identity bug fixed on ManualJournalController/
+ * ExpenseController/WorkflowController, here for who earned/redeemed/expired/reversed points.
  */
 @Service
 @RequiredArgsConstructor
@@ -75,13 +80,13 @@ public class LoyaltyService {
     }
 
     @Transactional
-    public LoyaltyTransactionResponse earn(LoyaltyTransactionRequest request) {
+    public LoyaltyTransactionResponse earn(LoyaltyTransactionRequest request, Long createdByUserId) {
         LoyaltyAccount account = getOrCreateAccount(request.getCustomerId());
         account.setAvailableBalance(account.getAvailableBalance().add(request.getAmount()));
         account.setTotalEarned(account.getTotalEarned().add(request.getAmount()));
         LoyaltyAccount savedAccount = loyaltyAccountRepository.save(account);
 
-        LoyaltyTransaction transaction = buildTransaction(savedAccount, LoyaltyTransactionType.EARNED, request);
+        LoyaltyTransaction transaction = buildTransaction(savedAccount, LoyaltyTransactionType.EARNED, request, createdByUserId);
         LoyaltyTransaction savedTransaction = loyaltyTransactionRepository.save(transaction);
 
         Account expense = accountRepository.findByCode(LOYALTY_EXPENSE_ACCOUNT_CODE)
@@ -99,14 +104,14 @@ public class LoyaltyService {
     }
 
     @Transactional
-    public LoyaltyTransactionResponse redeem(LoyaltyTransactionRequest request) {
+    public LoyaltyTransactionResponse redeem(LoyaltyTransactionRequest request, Long createdByUserId) {
         LoyaltyAccount account = requireExistingAccount(request.getCustomerId());
         requireSufficientBalance(account, request.getAmount());
         account.setAvailableBalance(account.getAvailableBalance().subtract(request.getAmount()));
         account.setTotalRedeemed(account.getTotalRedeemed().add(request.getAmount()));
         LoyaltyAccount savedAccount = loyaltyAccountRepository.save(account);
 
-        LoyaltyTransaction transaction = buildTransaction(savedAccount, LoyaltyTransactionType.REDEEMED, request);
+        LoyaltyTransaction transaction = buildTransaction(savedAccount, LoyaltyTransactionType.REDEEMED, request, createdByUserId);
         LoyaltyTransaction savedTransaction = loyaltyTransactionRepository.save(transaction);
 
         Currency baseCurrency = currencyService.getBaseCurrency();
@@ -131,16 +136,16 @@ public class LoyaltyService {
     }
 
     @Transactional
-    public LoyaltyTransactionResponse expire(LoyaltyTransactionRequest request) {
-        return writeOff(request, LoyaltyTransactionType.EXPIRED);
+    public LoyaltyTransactionResponse expire(LoyaltyTransactionRequest request, Long createdByUserId) {
+        return writeOff(request, LoyaltyTransactionType.EXPIRED, createdByUserId);
     }
 
     @Transactional
-    public LoyaltyTransactionResponse reverse(LoyaltyTransactionRequest request) {
-        return writeOff(request, LoyaltyTransactionType.REVERSED);
+    public LoyaltyTransactionResponse reverse(LoyaltyTransactionRequest request, Long createdByUserId) {
+        return writeOff(request, LoyaltyTransactionType.REVERSED, createdByUserId);
     }
 
-    private LoyaltyTransactionResponse writeOff(LoyaltyTransactionRequest request, LoyaltyTransactionType type) {
+    private LoyaltyTransactionResponse writeOff(LoyaltyTransactionRequest request, LoyaltyTransactionType type, Long createdByUserId) {
         LoyaltyAccount account = requireExistingAccount(request.getCustomerId());
         requireSufficientBalance(account, request.getAmount());
         account.setAvailableBalance(account.getAvailableBalance().subtract(request.getAmount()));
@@ -151,7 +156,7 @@ public class LoyaltyService {
         }
         LoyaltyAccount savedAccount = loyaltyAccountRepository.save(account);
 
-        LoyaltyTransaction transaction = buildTransaction(savedAccount, type, request);
+        LoyaltyTransaction transaction = buildTransaction(savedAccount, type, request, createdByUserId);
         LoyaltyTransaction savedTransaction = loyaltyTransactionRepository.save(transaction);
 
         Account expense = accountRepository.findByCode(LOYALTY_EXPENSE_ACCOUNT_CODE)
@@ -185,7 +190,7 @@ public class LoyaltyService {
         }
     }
 
-    private LoyaltyTransaction buildTransaction(LoyaltyAccount account, LoyaltyTransactionType type, LoyaltyTransactionRequest request) {
+    private LoyaltyTransaction buildTransaction(LoyaltyAccount account, LoyaltyTransactionType type, LoyaltyTransactionRequest request, Long createdByUserId) {
         return LoyaltyTransaction.builder()
                 .loyaltyAccount(account)
                 .transactionType(type)
@@ -195,7 +200,7 @@ public class LoyaltyService {
                 .referenceId(request.getReferenceId())
                 .description(request.getDescription())
                 .transactionDate(request.getTransactionDate())
-                .createdBy(resolveUser(request.getCreatedByUserId()))
+                .createdBy(resolveUser(createdByUserId))
                 .build();
     }
 

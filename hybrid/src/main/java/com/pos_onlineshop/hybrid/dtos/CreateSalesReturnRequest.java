@@ -28,6 +28,7 @@ public class CreateSalesReturnRequest {
     @Valid
     private List<SalesReturnLineRequest> lines;
 
-    @NotNull(message = "Creator is required")
+    // Ignored server-side: the creator is always the authenticated caller (see
+    // SalesReturnController/SalesReturnService's class comments), never this request-body field.
     private Long createdByUserId;
 }

@@ -27,6 +27,10 @@ import java.util.stream.Collectors;
  * A fee the bank deducted directly from a BankAccount - see BankCharge's class comment.
  * Posted immediately (Dr 5500 Bank Charges / Cr the account's control GL code) since there
  * is no approval workflow for a charge the bank has already taken.
+ *
+ * createCharge's createdByUserId must always be the authenticated caller (resolved in
+ * CashBankController), never CreateBankChargeRequest.createdByUserId from the request body -
+ * the same request-supplied-identity bug fixed on ManualJournalController.
  */
 @Service
 @RequiredArgsConstructor
@@ -48,7 +52,7 @@ public class BankChargeService {
     }
 
     @Transactional
-    public BankChargeResponse createCharge(CreateBankChargeRequest request) {
+    public BankChargeResponse createCharge(CreateBankChargeRequest request, Long createdByUserId) {
         if (bankChargeRepository.existsByReferenceNumber(request.getReferenceNumber())) {
             throw new IllegalArgumentException("A bank charge with reference " + request.getReferenceNumber() + " already exists");
         }
@@ -57,7 +61,7 @@ public class BankChargeService {
         if (bankAccount.getCurrentBalance().compareTo(request.getAmount()) < 0) {
             throw new IllegalStateException("Insufficient balance in " + bankAccount.getAccountName());
         }
-        UserAccount createdBy = resolveUser(request.getCreatedByUserId());
+        UserAccount createdBy = resolveUser(createdByUserId);
 
         BankCharge charge = BankCharge.builder()
                 .referenceNumber(request.getReferenceNumber())

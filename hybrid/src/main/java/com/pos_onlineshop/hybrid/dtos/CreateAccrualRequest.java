@@ -28,7 +28,8 @@ public class CreateAccrualRequest {
     @NotBlank(message = "Description is required")
     private String description;
 
-    @NotNull(message = "Creator is required")
+    // Ignored server-side: the creator is always the authenticated caller (see
+    // AccrualController/AccrualService's class comments), never this request-body field.
     private Long createdByUserId;
 
     /** Must already balance (total debits == total credits) - unlike an opening balance,

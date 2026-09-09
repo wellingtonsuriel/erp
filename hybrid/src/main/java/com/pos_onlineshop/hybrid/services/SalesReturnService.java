@@ -46,6 +46,10 @@ import java.util.stream.Collectors;
  * (on-account) GL event yet for this to mirror; and COGS/inventory-value reversal is skipped
  * (though physical stock is still restored) when the original line's unit cost wasn't known,
  * the same "never manufacture a cost" rule the original sale follows.
+ *
+ * createReturn's createdByUserId must always be the authenticated caller (resolved in
+ * SalesReturnController), never CreateSalesReturnRequest.createdByUserId from the request
+ * body - the same request-supplied-identity bug fixed on ManualJournalController.
  */
 @Service
 @RequiredArgsConstructor
@@ -79,7 +83,7 @@ public class SalesReturnService {
     }
 
     @Transactional
-    public SalesReturnResponse createReturn(CreateSalesReturnRequest request) {
+    public SalesReturnResponse createReturn(CreateSalesReturnRequest request, Long createdByUserId) {
         if (salesReturnRepository.existsByReturnNumber(request.getReturnNumber())) {
             throw new IllegalArgumentException("A sales return with number " + request.getReturnNumber() + " already exists");
         }
@@ -88,7 +92,7 @@ public class SalesReturnService {
         if (order.getStatus() == OrderStatus.CANCELLED) {
             throw new IllegalStateException("Cannot return items against a cancelled order");
         }
-        UserAccount createdBy = resolveUser(request.getCreatedByUserId());
+        UserAccount createdBy = resolveUser(createdByUserId);
 
         BigDecimal totalGross = BigDecimal.ZERO;
         BigDecimal totalTax = BigDecimal.ZERO;

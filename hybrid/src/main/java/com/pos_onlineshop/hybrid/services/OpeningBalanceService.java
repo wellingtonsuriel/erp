@@ -40,6 +40,10 @@ import java.util.stream.Collectors;
  * The caller supplies every line except the balancing entry against 3900 Opening Balance
  * Equity, which is computed here from the net of the supplied lines and appended
  * automatically - the preparer should never need to hand-compute a plug.
+ *
+ * createOpeningBalance's createdByUserId must always be the authenticated caller (resolved in
+ * OpeningBalanceController), never CreateOpeningBalanceRequest.createdByUserId from the request
+ * body - the same request-supplied-identity bug fixed on ManualJournalController.
  */
 @Service
 @RequiredArgsConstructor
@@ -66,7 +70,7 @@ public class OpeningBalanceService {
         return toResponse(findOrThrow(id));
     }
 
-    public OpeningBalanceResponse createOpeningBalance(CreateOpeningBalanceRequest request) {
+    public OpeningBalanceResponse createOpeningBalance(CreateOpeningBalanceRequest request, Long createdByUserId) {
         if (openingBalanceEntryRepository.existsByReference(request.getReference())) {
             throw new IllegalArgumentException("An opening balance with reference '"
                     + request.getReference() + "' already exists");
@@ -76,7 +80,7 @@ public class OpeningBalanceService {
                 .orElseThrow(() -> new IllegalStateException(
                         "Opening Balance Equity account (" + OPENING_BALANCE_EQUITY_CODE + ") is not seeded"));
         Currency baseCurrency = currencyService.getBaseCurrency();
-        UserAccount createdBy = resolveUser(request.getCreatedByUserId());
+        UserAccount createdBy = resolveUser(createdByUserId);
 
         BigDecimal netDebits = BigDecimal.ZERO;
         BigDecimal netCredits = BigDecimal.ZERO;

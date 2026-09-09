@@ -4,18 +4,27 @@ import com.pos_onlineshop.hybrid.dtos.LoyaltyTransactionRequest;
 import com.pos_onlineshop.hybrid.dtos.LoyaltyTransactionResponse;
 import com.pos_onlineshop.hybrid.gl.GLPostingException;
 import com.pos_onlineshop.hybrid.services.LoyaltyService;
+import com.pos_onlineshop.hybrid.services.UserAccountService;
+import com.pos_onlineshop.hybrid.userAccount.UserAccount;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
+/**
+ * earn/redeem/expire/reverse's acting-user id must always be the authenticated caller, never
+ * LoyaltyTransactionRequest.createdByUserId from the request body - see LoyaltyService's class
+ * comment for why (the same request-supplied-identity bug fixed on ManualJournalController).
+ */
 @RestController
 @RequestMapping("/api/loyalty")
 @RequiredArgsConstructor
@@ -23,6 +32,13 @@ import java.util.function.Supplier;
 public class LoyaltyController {
 
     private final LoyaltyService loyaltyService;
+    private final UserAccountService userAccountService;
+
+    private UserAccount requireAuthenticatedUser(UserDetails principal) {
+        return userAccountService.findByUsername(principal.getUsername())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Authenticated principal " + principal.getUsername() + " is not a UserAccount"));
+    }
 
     @GetMapping("/accounts/{customerId}")
     @PreAuthorize("hasAuthority('GL_VIEW') or hasRole('ADMIN')")
@@ -46,26 +62,46 @@ public class LoyaltyController {
 
     @PostMapping("/earn")
     @PreAuthorize("hasAuthority('GL_MANUAL_JOURNAL') or hasRole('ADMIN')")
-    public ResponseEntity<?> earn(@Valid @RequestBody LoyaltyTransactionRequest request) {
-        return run(() -> loyaltyService.earn(request), HttpStatus.CREATED);
+    public ResponseEntity<?> earn(@Valid @RequestBody LoyaltyTransactionRequest request, @AuthenticationPrincipal UserDetails principal) {
+        try {
+            UserAccount actor = requireAuthenticatedUser(principal);
+            return run(() -> loyaltyService.earn(request, actor.getId()), HttpStatus.CREATED);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
+        }
     }
 
     @PostMapping("/redeem")
     @PreAuthorize("hasAuthority('GL_MANUAL_JOURNAL') or hasRole('ADMIN')")
-    public ResponseEntity<?> redeem(@Valid @RequestBody LoyaltyTransactionRequest request) {
-        return run(() -> loyaltyService.redeem(request), HttpStatus.CREATED);
+    public ResponseEntity<?> redeem(@Valid @RequestBody LoyaltyTransactionRequest request, @AuthenticationPrincipal UserDetails principal) {
+        try {
+            UserAccount actor = requireAuthenticatedUser(principal);
+            return run(() -> loyaltyService.redeem(request, actor.getId()), HttpStatus.CREATED);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
+        }
     }
 
     @PostMapping("/expire")
     @PreAuthorize("hasAuthority('GL_MANUAL_JOURNAL') or hasRole('ADMIN')")
-    public ResponseEntity<?> expire(@Valid @RequestBody LoyaltyTransactionRequest request) {
-        return run(() -> loyaltyService.expire(request), HttpStatus.CREATED);
+    public ResponseEntity<?> expire(@Valid @RequestBody LoyaltyTransactionRequest request, @AuthenticationPrincipal UserDetails principal) {
+        try {
+            UserAccount actor = requireAuthenticatedUser(principal);
+            return run(() -> loyaltyService.expire(request, actor.getId()), HttpStatus.CREATED);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
+        }
     }
 
     @PostMapping("/reverse")
     @PreAuthorize("hasAuthority('GL_MANUAL_JOURNAL') or hasRole('ADMIN')")
-    public ResponseEntity<?> reverse(@Valid @RequestBody LoyaltyTransactionRequest request) {
-        return run(() -> loyaltyService.reverse(request), HttpStatus.CREATED);
+    public ResponseEntity<?> reverse(@Valid @RequestBody LoyaltyTransactionRequest request, @AuthenticationPrincipal UserDetails principal) {
+        try {
+            UserAccount actor = requireAuthenticatedUser(principal);
+            return run(() -> loyaltyService.reverse(request, actor.getId()), HttpStatus.CREATED);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
+        }
     }
 
     private ResponseEntity<?> run(Supplier<LoyaltyTransactionResponse> action, HttpStatus successStatus) {

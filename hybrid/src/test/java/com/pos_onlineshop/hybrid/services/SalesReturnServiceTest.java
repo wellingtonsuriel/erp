@@ -127,7 +127,7 @@ class SalesReturnServiceTest {
     void createReturnRejectsADuplicateReturnNumber() {
         when(salesReturnRepository.existsByReturnNumber("RET-1")).thenReturn(true);
 
-        assertThrows(IllegalArgumentException.class, () -> service.createReturn(request(2)));
+        assertThrows(IllegalArgumentException.class, () -> service.createReturn(request(2), 1L));
     }
 
     @Test
@@ -135,14 +135,14 @@ class SalesReturnServiceTest {
         when(salesReturnRepository.existsByReturnNumber("RET-1")).thenReturn(false);
         order.setStatus(OrderStatus.CANCELLED);
 
-        assertThrows(IllegalStateException.class, () -> service.createReturn(request(2)));
+        assertThrows(IllegalStateException.class, () -> service.createReturn(request(2), 1L));
     }
 
     @Test
     void createReturnRejectsReturningMoreThanWasSold() {
         when(salesReturnRepository.existsByReturnNumber("RET-1")).thenReturn(false);
 
-        assertThrows(IllegalArgumentException.class, () -> service.createReturn(request(5)));
+        assertThrows(IllegalArgumentException.class, () -> service.createReturn(request(5), 1L));
     }
 
     @Test
@@ -150,7 +150,7 @@ class SalesReturnServiceTest {
         when(salesReturnRepository.existsByReturnNumber("RET-1")).thenReturn(false);
         when(salesReturnLineRepository.sumQuantityReturnedByOrderLineId(200L)).thenReturn(3);
 
-        assertThrows(IllegalArgumentException.class, () -> service.createReturn(request(2)));
+        assertThrows(IllegalArgumentException.class, () -> service.createReturn(request(2), 1L));
     }
 
     @Test
@@ -162,7 +162,7 @@ class SalesReturnServiceTest {
                 any(), eq("SALES_RETURN"), eq(300L), captor.capture(), eq("clerk1")))
                 .thenReturn(entry);
 
-        SalesReturnResponse response = service.createReturn(request(2));
+        SalesReturnResponse response = service.createReturn(request(2), 1L);
 
         assertEquals(0, new BigDecimal("20.00").compareTo(response.getTotalRefundAmount()));
         assertEquals(0, new BigDecimal("2.00").compareTo(response.getTotalTaxReversed()));
@@ -194,7 +194,7 @@ class SalesReturnServiceTest {
                 any(), anyString(), anyLong(), captor.capture(), anyString()))
                 .thenReturn(entry);
 
-        SalesReturnResponse response = service.createReturn(request(2));
+        SalesReturnResponse response = service.createReturn(request(2), 1L);
 
         assertNull(response.getTotalCostReversed());
         List<ManualLineSpec> specs = captor.getValue();

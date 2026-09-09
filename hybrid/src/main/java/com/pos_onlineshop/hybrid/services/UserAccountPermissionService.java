@@ -15,7 +15,12 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /** Administration for AccountingPermission grants - see AccountingPermission's Javadoc for
- * how these differ from the ROLE_* model and from the POS-terminal CashierPermission model. */
+ * how these differ from the ROLE_* model and from the POS-terminal CashierPermission model.
+ *
+ * grant's grantedByUserId must always be the authenticated caller (resolved in
+ * UserAccountPermissionController), never GrantAccountingPermissionRequest.grantedByUserId
+ * from the request body - the same request-supplied-identity bug fixed on
+ * ManualJournalController, here letting one admin forge another admin as the grantor. */
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -30,15 +35,13 @@ public class UserAccountPermissionService {
                 .map(this::toResponse).collect(Collectors.toList());
     }
 
-    public UserAccountPermissionResponse grant(Long userAccountId, GrantAccountingPermissionRequest request) {
+    public UserAccountPermissionResponse grant(Long userAccountId, GrantAccountingPermissionRequest request, Long grantedByUserId) {
         UserAccount user = findUserOrThrow(userAccountId);
         if (userAccountPermissionRepository.existsByUserAccountAndPermission(user, request.getPermission())) {
             throw new IllegalArgumentException(
                     "User " + user.getUsername() + " already has permission " + request.getPermission());
         }
-        UserAccount grantedBy = request.getGrantedByUserId() != null
-                ? findUserOrThrow(request.getGrantedByUserId())
-                : null;
+        UserAccount grantedBy = findUserOrThrow(grantedByUserId);
 
         UserAccountPermission permission = UserAccountPermission.builder()
                 .userAccount(user)

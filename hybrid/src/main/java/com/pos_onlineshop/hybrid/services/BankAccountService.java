@@ -28,6 +28,10 @@ import java.util.stream.Collectors;
  * class comment. A positive opening balance is seeded through the existing
  * OpeningBalanceService rather than posting the GL entry here directly, so it gets exactly
  * the same automatic 3900 Opening Balance Equity plug every other opening balance does.
+ *
+ * create's createdByUserId must always be the authenticated caller (resolved in
+ * CashBankController), never CreateBankAccountRequest.createdByUserId from the request body -
+ * the same request-supplied-identity bug fixed on ManualJournalController.
  */
 @Service
 @RequiredArgsConstructor
@@ -52,7 +56,7 @@ public class BankAccountService {
     }
 
     @Transactional
-    public BankAccountResponse create(CreateBankAccountRequest request) {
+    public BankAccountResponse create(CreateBankAccountRequest request, Long createdByUserId) {
         if (bankAccountRepository.existsByAccountName(request.getAccountName())) {
             throw new IllegalArgumentException("A bank account named '" + request.getAccountName() + "' already exists");
         }
@@ -86,7 +90,7 @@ public class BankAccountService {
         BankAccount saved = bankAccountRepository.save(bankAccount);
 
         if (openingBalance.compareTo(BigDecimal.ZERO) > 0) {
-            postOpeningBalance(saved, account, currency, shop, openingBalance, request.getOpeningBalanceDate(), request.getCreatedByUserId());
+            postOpeningBalance(saved, account, currency, shop, openingBalance, request.getOpeningBalanceDate(), createdByUserId);
         }
 
         log.info("Created bank account {} ({}) mapped to {}", saved.getAccountName(), saved.getAccountType(), glAccountCode);
@@ -115,10 +119,9 @@ public class BankAccountService {
         request.setReference("BANK-ACCOUNT-OPEN-" + bankAccount.getId());
         request.setEntryDate(date);
         request.setDescription("Opening balance for bank account " + bankAccount.getAccountName());
-        request.setCreatedByUserId(createdByUserId);
         request.setLines(List.of(line));
 
-        openingBalanceService.createOpeningBalance(request);
+        openingBalanceService.createOpeningBalance(request, createdByUserId);
     }
 
     private BigDecimal exchangeRateToBase(Currency currency) {

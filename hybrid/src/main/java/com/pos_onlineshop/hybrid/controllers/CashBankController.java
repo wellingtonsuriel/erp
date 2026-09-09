@@ -5,18 +5,28 @@ import com.pos_onlineshop.hybrid.gl.GLPostingException;
 import com.pos_onlineshop.hybrid.services.BankAccountService;
 import com.pos_onlineshop.hybrid.services.BankChargeService;
 import com.pos_onlineshop.hybrid.services.CashBankTransferService;
+import com.pos_onlineshop.hybrid.services.UserAccountService;
+import com.pos_onlineshop.hybrid.userAccount.UserAccount;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
+/**
+ * createAccount/createTransfer/createCharge's acting-user id must always be the authenticated
+ * caller, never CreateBankAccountRequest/CreateCashBankTransferRequest/CreateBankChargeRequest.
+ * createdByUserId from the request body - see the relevant service's class comment for why (the
+ * same request-supplied-identity bug fixed on ManualJournalController).
+ */
 @RestController
 @RequestMapping("/api/cash-bank")
 @RequiredArgsConstructor
@@ -26,6 +36,13 @@ public class CashBankController {
     private final BankAccountService bankAccountService;
     private final CashBankTransferService cashBankTransferService;
     private final BankChargeService bankChargeService;
+    private final UserAccountService userAccountService;
+
+    private UserAccount requireAuthenticatedUser(UserDetails principal) {
+        return userAccountService.findByUsername(principal.getUsername())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Authenticated principal " + principal.getUsername() + " is not a UserAccount"));
+    }
 
     @GetMapping("/accounts")
     @PreAuthorize("hasAuthority('GL_VIEW') or hasRole('ADMIN')")
@@ -45,11 +62,15 @@ public class CashBankController {
 
     @PostMapping("/accounts")
     @PreAuthorize("hasAuthority('GL_ADMIN') or hasRole('ADMIN')")
-    public ResponseEntity<?> createAccount(@Valid @RequestBody CreateBankAccountRequest request) {
+    public ResponseEntity<?> createAccount(@Valid @RequestBody CreateBankAccountRequest request,
+                                            @AuthenticationPrincipal UserDetails principal) {
         try {
-            return ResponseEntity.status(HttpStatus.CREATED).body(bankAccountService.create(request));
+            UserAccount creator = requireAuthenticatedUser(principal);
+            return ResponseEntity.status(HttpStatus.CREATED).body(bankAccountService.create(request, creator.getId()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         }
     }
 
@@ -71,8 +92,14 @@ public class CashBankController {
 
     @PostMapping("/transfers")
     @PreAuthorize("hasAuthority('GL_MANUAL_JOURNAL') or hasRole('ADMIN')")
-    public ResponseEntity<?> createTransfer(@Valid @RequestBody CreateCashBankTransferRequest request) {
-        return runCreate(() -> cashBankTransferService.createTransfer(request));
+    public ResponseEntity<?> createTransfer(@Valid @RequestBody CreateCashBankTransferRequest request,
+                                             @AuthenticationPrincipal UserDetails principal) {
+        try {
+            UserAccount creator = requireAuthenticatedUser(principal);
+            return runCreate(() -> cashBankTransferService.createTransfer(request, creator.getId()));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
+        }
     }
 
     @GetMapping("/charges")
@@ -83,9 +110,16 @@ public class CashBankController {
 
     @PostMapping("/charges")
     @PreAuthorize("hasAuthority('GL_MANUAL_JOURNAL') or hasRole('ADMIN')")
-    public ResponseEntity<?> createCharge(@Valid @RequestBody CreateBankChargeRequest request) {
+    public ResponseEntity<?> createCharge(@Valid @RequestBody CreateBankChargeRequest request,
+                                           @AuthenticationPrincipal UserDetails principal) {
+        UserAccount creator;
         try {
-            return ResponseEntity.status(HttpStatus.CREATED).body(bankChargeService.createCharge(request));
+            creator = requireAuthenticatedUser(principal);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
+        }
+        try {
+            return ResponseEntity.status(HttpStatus.CREATED).body(bankChargeService.createCharge(request, creator.getId()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (IllegalStateException | GLPostingException e) {

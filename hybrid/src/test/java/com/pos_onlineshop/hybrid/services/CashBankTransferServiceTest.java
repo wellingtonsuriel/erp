@@ -97,7 +97,7 @@ class CashBankTransferServiceTest {
     void createTransferRejectsADuplicateReference() {
         when(cashBankTransferRepository.existsByReferenceNumber("XFER-1")).thenReturn(true);
 
-        assertThrows(IllegalArgumentException.class, () -> service.createTransfer(request()));
+        assertThrows(IllegalArgumentException.class, () -> service.createTransfer(request(), 1L));
     }
 
     @Test
@@ -106,7 +106,7 @@ class CashBankTransferServiceTest {
         CreateCashBankTransferRequest request = request();
         request.setToAccountId(10L);
 
-        assertThrows(IllegalArgumentException.class, () -> service.createTransfer(request));
+        assertThrows(IllegalArgumentException.class, () -> service.createTransfer(request, 1L));
     }
 
     @Test
@@ -115,7 +115,7 @@ class CashBankTransferServiceTest {
         Currency zwg = Currency.builder().id(2L).code("ZWG").build();
         bank.setCurrency(zwg);
 
-        assertThrows(IllegalArgumentException.class, () -> service.createTransfer(request()));
+        assertThrows(IllegalArgumentException.class, () -> service.createTransfer(request(), 1L));
         verifyNoInteractions(glPostingService);
     }
 
@@ -125,7 +125,7 @@ class CashBankTransferServiceTest {
         CreateCashBankTransferRequest request = request();
         request.setAmount(new BigDecimal("5000.00"));
 
-        assertThrows(IllegalStateException.class, () -> service.createTransfer(request));
+        assertThrows(IllegalStateException.class, () -> service.createTransfer(request, 1L));
         verifyNoInteractions(glPostingService);
     }
 
@@ -138,7 +138,7 @@ class CashBankTransferServiceTest {
                 any(), eq("CASH_BANK_TRANSFER"), eq(30L), captor.capture(), eq("clerk1")))
                 .thenReturn(entry);
 
-        CashBankTransferResponse response = service.createTransfer(request());
+        CashBankTransferResponse response = service.createTransfer(request(), 1L);
 
         assertEquals("DEPOSIT", response.getTransferType());
         assertEquals(0, new BigDecimal("700.00").compareTo(till.getCurrentBalance()));

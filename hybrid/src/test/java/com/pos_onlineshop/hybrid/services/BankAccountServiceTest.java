@@ -73,14 +73,14 @@ class BankAccountServiceTest {
     void createRejectsADuplicateAccountName() {
         when(bankAccountRepository.existsByAccountName("CBZ Main Account")).thenReturn(true);
 
-        assertThrows(IllegalArgumentException.class, () -> service.create(request()));
+        assertThrows(IllegalArgumentException.class, () -> service.create(request(), 1L));
     }
 
     @Test
     void createDefaultsTheGlAccountCodeByType() {
         when(bankAccountRepository.existsByAccountName(anyString())).thenReturn(false);
 
-        BankAccountResponse response = service.create(request());
+        BankAccountResponse response = service.create(request(), 1L);
 
         assertEquals("1030", response.getGlAccountCode());
         assertEquals(0, BigDecimal.ZERO.compareTo(response.getCurrentBalance()));
@@ -93,21 +93,21 @@ class BankAccountServiceTest {
         CreateBankAccountRequest request = request();
         request.setOpeningBalance(new BigDecimal("500.00"));
 
-        assertThrows(IllegalArgumentException.class, () -> service.create(request));
+        assertThrows(IllegalArgumentException.class, () -> service.create(request, 1L));
     }
 
     @Test
     void createSeedsAPositiveOpeningBalanceThroughOpeningBalanceService() {
         when(bankAccountRepository.existsByAccountName(anyString())).thenReturn(false);
-        when(openingBalanceService.createOpeningBalance(any())).thenReturn(OpeningBalanceResponse.builder().id(1L).build());
+        when(openingBalanceService.createOpeningBalance(any(), eq(7L))).thenReturn(OpeningBalanceResponse.builder().id(1L).build());
         CreateBankAccountRequest request = request();
         request.setOpeningBalance(new BigDecimal("500.00"));
         request.setOpeningBalanceDate(LocalDate.of(2026, 8, 1));
 
-        BankAccountResponse response = service.create(request);
+        BankAccountResponse response = service.create(request, 7L);
 
         assertEquals(0, new BigDecimal("500.00").compareTo(response.getCurrentBalance()));
-        verify(openingBalanceService).createOpeningBalance(any());
+        verify(openingBalanceService).createOpeningBalance(any(), eq(7L));
     }
 
     @Test

@@ -13,12 +13,19 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * reverse's postedBy must always be the authenticated caller's username, never
+ * ReverseJournalEntryRequest.postedBy from the request body - see JournalEntryService's class
+ * comment for why (the same audit-attribution forgery fixed on AccountingPeriodController).
+ */
 @RestController
 @RequestMapping("/api/journal-entries")
 @RequiredArgsConstructor
@@ -56,9 +63,10 @@ public class JournalEntryController {
 
     @PostMapping("/{id}/reverse")
     @PreAuthorize("hasAuthority('GL_REVERSE') or hasRole('ADMIN')")
-    public ResponseEntity<?> reverse(@PathVariable Long id, @Valid @RequestBody ReverseJournalEntryRequest request) {
+    public ResponseEntity<?> reverse(@PathVariable Long id, @Valid @RequestBody ReverseJournalEntryRequest request,
+                                      @AuthenticationPrincipal UserDetails principal) {
         try {
-            return ResponseEntity.ok(journalEntryService.reverse(id, request));
+            return ResponseEntity.ok(journalEntryService.reverse(id, request, principal.getUsername()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (GLPostingException e) {

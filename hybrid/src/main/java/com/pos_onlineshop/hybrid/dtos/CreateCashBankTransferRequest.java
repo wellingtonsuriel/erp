@@ -33,6 +33,7 @@ public class CreateCashBankTransferRequest {
 
     private String description;
 
-    @NotNull(message = "Creator is required")
+    // Ignored server-side: the creator is always the authenticated caller (see
+    // CashBankController/CashBankTransferService's class comments), never this request-body field.
     private Long createdByUserId;
 }

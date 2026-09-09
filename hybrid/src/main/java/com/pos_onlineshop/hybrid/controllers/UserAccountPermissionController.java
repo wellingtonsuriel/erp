@@ -3,12 +3,16 @@ package com.pos_onlineshop.hybrid.controllers;
 import com.pos_onlineshop.hybrid.dtos.GrantAccountingPermissionRequest;
 import com.pos_onlineshop.hybrid.enums.AccountingPermission;
 import com.pos_onlineshop.hybrid.services.UserAccountPermissionService;
+import com.pos_onlineshop.hybrid.services.UserAccountService;
+import com.pos_onlineshop.hybrid.userAccount.UserAccount;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -16,7 +20,11 @@ import java.util.Map;
 
 /** Grants/revokes fine-grained AccountingPermission authorities - see the enum's Javadoc.
  * Every endpoint requires USER_ADMIN (or ADMIN, since account administration already
- * implies permission administration) - never delegated further. */
+ * implies permission administration) - never delegated further.
+ *
+ * grant's grantedByUserId must always be the authenticated caller, never
+ * GrantAccountingPermissionRequest.grantedByUserId from the request body - see
+ * UserAccountPermissionService's class comment for why. */
 @RestController
 @RequestMapping("/api/users/{userId}/accounting-permissions")
 @RequiredArgsConstructor
@@ -25,6 +33,7 @@ import java.util.Map;
 public class UserAccountPermissionController {
 
     private final UserAccountPermissionService userAccountPermissionService;
+    private final UserAccountService userAccountService;
 
     @GetMapping
     public ResponseEntity<?> list(@PathVariable Long userId) {
@@ -36,11 +45,17 @@ public class UserAccountPermissionController {
     }
 
     @PostMapping
-    public ResponseEntity<?> grant(@PathVariable Long userId, @Valid @RequestBody GrantAccountingPermissionRequest request) {
+    public ResponseEntity<?> grant(@PathVariable Long userId, @Valid @RequestBody GrantAccountingPermissionRequest request,
+                                    @AuthenticationPrincipal UserDetails principal) {
         try {
-            return ResponseEntity.status(HttpStatus.CREATED).body(userAccountPermissionService.grant(userId, request));
+            UserAccount grantor = userAccountService.findByUsername(principal.getUsername())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Authenticated principal " + principal.getUsername() + " is not a UserAccount"));
+            return ResponseEntity.status(HttpStatus.CREATED).body(userAccountPermissionService.grant(userId, request, grantor.getId()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         }
     }
 

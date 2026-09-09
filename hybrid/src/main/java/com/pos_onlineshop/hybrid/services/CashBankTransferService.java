@@ -32,6 +32,10 @@ import java.util.stream.Collectors;
  * currency - this posts a single amount to both sides, not a currency exchange. When that
  * currency isn't the base currency, the real rate (not an assumed 1:1) is looked up so
  * JournalLine.baseAmount stays correct for balance validation and reporting.
+ *
+ * createTransfer's createdByUserId must always be the authenticated caller (resolved in
+ * CashBankController), never CreateCashBankTransferRequest.createdByUserId from the request
+ * body - the same request-supplied-identity bug fixed on ManualJournalController.
  */
 @Service
 @RequiredArgsConstructor
@@ -51,7 +55,7 @@ public class CashBankTransferService {
     }
 
     @Transactional
-    public CashBankTransferResponse createTransfer(CreateCashBankTransferRequest request) {
+    public CashBankTransferResponse createTransfer(CreateCashBankTransferRequest request, Long createdByUserId) {
         if (cashBankTransferRepository.existsByReferenceNumber(request.getReferenceNumber())) {
             throw new IllegalArgumentException("A transfer with reference " + request.getReferenceNumber() + " already exists");
         }
@@ -71,7 +75,7 @@ public class CashBankTransferService {
                     + ") - this is not a currency exchange");
         }
         Currency currency = fromAccount.getCurrency();
-        UserAccount createdBy = resolveUser(request.getCreatedByUserId());
+        UserAccount createdBy = resolveUser(createdByUserId);
 
         CashBankTransfer transfer = CashBankTransfer.builder()
                 .referenceNumber(request.getReferenceNumber())

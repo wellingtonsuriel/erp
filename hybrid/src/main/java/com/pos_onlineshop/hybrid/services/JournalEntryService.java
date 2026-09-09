@@ -26,6 +26,10 @@ import java.util.stream.Collectors;
  * GLPostingService.post(FinancialEvent) from a real business event, or (once implemented)
  * by the manual-journal maker-checker workflow. Exposing a plain POST that lets a caller
  * hand-assemble JournalLines would bypass PostingRule/idempotency entirely.
+ *
+ * reverse's postedBy must always be the authenticated caller's username (resolved in
+ * JournalEntryController), never ReverseJournalEntryRequest.postedBy from the request body -
+ * the same audit-attribution forgery fixed on AccountingPeriodController's close/reopen.
  */
 @Service
 @RequiredArgsConstructor
@@ -53,10 +57,9 @@ public class JournalEntryService {
         return toDetail(findOrThrow(id));
     }
 
-    public JournalEntryDetailResponse reverse(Long id, ReverseJournalEntryRequest request) {
+    public JournalEntryDetailResponse reverse(Long id, ReverseJournalEntryRequest request, String postedBy) {
         JournalEntry original = findOrThrow(id);
         LocalDate reversalDate = request.getReversalDate() != null ? request.getReversalDate() : LocalDate.now();
-        String postedBy = request.getPostedBy() != null ? request.getPostedBy() : "system";
         JournalEntry reversal = glPostingService.reverse(original, reversalDate, request.getReason(), postedBy);
         return toDetail(reversal);
     }

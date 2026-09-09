@@ -98,7 +98,7 @@ class LoyaltyServiceTest {
                 any(), eq("LOYALTY_TRANSACTION"), eq(700L), anyList(), eq("clerk1")))
                 .thenReturn(entry);
 
-        LoyaltyTransactionResponse response = service.earn(request(new BigDecimal("10.00")));
+        LoyaltyTransactionResponse response = service.earn(request(new BigDecimal("10.00")), 1L);
 
         assertEquals("EARNED", response.getTransactionType());
         assertEquals(0, new BigDecimal("10.00").compareTo(response.getBalanceAfter()));
@@ -108,7 +108,7 @@ class LoyaltyServiceTest {
     void redeemRejectsWhenNoAccountExists() {
         when(loyaltyAccountRepository.findByCustomerId(5L)).thenReturn(Optional.empty());
 
-        assertThrows(IllegalArgumentException.class, () -> service.redeem(request(new BigDecimal("5.00"))));
+        assertThrows(IllegalArgumentException.class, () -> service.redeem(request(new BigDecimal("5.00")), 1L));
     }
 
     @Test
@@ -116,7 +116,7 @@ class LoyaltyServiceTest {
         LoyaltyAccount account = LoyaltyAccount.builder().id(50L).customer(customer).availableBalance(new BigDecimal("5.00")).build();
         when(loyaltyAccountRepository.findByCustomerId(5L)).thenReturn(Optional.of(account));
 
-        assertThrows(IllegalStateException.class, () -> service.redeem(request(new BigDecimal("10.00"))));
+        assertThrows(IllegalStateException.class, () -> service.redeem(request(new BigDecimal("10.00")), 1L));
         verifyNoInteractions(glPostingService);
     }
 
@@ -127,7 +127,7 @@ class LoyaltyServiceTest {
         JournalEntry entry = JournalEntry.builder().id(801L).entryNumber(81L).build();
         when(glPostingService.post(any(FinancialEvent.class))).thenReturn(entry);
 
-        LoyaltyTransactionResponse response = service.redeem(request(new BigDecimal("10.00")));
+        LoyaltyTransactionResponse response = service.redeem(request(new BigDecimal("10.00")), 1L);
 
         assertEquals("REDEEMED", response.getTransactionType());
         assertEquals(0, new BigDecimal("5.00").compareTo(response.getBalanceAfter()));
@@ -139,7 +139,7 @@ class LoyaltyServiceTest {
         LoyaltyAccount account = LoyaltyAccount.builder().id(50L).customer(customer).availableBalance(new BigDecimal("2.00")).build();
         when(loyaltyAccountRepository.findByCustomerId(5L)).thenReturn(Optional.of(account));
 
-        assertThrows(IllegalStateException.class, () -> service.expire(request(new BigDecimal("3.00"))));
+        assertThrows(IllegalStateException.class, () -> service.expire(request(new BigDecimal("3.00")), 1L));
     }
 
     @Test

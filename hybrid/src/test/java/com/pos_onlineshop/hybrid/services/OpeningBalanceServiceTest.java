@@ -113,7 +113,7 @@ class OpeningBalanceServiceTest {
                 .thenAnswer(inv -> postedEntryWithLines(specsCaptor.getValue()));
 
         OpeningBalanceResponse response = service.createOpeningBalance(
-                requestWithOneLine(DebitCredit.DEBIT, new BigDecimal("500.00")));
+                requestWithOneLine(DebitCredit.DEBIT, new BigDecimal("500.00")), 1L);
 
         List<ManualLineSpec> specs = specsCaptor.getValue();
         assertEquals(2, specs.size());
@@ -156,7 +156,7 @@ class OpeningBalanceServiceTest {
                 eq(GLSourceModule.OPENING_BALANCE), eq("OPENING_BALANCE_ENTRY"), eq(11L), specsCaptor.capture(), eq("controller1")))
                 .thenAnswer(inv -> postedEntryWithLines(specsCaptor.getValue()));
 
-        service.createOpeningBalance(request);
+        service.createOpeningBalance(request, 1L);
 
         assertEquals(2, specsCaptor.getValue().size());
         assertTrue(specsCaptor.getValue().stream().noneMatch(s -> s.account().equals(openingBalanceEquity)));
@@ -167,7 +167,7 @@ class OpeningBalanceServiceTest {
         when(openingBalanceEntryRepository.existsByReference("OB-2026-001")).thenReturn(true);
 
         assertThrows(IllegalArgumentException.class,
-                () -> service.createOpeningBalance(requestWithOneLine(DebitCredit.DEBIT, new BigDecimal("500.00"))));
+                () -> service.createOpeningBalance(requestWithOneLine(DebitCredit.DEBIT, new BigDecimal("500.00")), 1L));
         verifyNoInteractions(glPostingService);
         verify(openingBalanceEntryRepository, never()).save(any());
     }
@@ -188,7 +188,7 @@ class OpeningBalanceServiceTest {
         when(openingBalanceEntryRepository.existsByReference("OB-2026-003")).thenReturn(false);
         when(accountRepository.findById(99L)).thenReturn(Optional.of(openingBalanceEquity));
 
-        assertThrows(IllegalArgumentException.class, () -> service.createOpeningBalance(request));
+        assertThrows(IllegalArgumentException.class, () -> service.createOpeningBalance(request, 1L));
         verifyNoInteractions(glPostingService);
     }
 }

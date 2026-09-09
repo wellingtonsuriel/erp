@@ -23,7 +23,8 @@ public class CreateOpeningBalanceRequest {
     @NotBlank(message = "Description is required")
     private String description;
 
-    @NotNull(message = "Creator is required")
+    // Ignored server-side: the creator is always the authenticated caller (see
+    // OpeningBalanceController/OpeningBalanceService's class comments), never this request-body field.
     private Long createdByUserId;
 
     /** The known side of the opening balance (e.g. existing AR/AP/Inventory/Cash balances).

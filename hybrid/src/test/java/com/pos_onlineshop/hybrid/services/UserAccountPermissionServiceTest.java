@@ -44,14 +44,15 @@ class UserAccountPermissionServiceTest {
     }
 
     @Test
-    void grantSucceedsForANewPermission() {
+    void grantSucceedsForANewPermissionAndIgnoresTheRequestBodysGrantedBy() {
         when(userAccountRepository.findById(1L)).thenReturn(Optional.of(targetUser));
         when(userAccountRepository.findById(2L)).thenReturn(Optional.of(adminUser));
         when(userAccountPermissionRepository.existsByUserAccountAndPermission(targetUser, AccountingPermission.GL_POST))
                 .thenReturn(false);
         when(userAccountPermissionRepository.save(any(UserAccountPermission.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        UserAccountPermissionResponse response = service.grant(1L, request(AccountingPermission.GL_POST, 2L));
+        // request claims a different grantor (9999L); the real grantor (2L) must win.
+        UserAccountPermissionResponse response = service.grant(1L, request(AccountingPermission.GL_POST, 9999L), 2L);
 
         assertEquals(AccountingPermission.GL_POST, response.getPermission());
         assertEquals("accountant1", response.getUsername());
@@ -64,7 +65,7 @@ class UserAccountPermissionServiceTest {
         when(userAccountPermissionRepository.existsByUserAccountAndPermission(targetUser, AccountingPermission.GL_POST))
                 .thenReturn(true);
 
-        assertThrows(IllegalArgumentException.class, () -> service.grant(1L, request(AccountingPermission.GL_POST, null)));
+        assertThrows(IllegalArgumentException.class, () -> service.grant(1L, request(AccountingPermission.GL_POST, null), 2L));
     }
 
     @Test
@@ -90,6 +91,6 @@ class UserAccountPermissionServiceTest {
     @Test
     void grantThrowsWhenTargetUserDoesNotExist() {
         when(userAccountRepository.findById(99L)).thenReturn(Optional.empty());
-        assertThrows(IllegalArgumentException.class, () -> service.grant(99L, request(AccountingPermission.GL_POST, null)));
+        assertThrows(IllegalArgumentException.class, () -> service.grant(99L, request(AccountingPermission.GL_POST, null), 2L));
     }
 }

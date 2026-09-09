@@ -28,6 +28,7 @@ public class LoyaltyTransactionRequest {
     @NotNull(message = "Transaction date is required")
     private LocalDate transactionDate;
 
-    @NotNull(message = "Creator is required")
+    // Ignored server-side: the acting user is always the authenticated caller (see
+    // LoyaltyController/LoyaltyService's class comments), never this request-body field.
     private Long createdByUserId;
 }

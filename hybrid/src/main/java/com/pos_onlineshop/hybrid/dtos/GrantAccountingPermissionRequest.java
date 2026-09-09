@@ -10,6 +10,8 @@ public class GrantAccountingPermissionRequest {
     @NotNull(message = "Permission is required")
     private AccountingPermission permission;
 
-    /** UserAccount id of the admin granting this permission, for the audit trail. */
+    // Ignored server-side: the grantor is always the authenticated caller (see
+    // UserAccountPermissionController/UserAccountPermissionService's class comments), never
+    // this request-body field.
     private Long grantedByUserId;
 }

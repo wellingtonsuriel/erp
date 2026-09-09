@@ -40,6 +40,12 @@ import java.util.stream.Collectors;
  * typically a single preparer's period-end adjustment rather than an ongoing operational
  * entry - see OpeningBalanceService's class comment for the identical reasoning applied to
  * opening balances.
+ *
+ * createAccrual's createdByUserId must always be the authenticated caller (resolved in
+ * AccrualController), never CreateAccrualRequest.createdByUserId from the request body - the
+ * same request-supplied-identity bug fixed on ManualJournalController. reverseAccrual already
+ * took its reversedByUserId as a plain parameter rather than from a DTO, but the controller was
+ * still reading it from a client-suppliable query parameter - fixed there instead.
  */
 @Service
 @RequiredArgsConstructor
@@ -64,7 +70,7 @@ public class AccrualService {
         return toResponse(findOrThrow(id));
     }
 
-    public AccrualResponse createAccrual(CreateAccrualRequest request) {
+    public AccrualResponse createAccrual(CreateAccrualRequest request, Long createdByUserId) {
         if (accrualEntryRepository.existsByReference(request.getReference())) {
             throw new IllegalArgumentException("An accrual with reference '"
                     + request.getReference() + "' already exists");
@@ -74,7 +80,7 @@ public class AccrualService {
         }
 
         Currency baseCurrency = currencyService.getBaseCurrency();
-        UserAccount createdBy = resolveUser(request.getCreatedByUserId());
+        UserAccount createdBy = resolveUser(createdByUserId);
 
         List<ManualLineSpec> specs = request.getLines().stream()
                 .map(lineRequest -> toLineSpec(lineRequest, baseCurrency))
