@@ -18,6 +18,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -33,6 +35,13 @@ import java.util.Optional;
  * read-only price-lookup endpoints are individually overridden back to public below, since an
  * online-shop customer must be able to see a product's price without logging in - see
  * ProductController's identical public-catalog-read pattern.
+ *
+ * Every mutating endpoint here also had the same audit-trail gap already fixed on
+ * CashierController.grantPermission (grantedBy spoofing): SellingPrice.createdBy came straight
+ * from a request-body field (*Request.getCreatedBy()) that any caller could set to anything,
+ * including someone else's name. It's now always the authenticated principal's own username - a
+ * UserAccount admin or a Cashier MANAGER/ADMIN, per the same JWT bridging used throughout this
+ * codebase (see CashierUserDetailsService's class comment).
  */
 @RestController
 @RequestMapping("/api/selling-prices")
@@ -51,7 +60,9 @@ public class SellingPriceController {
      * Create or update a selling price
      */
     @PostMapping
-    public ResponseEntity<SellingPriceResponse> createSellingPrice(@RequestBody SellingPriceCreateRequest request) {
+    public ResponseEntity<SellingPriceResponse> createSellingPrice(
+            @RequestBody SellingPriceCreateRequest request,
+            @AuthenticationPrincipal UserDetails principal) {
         try {
             Optional<Product> product = productRepository.findById(request.getProductId());
             Optional<Shop> shop = shopRepository.findById(request.getShopId());
@@ -88,7 +99,7 @@ public class SellingPriceController {
                     .effectiveFrom(request.getEffectiveFrom())
                     .effectiveTo(request.getEffectiveTo())
                     .priority(request.getPriority())
-                    .createdBy(request.getCreatedBy())
+                    .createdBy(principal.getUsername())
                     .notes(request.getNotes())
                     .build();
 
@@ -110,7 +121,8 @@ public class SellingPriceController {
     @PutMapping("/{priceId}")
     public ResponseEntity<SellingPriceResponse> updateSellingPrice(
             @PathVariable Long priceId,
-            @RequestBody SellingPriceUpdateRequest request) {
+            @RequestBody SellingPriceUpdateRequest request,
+            @AuthenticationPrincipal UserDetails principal) {
         try {
             // Fetch taxes if taxIds are provided
             List<Tax> taxes = null;
@@ -147,7 +159,7 @@ public class SellingPriceController {
             }
 
             SellingPrice updatedPrice = sellingPriceService.updatePrice(
-                    priceId, updates, request.getUpdatedBy());
+                    priceId, updates, principal.getUsername());
 
             SellingPriceResponse response = sellingPriceService.toResponse(updatedPrice);
             return ResponseEntity.ok(response);
@@ -272,7 +284,8 @@ public class SellingPriceController {
     public ResponseEntity<SellingPriceResponse> setPromotionalPrice(
             @PathVariable Long shopId,
             @PathVariable Long productId,
-            @RequestBody PromotionalPriceRequest request) {
+            @RequestBody PromotionalPriceRequest request,
+            @AuthenticationPrincipal UserDetails principal) {
 
         try {
             Optional<Product> product = productRepository.findById(productId);
@@ -286,7 +299,7 @@ public class SellingPriceController {
             SellingPrice promoPrice = sellingPriceService.setPromotionalPrice(
                     product.get(), shop.get(), currency.get(),
                     request.getPromotionalPrice(), request.getExpiryDate(),
-                    request.getCreatedBy());
+                    principal.getUsername());
 
             SellingPriceResponse response = sellingPriceService.toResponse(promoPrice);
             return ResponseEntity.ok(response);
@@ -303,7 +316,8 @@ public class SellingPriceController {
     public ResponseEntity<SellingPriceResponse> setBulkPrice(
             @PathVariable Long shopId,
             @PathVariable Long productId,
-            @RequestBody BulkPriceRequest request) {
+            @RequestBody BulkPriceRequest request,
+            @AuthenticationPrincipal UserDetails principal) {
 
         try {
             Optional<Product> product = productRepository.findById(productId);
@@ -317,7 +331,7 @@ public class SellingPriceController {
             SellingPrice bulkPrice = sellingPriceService.setBulkPrice(
                     product.get(), shop.get(), currency.get(),
                     request.getRegularPrice(), request.getBulkPrice(),
-                    request.getQuantityBreak(), request.getCreatedBy());
+                    request.getQuantityBreak(), principal.getUsername());
 
             SellingPriceResponse response = sellingPriceService.toResponse(bulkPrice);
             return ResponseEntity.ok(response);
@@ -462,7 +476,8 @@ public class SellingPriceController {
     @PostMapping("/shop/{shopId}/bulk-update")
     public ResponseEntity<Void> bulkUpdatePrices(
             @PathVariable Long shopId,
-            @RequestBody BulkUpdateRequest request) {
+            @RequestBody BulkUpdateRequest request,
+            @AuthenticationPrincipal UserDetails principal) {
 
         try {
             Optional<Shop> shop = shopRepository.findById(shopId);
@@ -472,7 +487,7 @@ public class SellingPriceController {
 
             sellingPriceService.bulkUpdatePrices(
                     shop.get(), request.getPriceType(),
-                    request.getPercentage(), request.getUpdatedBy());
+                    request.getPercentage(), principal.getUsername());
 
             return ResponseEntity.ok().build();
         } catch (Exception e) {
@@ -485,7 +500,9 @@ public class SellingPriceController {
      * Copy prices from one shop to another
      */
     @PostMapping("/copy-prices")
-    public ResponseEntity<Void> copyPricesFromShop(@RequestBody CopyPricesRequest request) {
+    public ResponseEntity<Void> copyPricesFromShop(
+            @RequestBody CopyPricesRequest request,
+            @AuthenticationPrincipal UserDetails principal) {
         try {
             Optional<Shop> sourceShop = shopRepository.findById(request.getSourceShopId());
             Optional<Shop> targetShop = shopRepository.findById(request.getTargetShopId());
@@ -495,7 +512,7 @@ public class SellingPriceController {
             }
 
             sellingPriceService.copyPricesFromShop(
-                    sourceShop.get(), targetShop.get(), request.getCreatedBy());
+                    sourceShop.get(), targetShop.get(), principal.getUsername());
 
             return ResponseEntity.ok().build();
         } catch (Exception e) {
